@@ -1,0 +1,460 @@
+// Aeigs Anti-Cheat — veritabanı şeması
+// Yerel/tek makine kurulumu: SQLite (dosya tabanlı, ekstra sunucu gerekmez).
+// İleride buluta taşınırsa provider'ı "postgresql" yapmak yeterli; enum'lar
+// zaten string olarak modellendiği için taşıma sorunsuzdur.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// Kullanıcılar & kimlik doğrulama
+// ----------------------------------------------------------------------------
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  username      String   @unique
+  passwordHash  String
+  role          String   @default("USER") // USER | ADMIN
+  discordId     String?
+  avatarUrl     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastLoginAt   DateTime?
+
+  // Güvenlik: başarısız giriş denemeleri / kilit
+  failedLogins  Int      @default(0)
+  lockedUntil   DateTime?
+
+  servers       Server[]
+  licenseKeys   LicenseKey[]  @relation("KeyOwner")
+  orders        Order[]
+  auditLogs     AuditLog[]
+  sessions      Session[]
+}
+
+// Sunucu tarafında revoke edebilmek için oturum kayıtları (refresh/jti).
+model Session {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jti        String   @unique
+  userAgent  String?
+  ip         String?
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+
+  @@index([userId])
+}
+
+// ----------------------------------------------------------------------------
+// Ürünler & satış
+// ----------------------------------------------------------------------------
+
+model Product {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String
+  priceCents  Int      // örn. 2999 = 29.99
+  currency    String   @default("EUR")
+  interval    String   @default("MONTHLY") // MONTHLY | LIFETIME | YEARLY
+  // Bu üründe varsayılan olarak açık gelen özellikler (JSON string array).
+  features    String   @default("[]")
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  orders      Order[]
+  licenseKeys LicenseKey[]
+}
+
+model Order {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  status      String   @default("PENDING") // PENDING | PAID | CANCELLED | REFUNDED
+  amountCents Int
+  currency    String   @default("EUR")
+  provider    String   @default("MANUAL") // MANUAL | STRIPE | ...
+  externalRef String?
+  licenseKeyId String? @unique
+  licenseKey  LicenseKey? @relation(fields: [licenseKeyId], references: [id])
+  createdAt   DateTime @default(now())
+  paidAt      DateTime?
+
+  @@index([userId])
+}
+
+// ----------------------------------------------------------------------------
+// Lisans anahtarları (key generator çıktısı)
+// ----------------------------------------------------------------------------
+
+model LicenseKey {
+  id          String   @id @default(cuid())
+  key         String   @unique // AEIGS-XXXX-XXXX-XXXX-XXXX
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id])
+
+  ownerId     String?
+  owner       User?    @relation("KeyOwner", fields: [ownerId], references: [id])
+
+  status      String   @default("UNUSED") // UNUSED | ACTIVE | SUSPENDED | REVOKED | EXPIRED
+  // Bu keyde açık olan özellikler (JSON string array) — admin seçer.
+  features    String   @default("[]")
+  maxServers  Int      @default(1)
+  note        String?
+
+  createdById String?  // hangi admin oluşturdu
+  createdAt   DateTime @default(now())
+  activatedAt DateTime?
+  expiresAt   DateTime? // null = lifetime
+
+  order       Order?
+  servers     Server[]
+
+  @@index([ownerId])
+  @@index([status])
+}
+
+// ----------------------------------------------------------------------------
+// Korunan FiveM sunucuları
+// ----------------------------------------------------------------------------
+
+model Server {
+  id            String   @id @default(cuid())
+  name          String
+  ownerId       String
+  owner         User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  licenseKeyId  String?
+  licenseKey    LicenseKey? @relation(fields: [licenseKeyId], references: [id])
+
+  // FiveM kaynağının kimlik doğrulaması için (hash'lenmiş saklanır).
+  apiTokenHash  String?  @unique
+  ip            String?
+  port          Int      @default(30120)
+  discordGuild  String?
+
+  status        String   @default("OFFLINE") // ONLINE | OFFLINE
+  acVersion     String?
+  lastSeenAt    DateTime?
+  maxSlots      Int      @default(64)
+
+  // Yapılandırma (JSON string) — tespit eşikleri, kurallar vb.
+  config        String   @default("{}")
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  players       Player[]
+  bans          Ban[]
+  detections    Detection[]
+  actions       PunishAction[]
+  admins        ServerAdmin[]
+  logs          ServerLog[]
+  commands      ServerCommand[]
+  resources     ServerResource[]
+  whitelist     Whitelist[]
+  blacklist     Blacklist[]
+  screenshots   ScreenshotRequest[]
+
+  @@index([ownerId])
+}
+
+// ----------------------------------------------------------------------------
+// Bypass (koruma muafiyeti) — bu kimliklere sahip oyuncular banlanmaz/işaretlenmez
+// ----------------------------------------------------------------------------
+model Whitelist {
+  id         String   @id @default(cuid())
+  serverId   String
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  kind       String   // license | discord | steam | ip
+  value      String
+  note       String?
+  createdBy  String?
+  createdAt  DateTime @default(now())
+
+  @@unique([serverId, kind, value])
+  @@index([serverId])
+}
+
+// ----------------------------------------------------------------------------
+// Kara liste — izinsiz araç/ped/nesne/silah; oyunda otomatik engellenir
+// ----------------------------------------------------------------------------
+model Blacklist {
+  id         String   @id @default(cuid())
+  serverId   String
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  kind       String   // vehicle | ped | object | weapon
+  model      String   // model adı (örn. "adder") veya hash
+  label      String?
+  action     String   @default("REMOVE") // REMOVE | KICK | BAN
+  enabled    Boolean  @default(true)
+  createdBy  String?
+  createdAt  DateTime @default(now())
+
+  @@unique([serverId, kind, model])
+  @@index([serverId])
+}
+
+// ----------------------------------------------------------------------------
+// Ekran görüntüsü istekleri (canlı izleme) — panel ister, kaynak URL döndürür
+// ----------------------------------------------------------------------------
+model ScreenshotRequest {
+  id           String   @id @default(cuid())
+  serverId     String
+  server       Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  playerLicense String
+  playerName   String
+  status       String   @default("PENDING") // PENDING | DONE | FAILED
+  url          String?
+  requestedBy  String?
+  createdAt    DateTime @default(now())
+  completedAt  DateTime?
+
+  // Bir CRITICAL tespite/ban'a bağlıysa (otomatik ekran görüntüsü serisi —
+  // "ban anının kanıtı"). Admin'in manuel istediği izleme görüntülerinde null.
+  detectionId  String?
+  detection    Detection? @relation(fields: [detectionId], references: [id], onDelete: SetNull)
+  seq          Int      @default(0)  // seri içindeki sıra (0,1,2,3,4)
+
+  @@index([serverId, status])
+  @@index([serverId, createdAt])
+  @@index([detectionId])
+}
+
+// Web konsolundan gönderilen komutlar — FiveM kaynağı çeker ve çalıştırır.
+model ServerCommand {
+  id         String   @id @default(cuid())
+  serverId   String
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  command    String
+  issuedBy   String
+  status     String   @default("PENDING") // PENDING | DELIVERED
+  output     String?
+  createdAt  DateTime @default(now())
+  deliveredAt DateTime?
+
+  @@index([serverId, status])
+  @@index([serverId, createdAt])
+}
+
+model ServerAdmin {
+  id         String   @id @default(cuid())
+  serverId   String
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  identifier String   // discord / license / steam identifier
+  displayName String?
+  role       String   @default("MODERATOR") // OWNER | ADMIN | MODERATOR
+  // Oyun içi menüde bu yöneticinin erişebileceği izinler (JSON string array).
+  // Örn: ["kick","ban","spectate","noclip","revive","tp","announce"]
+  permissions String  @default("[]")
+  createdAt  DateTime @default(now())
+
+  @@unique([serverId, identifier])
+  @@index([serverId])
+}
+
+// Sunucuda görülen oyuncular
+model Player {
+  id          String   @id @default(cuid())
+  serverId    String
+  server      Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  // FiveM identifier'ları
+  license     String?
+  steam       String?
+  discord     String?
+  ip          String?
+  name        String
+  online      Boolean  @default(false)
+
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  playtimeSec Int      @default(0)
+  trustScore  Int      @default(100)
+
+  // Canlı durum (interaktif harita / izleme) — konum, can, kalkan, aktivite
+  posX        Float?
+  posY        Float?
+  posZ        Float?
+  heading     Float?
+  health      Int?
+  armor       Int?
+  activity    String?  // walking | driving | shooting | swimming | parachuting | idle
+  ping        Int?
+
+  bans        Ban[]
+  detections  Detection[]
+  actions     PunishAction[]
+
+  @@unique([serverId, license])
+  @@index([serverId])
+  @@index([serverId, online])
+}
+
+model Ban {
+  id          String   @id @default(cuid())
+  serverId    String
+  server      Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  playerId    String?
+  player      Player?  @relation(fields: [playerId], references: [id])
+
+  // Oyuncuya gösterilen kısa ban kodu (ban sebebini sorgulamak için)
+  code        String?  @unique
+
+  // İdentifikasyon anlık görüntüsü (oyuncu silinse de ban kalır)
+  license     String?
+  steam       String?
+  discord     String?
+  ip          String?
+  playerName  String
+
+  reason      String
+  bannedBy    String   // admin adı / "AntiCheat"
+  active      Boolean  @default(true)
+  permanent   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime?
+  unbannedAt  DateTime?
+  unbannedBy  String?
+
+  // Bu banı tetikleyen tespit — "neden banlandık" replay'i izlemek için.
+  detectionId String?     @unique
+  detection   Detection?  @relation(fields: [detectionId], references: [id])
+
+  @@index([serverId, active])
+  @@index([license])
+}
+
+// Sunucuda çalışan FiveM kaynakları (resource) — panelden görüntülenir/yönetilir.
+model ServerResource {
+  id         String   @id @default(cuid())
+  serverId   String
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  name       String
+  state      String   @default("stopped") // started | stopped
+  updatedAt  DateTime @updatedAt
+
+  @@unique([serverId, name])
+  @@index([serverId])
+}
+
+// AntiCheat tespitleri (aimbot, silent aim, illegal spawn vb.)
+model Detection {
+  id         String   @id @default(cuid())
+  serverId   String
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  playerId   String?
+  player     Player?  @relation(fields: [playerId], references: [id])
+
+  type       String   // AIMBOT | SILENT_AIM | OVERLAY | ILLEGAL_WEAPON | INVINCIBILITY | ...
+  severity   String   @default("MEDIUM") // LOW | MEDIUM | HIGH | CRITICAL
+  playerName String
+  details    String   @default("{}") // JSON
+  // Ban anından önceki ~8 sn'lik durum tamponu (JSON dizi) — web panelde
+  // "neden banlandık" replay'i için. Yalnızca CRITICAL raporlarda dolu gelir.
+  replay     String   @default("[]")
+  action     String?  // bu tespit için fiilen uygulanan aksiyon: LOG | KICK | BAN
+  createdAt  DateTime @default(now())
+
+  ban        Ban?
+  screenshots ScreenshotRequest[]
+
+  @@index([serverId, type])
+  @@index([serverId, createdAt])
+}
+
+// Uygulanan cezalar (kick/warn/ban) — dashboard grafikleri için
+model PunishAction {
+  id         String   @id @default(cuid())
+  serverId   String
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  playerId   String?
+  player     Player?  @relation(fields: [playerId], references: [id])
+
+  type       String   // WARN | KICK | BAN | UNBAN
+  reason     String
+  issuedBy   String
+  playerName String
+  // Web'den verilen komutun FiveM tarafından işlenmesi için kuyruk durumu.
+  status     String   @default("PENDING") // PENDING | DELIVERED | FAILED
+  createdAt  DateTime @default(now())
+  deliveredAt DateTime?
+
+  @@index([serverId, status])
+  @@index([serverId, createdAt])
+}
+
+// ----------------------------------------------------------------------------
+// Ağ itibarı (global ban ağı) — bir sunucuda banlanan oyuncu, ağdaki DİĞER
+// sunuculara sinyal olur. Rakiplerden ayrışma noktası.
+//
+// GİZLİLİK: burada ham kimlik TUTULMAZ; yalnızca keyed-HMAC hash saklanır
+// (license/steam/discord). IP HİÇ paylaşılmaz (ortak IP/CGNAT = false positive
+// + mahremiyet — yerel matchBan da IP'yi bilerek atlıyor).
+//
+// ownerId/serverId bilerek FK DEĞİL: (1) sunucu silinse bile ağ geçmişi kalmalı,
+// (2) tablo kiracılar-arası bir agregadır. Sorgu, hash eşleşmesi + DISTINCT
+// owner eşiğiyle çalışır → tek bir müşteri masum bir oyuncuyu ağ-geneli
+// damgalayamaz. Yerel unban, o sahibin katkısını pasifleştirir (adalet).
+// ----------------------------------------------------------------------------
+model NetworkBan {
+  id           String   @id @default(cuid())
+  ownerId      String   // banı veren sunucunun SAHİBİ (distinct-owner sayımı için)
+  serverId     String   // banı veren sunucu (köken)
+  licenseHash  String?
+  steamHash    String?
+  discordHash  String?
+  type         String   @default("MANUAL") // ban sebebinin tespit tipi/kategorisi
+  playerName   String   // en son görülen ad (yalnızca gösterim)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@index([licenseHash])
+  @@index([steamHash])
+  @@index([discordHash])
+  @@index([ownerId])
+}
+
+// Sunucu / konsol logları
+model ServerLog {
+  id         String   @id @default(cuid())
+  serverId   String
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  level      String   @default("INFO") // INFO | WARN | ERROR | DETECTION
+  source     String   @default("system")
+  message    String
+  meta       String   @default("{}")
+  createdAt  DateTime @default(now())
+
+  @@index([serverId, createdAt])
+}
+
+// ----------------------------------------------------------------------------
+// Denetim kaydı (güvenlik) — kim ne yaptı
+// ----------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String   // LOGIN | KEY_CREATE | BAN_ISSUE | ...
+  targetType String?
+  targetId   String?
+  ip         String?
+  meta       String   @default("{}")
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+}

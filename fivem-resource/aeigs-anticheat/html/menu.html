@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="menu.css" />
+</head>
+<body>
+  <!-- Announcement banner — top center, shows even when the menu is closed. -->
+  <div id="banner" class="banner"></div>
+
+  <!-- Direct-message popups — bottom right, independent of the menu. -->
+  <div id="dmStack" class="dm-stack"></div>
+
+  <!-- Admin panel -->
+  <div id="root" class="hidden">
+    <div class="panel" role="dialog" aria-label="Admin panel">
+      <div class="panel-glow"></div>
+
+      <header class="head">
+        <div class="brand">
+          <span class="mark">
+            <svg viewBox="0 0 64 64" aria-hidden="true">
+              <defs>
+                <linearGradient id="csMark" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="#818cf8" />
+                  <stop offset="0.5" stop-color="#6366f1" />
+                  <stop offset="1" stop-color="#a855f7" />
+                </linearGradient>
+              </defs>
+              <path d="M32 5 L57 14 V32.5 L32 59 L7 32.5 V14 Z" fill="none" stroke="url(#csMark)" stroke-width="5" stroke-linejoin="round" />
+              <path d="M32 22 L40 26.6 V35.8 L32 40.4 L24 35.8 V26.6 Z" fill="url(#csMark)" />
+            </svg>
+          </span>
+          <div class="brand-text">
+            <span id="brand">CoreAC</span>
+            <span class="sub">Admin Panel</span>
+          </div>
+        </div>
+        <div class="head-right">
+          <div id="specPill" class="pill spec hidden">
+            <span class="dot"></span><span id="specText">Spectating</span>
+            <button id="specStop" class="pill-btn">Stop</button>
+          </div>
+          <div class="pill online"><span class="dot live"></span><span id="onlineCount">0</span><span class="pill-lbl">online</span></div>
+          <button id="close" class="icon-btn" title="Close (Esc)"></button>
+        </div>
+      </header>
+
+      <nav id="tabs" class="tabs"></nav>
+
+      <main id="view" class="view"></main>
+    </div>
+
+    <div id="modal" class="modal hidden" role="dialog" aria-modal="true"></div>
+    <div id="toasts" class="toasts"></div>
+  </div>
+  <script src="menu.js"></script>
+</body>
+</html>

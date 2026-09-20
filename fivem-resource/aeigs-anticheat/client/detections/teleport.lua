@@ -1,0 +1,8 @@
+-- teleport.lua — Teleport tespiti SUNUCU tarafındadır (server/live.lua)
+-- Sunucu, oyuncunun koordinatını doğrudan okur (kandırılamaz): yayada >60 m/s,
+-- araçta >250 m/s = fiziksel olarak imkânsız → teleport. Yetkili ışınlama
+-- (admin tp), multichar/respawn (ped handle değişimi → core.lua onRespawn()) ve
+-- NoClip (çarpışma kapalıyken sıçrama → aeigs:collState ile ayırt edilir) muaftır.
+-- Bu sayede: "multichar seçince teleport banı" ve "noclip açan teleporttan
+-- yanlış sebeple banlanıyor" hataları YOK — sunucu hangisi olduğunu bilir.
+-- Bu dosya yalnızca yapı bütünlüğü içindir; client'ta ölçüm YAPILMAZ.

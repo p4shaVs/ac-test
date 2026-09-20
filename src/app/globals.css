@@ -1,0 +1,181 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-base-950 text-slate-200 antialiased;
+  font-weight: 500;
+  letter-spacing: -0.011em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  background-image: radial-gradient(
+      60rem 60rem at 80% -10%,
+      rgba(99, 102, 241, 0.12),
+      transparent 60%
+    ),
+    radial-gradient(50rem 50rem at 0% 20%, rgba(168, 85, 247, 0.08), transparent 55%);
+  background-attachment: fixed;
+}
+
+/* Başlıklar biraz daha kalın ve sıkı */
+h1, h2, h3, h4 {
+  letter-spacing: -0.02em;
+}
+
+/* Özel scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #232c42;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2e3852;
+  background-clip: content-box;
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-white/5 bg-base-850/70 backdrop-blur-sm shadow-card;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-white/10 bg-base-900/80 px-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition
+           focus:border-brand-500/60 focus:ring-2 focus:ring-brand-500/20;
+  }
+
+  .label {
+    @apply mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition
+           disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-offset-0;
+  }
+  .btn-primary {
+    @apply btn bg-brand-gradient text-white shadow-glow hover:opacity-95 focus:ring-brand-500/40;
+  }
+  .btn-secondary {
+    @apply btn border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10 focus:ring-white/10;
+  }
+  .btn-ghost {
+    @apply btn text-slate-300 hover:bg-white/5 focus:ring-white/10;
+  }
+  .btn-danger {
+    @apply btn bg-accent-rose/90 text-white hover:bg-accent-rose focus:ring-accent-rose/40;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .nav-link {
+    @apply flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition
+           hover:bg-white/5 hover:text-slate-100;
+  }
+  .nav-link-active {
+    @apply bg-brand-500/10 text-white ring-1 ring-inset ring-brand-500/30;
+  }
+
+  .section-title {
+    @apply text-xs font-semibold uppercase tracking-[0.14em] text-slate-500;
+  }
+}
+
+/* =========================================================================
+   DASHBOARD / ADMIN PANEL (.dash-root)
+   Landing ve pazarlama sayfaları ETKİLENMEZ (onlar PanelShell kullanmaz).
+
+   Tema: sitenin kendi indigo/mor kimliği. Buradaki kırmızı override katmanı
+   KALDIRILDI — panelin rengi artık tailwind.config.ts'teki `brand` ölçeğiyle
+   aynı; kırmızı SADECE tehlike (ban/kick/kritik tespit) anlamında kullanılır,
+   böylece renk bir uyarı sinyali olma değerini kaybetmez.
+
+   Buradaki kurallar yalnızca OKUNURLUK içindir: çizgileri belirginleştirip
+   panelleri arka plandan net ayırır.
+   ========================================================================= */
+.dash-root {
+  --acc: #6366f1;             /* indigo aksan (brand-500) */
+  --acc-2: #a855f7;           /* mor (brand gradyanının ikinci durağı) */
+  background-color: #05070f;
+  background-image:
+    radial-gradient(56rem 42rem at 100% -12%, rgba(99, 102, 241, 0.10), transparent 60%),
+    radial-gradient(40rem 34rem at 0% 8%, rgba(168, 85, 247, 0.07), transparent 58%),
+    linear-gradient(rgba(255, 255, 255, 0.016) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.016) 1px, transparent 1px);
+  background-size: auto, auto, 42px 42px, 42px 42px;
+  background-attachment: fixed;
+}
+
+/* Soluk kenarlıkları görünür yap — sayfa içi inline border'lar dahil */
+.dash-root .border-white\/5 { border-color: rgb(255 255 255 / 0.10); }
+.dash-root .border-white\/10 { border-color: rgb(255 255 255 / 0.14); }
+
+/* Panel yüzeyleri daha belirgin (arka plandan net ayrılsın) */
+.dash-root .bg-base-850\/60,
+.dash-root .bg-base-850\/70 { background-color: rgb(17 21 32 / 0.92); }
+.dash-root .bg-base-900\/40,
+.dash-root .bg-base-900\/60 { background-color: rgb(10 12 20 / 0.85); }
+
+/* Kartlara net çerçeve + ayırt edici gölge (yalnızca panel) */
+.dash-root .card {
+  border-color: rgb(255 255 255 / 0.10);
+  background-color: rgb(17 21 32 / 0.9);
+}
+.dash-root .card,
+.dash-root .rounded-2xl.border,
+.dash-root .rounded-xl.border {
+  box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.04) inset,
+              0 10px 30px -18px rgba(0, 0, 0, 0.85);
+}
+
+/* Recharts tooltip'i koyu temaya uydur */
+.recharts-default-tooltip {
+  background: rgba(13, 16, 25, 0.95) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 12px !important;
+}
+
+/* İnteraktif harita — aralık (range) kaydırıcıları */
+.ac-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 9999px;
+  background: linear-gradient(to right, rgba(16, 185, 129, 0.6), rgba(16, 185, 129, 0.25));
+  outline: none;
+}
+.ac-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: #10b981;
+  border: 2px solid #0a1119;
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+}
+.ac-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: #10b981;
+  border: 2px solid #0a1119;
+  cursor: pointer;
+}

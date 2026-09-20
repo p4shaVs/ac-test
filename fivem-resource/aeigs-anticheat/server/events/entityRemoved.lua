@@ -1,0 +1,31 @@
+-- local vehiclesRemoved = {}
+--
+-- AddEventHandler("entityRemoved",function(handle)
+--     if not CoreAC.Config.Entities.AntiDeleteVehicles then return end
+--     if not DoesEntityExist(handle) then return end
+-- 	local entityType = GetEntityType(handle)
+-- 	local entityPopulationType = GetEntityPopulationType(handle)
+-- 	local source = NetworkGetEntityOwner(handle)
+-- 	if entityType == 2 and (entityPopulationType == 6 or entityPopulationType == 7) then
+--         local lastDeletedVehicle = Player(source).state["LastDeletedVehicle"] or 0
+--         if ((GetGameTimer() - lastDeletedVehicle) > 10000) then
+--             if vehiclesRemoved[source] and vehiclesRemoved[source] >= 5 then
+--                 CancelEvent()
+--                 exports[CoreAC.resourceName]:banPlayer(tonumber(source),"Attempted to delete vehicles.",("Deleted %s vehicles in less than 5 seconds."):format(tonumber(vehiclesRemoved[source])),"Entities")
+--                 return
+--             else
+--                 if not vehiclesRemoved[source] then
+--                     vehiclesRemoved[source] = 0
+--                     CreateThread(function()
+--                         Wait(5000)
+--                         vehiclesRemoved[source] = nil
+--                     end)
+--                 else
+--                     vehiclesRemoved[source] = vehiclesRemoved[source] + 1
+--                 end
+--             end
+--         end
+-- UFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUCBpdHMgZm1h
+-- 	end
+--     --todo check si ca ban qd c delete cote srv
+-- end)

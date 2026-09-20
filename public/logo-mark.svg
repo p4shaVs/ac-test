@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Core Shield">
+  <defs>
+    <linearGradient id="csMark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#818cf8"/>
+      <stop offset="0.5" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#a855f7"/>
+    </linearGradient>
+  </defs>
+  <!-- Angular shield: protection, but faceted rather than a soft crest -->
+  <path d="M32 5 L57 14 V32.5 L32 59 L7 32.5 V14 Z"
+        fill="none" stroke="url(#csMark)" stroke-width="5" stroke-linejoin="round"/>
+  <!-- The "core": a solid hex at the heart of the shield -->
+  <path d="M32 22 L40 26.6 V35.8 L32 40.4 L24 35.8 V26.6 Z" fill="url(#csMark)"/>
+</svg>
