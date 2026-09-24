@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { handler, ok, ApiError } from "@/lib/api";
 import { authenticateServer } from "@/lib/server-auth";
+import { rateLimit } from "@/lib/ratelimit";
 
 // The resource reports the outcome of a screenshot request.
 //
@@ -37,6 +38,8 @@ const schema = z.object({
 
 export const POST = handler(async (req: NextRequest) => {
   const server = await authenticateServer(req);
+  const _rl = rateLimit(`ssres:${server.id}`, 60, 60_000);
+  if (!_rl.success) throw new ApiError(429, "Rate limit");
 
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) throw new ApiError(422, "Invalid screenshot result");

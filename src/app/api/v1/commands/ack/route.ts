@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { handler, ok } from "@/lib/api";
+import { handler, ok, ApiError } from "@/lib/api";
 import { authenticateServer } from "@/lib/server-auth";
+import { rateLimit } from "@/lib/ratelimit";
 
 const schema = z.object({
   commandIds: z.array(z.string()).max(100),
@@ -12,6 +13,8 @@ const schema = z.object({
 // FiveM kaynağı çalıştırdığı komutları onaylar (opsiyonel çıktı ile).
 export const POST = handler(async (req: NextRequest) => {
   const server = await authenticateServer(req);
+  const _rl = rateLimit(`cack:${server.id}`, 90, 60_000);
+  if (!_rl.success) throw new ApiError(429, "Rate limit");
   const body = schema.parse(await req.json());
 
   const result = await db.serverCommand.updateMany({

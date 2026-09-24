@@ -24,7 +24,7 @@ export default async function BlacklistPage({ params }: { params: { id: string }
     <>
       <PageHeader
         title="Model search"
-        description="Search and manage vehicle, ped, weapon, object and explosion lists."
+        description="Search and blacklist vehicles, peds, weapons and objects. (Explosions: Configuration → Explosions.)"
       />
       <ModelSearch
         serverId={server.id}

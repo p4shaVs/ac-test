@@ -4,8 +4,12 @@ import { db } from "@/lib/db";
 import { handler, ok, ApiError } from "@/lib/api";
 import { requireOwnedServer } from "@/lib/api-guards";
 
+// Only model-hash kinds the resource actually enforces are accepted. Explosions
+// are typed events (not model hashes) and are handled by Configuration →
+// Explosions → "Blacklisted Explosions"; accepting them here would create a
+// blacklist row that never enforces.
 const createSchema = z.object({
-  kind: z.enum(["vehicle", "ped", "object", "weapon", "explosion"]),
+  kind: z.enum(["vehicle", "ped", "object", "weapon"]),
   model: z.string().min(1).max(80),
   label: z.string().max(80).optional(),
   action: z.enum(["REMOVE", "KICK", "BAN"]).default("REMOVE"),

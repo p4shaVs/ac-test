@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Core Shield Anti-Cheat — brag</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Jakarta"; src: url("assets/fonts/PlusJakartaSans-400.woff2") format("woff2"); font-weight: 400; font-display: block; }
+      @font-face { font-family: "Jakarta"; src: url("assets/fonts/PlusJakartaSans-500.woff2") format("woff2"); font-weight: 500; font-display: block; }
+      @font-face { font-family: "Jakarta"; src: url("assets/fonts/PlusJakartaSans-600.woff2") format("woff2"); font-weight: 600; font-display: block; }
+      @font-face { font-family: "Jakarta"; src: url("assets/fonts/PlusJakartaSans-700.woff2") format("woff2"); font-weight: 700; font-display: block; }
+      @font-face { font-family: "Jakarta"; src: url("assets/fonts/PlusJakartaSans-800.woff2") format("woff2"); font-weight: 800; font-display: block; }
+
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #05060a; }
+      #root { position: relative; width: 1920px; height: 1080px; background: #05060a;
+              font-family: "Jakarta", ui-sans-serif, system-ui, sans-serif; color: #e2e8f0; }
+
+      /* faint brand grid, masked to a corner (mirrors the marketing hero) */
+      .grid-bg { position: absolute; inset: 0; pointer-events: none;
+        background-image: linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+                          linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+        background-size: 46px 46px;
+        -webkit-mask-image: radial-gradient(ellipse at 78% 18%, #000 0%, transparent 62%);
+                mask-image: radial-gradient(ellipse at 78% 18%, #000 0%, transparent 62%); }
+      .glow { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.5; }
+
+      .scene { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+      .grad { background: linear-gradient(135deg, #818cf8 0%, #a855f7 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+      /* Scene 1 — hook */
+      #hookLine { max-width: 1360px; text-align: center; font-weight: 800; font-size: 82px; line-height: 1.12; letter-spacing: -0.02em; color: #f8fafc; }
+
+      /* Scene 2 — reveal */
+      #reveal { flex-direction: column; gap: 26px; }
+      .wordmark { display: flex; align-items: center; gap: 26px; }
+      .wordmark h1 { font-weight: 800; font-size: 104px; letter-spacing: -0.03em; color: #f8fafc; }
+      #shieldMark { width: 92px; height: 92px; }
+      #subline { font-weight: 500; font-size: 32px; color: #94a3b8; }
+
+      /* Scene 3 — panel */
+      #panel { position: relative; width: 1560px; height: 812px; border-radius: 24px;
+        background: #0a0c14; border: 1px solid rgba(255,255,255,0.10);
+        box-shadow: 0 40px 120px rgba(99,102,241,0.14); overflow: hidden; }
+      .panel-head { display: flex; align-items: center; gap: 12px; padding: 22px 28px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+      .brand-dot { width: 26px; height: 26px; border-radius: 8px; background: linear-gradient(135deg,#6366f1,#a855f7); }
+      .panel-head .t { font-weight: 700; font-size: 22px; color: #f1f5f9; }
+      .panel-head .s { font-weight: 500; font-size: 16px; color: #8593a6; }
+      .live { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 15px; color: #94a3b8; }
+      .live .d { width: 9px; height: 9px; border-radius: 50%; background: #10b981; box-shadow: 0 0 0 4px rgba(16,185,129,0.15); }
+
+      .col-left { position: absolute; top: 96px; left: 28px; width: 560px; display: flex; flex-direction: column; gap: 12px; }
+      .prow { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border-radius: 14px; background: #111420; border: 1px solid rgba(255,255,255,0.06); }
+      .prow .av { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg,#232c42,#2e3852); }
+      .prow .nm { font-weight: 600; font-size: 20px; color: #e2e8f0; }
+      .prow .id { font-size: 14px; color: #8593a6; }
+      .prow .st { margin-left: auto; font-size: 14px; font-weight: 600; color: #8593a6; }
+      #rowFlag { border-color: rgba(245,158,11,0.45); background: #17161f; }
+      #rowFlag .st { color: #f59e0b; }
+
+      #badge { position: absolute; top: 150px; left: 470px; display: flex; align-items: center; gap: 10px;
+        padding: 12px 18px; border-radius: 999px; background: rgba(99,102,241,0.14); border: 1px solid rgba(129,140,248,0.5);
+        font-weight: 700; font-size: 19px; color: #c7d2fe; white-space: nowrap; }
+      #badge svg { width: 20px; height: 20px; }
+
+      #banCard { position: absolute; top: 230px; right: 40px; width: 520px; padding: 30px 32px; border-radius: 20px;
+        background: #0d0f18; border: 1px solid rgba(244,63,94,0.35); box-shadow: 0 24px 60px rgba(244,63,94,0.10); }
+      #banCard .lbl { font-size: 15px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #f43f5e; }
+      #banCard .id { margin-top: 12px; font-family: "Jakarta"; font-weight: 800; font-size: 54px; letter-spacing: -0.01em; color: #f8fafc; }
+      #banCard .kept { margin-top: 18px; display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 600; color: #34d399; }
+      #banCard .srv { margin-top: 8px; font-size: 16px; color: #94a3b8; }
+
+      #facts { position: absolute; left: 28px; right: 28px; bottom: 26px; display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; }
+      .fact { padding: 18px 18px; border-radius: 14px; background: #0e1119; border: 1px solid rgba(255,255,255,0.08);
+        font-weight: 600; font-size: 17px; line-height: 1.3; color: #cbd5e1; }
+      .fact b { display: block; margin-bottom: 6px; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: #818cf8; }
+
+      /* Scene 4 — install + outro */
+      #cfgCard { position: absolute; left: 300px; top: 360px; width: 900px; border-radius: 18px; background: #0a0c14;
+        border: 1px solid rgba(255,255,255,0.10); overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,0.5); }
+      #cfgCard .bar { display: flex; align-items: center; gap: 8px; padding: 14px 18px; background: #0d1019; border-bottom: 1px solid rgba(255,255,255,0.07); }
+      #cfgCard .bar i { width: 12px; height: 12px; border-radius: 50%; background: #232c42; display: inline-block; }
+      #cfgCard .bar span { margin-left: 10px; font-size: 16px; color: #94a3b8; font-weight: 500; }
+      #cfgCard pre { padding: 26px 28px; font-family: "Jakarta"; font-size: 26px; line-height: 1.7; color: #e2e8f0; }
+      .cline { opacity: 0; }
+      .cline .k { color: #a5b4fc; } .cline .v { color: #34d399; }
+
+      #onlinePill { position: absolute; left: 1220px; top: 452px; display: flex; align-items: center; gap: 12px;
+        padding: 16px 24px; border-radius: 999px; background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.45);
+        font-weight: 700; font-size: 26px; color: #34d399; opacity: 0; }
+      #onlinePill .d { width: 12px; height: 12px; border-radius: 50%; background: #10b981; box-shadow: 0 0 0 5px rgba(16,185,129,0.18); }
+
+      #outro { flex-direction: column; gap: 22px; opacity: 0; }
+      #outro .om { display: flex; align-items: center; gap: 20px; }
+      #outro .om svg { width: 72px; height: 72px; }
+      #outro .om h1 { font-weight: 800; font-size: 76px; letter-spacing: -0.03em; color: #f8fafc; }
+      #outro .line { font-weight: 700; font-size: 40px; color: #c7d2fe; }
+      #outro .tag { font-weight: 500; font-size: 22px; letter-spacing: 0.06em; color: #8593a6; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="20" data-width="1920" data-height="1080">
+      <div class="grid-bg"></div>
+      <div class="glow" style="width:520px;height:520px;left:1200px;top:-140px;background:#6366f1;"></div>
+      <div class="glow" style="width:460px;height:460px;left:120px;top:640px;background:#a855f7;opacity:0.35;"></div>
+
+      <!-- Music bed + sparse SFX -->
+      <audio id="music-bed" src="assets/music/happy-beats-business-moves-vol-1-by-ende-dot-app.mp3"
+             data-start="0" data-duration="20" data-volume="0.32" data-fade-in="0.8" data-fade-out="1.6" data-track-index="9"></audio>
+      <audio id="sfx-ban" src="assets/sfx/ban-snap.ogg" data-start="8.6" data-duration="1.2" data-volume="0.6" data-track-index="10"></audio>
+      <audio id="sfx-tick-1" src="assets/sfx/key-tick.ogg" data-start="13.7" data-duration="0.4" data-volume="0.4" data-track-index="11"></audio>
+      <audio id="sfx-tick-2" src="assets/sfx/key-tick.ogg" data-start="14.2" data-duration="0.4" data-volume="0.4" data-track-index="11"></audio>
+      <audio id="sfx-tick-3" src="assets/sfx/key-tick.ogg" data-start="14.7" data-duration="0.4" data-volume="0.4" data-track-index="11"></audio>
+      <audio id="sfx-online" src="assets/sfx/online-confirm.ogg" data-start="15.6" data-duration="1.4" data-volume="0.5" data-track-index="12"></audio>
+
+      <!-- Scene 1 — Hook -->
+      <div id="s1" class="scene clip" data-start="0" data-duration="3.1" data-track-index="0">
+        <div id="hookLine">Most anti-cheats ask the cheater to <span class="grad">report themselves</span>.</div>
+      </div>
+
+      <!-- Scene 2 — Reveal -->
+      <div id="s2" class="scene clip" data-start="3.0" data-duration="3.6" data-track-index="0">
+        <div id="reveal">
+          <div class="wordmark">
+            <svg id="shieldMark" viewBox="0 0 24 24" fill="none"><defs><linearGradient id="g2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6366f1"/><stop offset="1" stop-color="#a855f7"/></linearGradient></defs><path d="M12 2 20 5v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5l8-3Z" fill="url(#g2)"/><path d="m8.5 12 2.4 2.4L15.8 9.5" stroke="#05060a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <h1>Core Shield <span class="grad">Anti-Cheat</span></h1>
+          </div>
+          <div id="subline">Detection that runs where the player can&apos;t reach it.</div>
+        </div>
+      </div>
+
+      <!-- Scene 3 — The panel doing the loop -->
+      <div id="s3" class="scene clip" data-start="6.5" data-duration="7.1" data-track-index="0">
+        <div id="panel">
+          <div class="panel-head">
+            <span class="brand-dot"></span>
+            <span class="t">CoreAC</span><span class="s">· Live Monitor</span>
+            <span class="live"><span class="d"></span>server-side</span>
+          </div>
+
+          <div class="col-left">
+            <div class="prow"><span class="av"></span><span><span class="nm">Mia_K</span><br><span class="id">steam:110000…4a1</span></span><span class="st">clean</span></div>
+            <div class="prow"><span class="av"></span><span><span class="nm">Deniz</span><br><span class="id">license:8f2…c07</span></span><span class="st">clean</span></div>
+            <div class="prow" id="rowFlag"><span class="av"></span><span><span class="nm">Ryder_M</span><br><span class="id">license:a1f…792</span></span><span class="st">flagged</span></div>
+            <div class="prow"><span class="av"></span><span><span class="nm">Sara</span><br><span class="id">steam:110000…9b2</span></span><span class="st">clean</span></div>
+          </div>
+
+          <div id="badge">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 2 20 5v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5l8-3Z" fill="#818cf8"/></svg>
+            Godmode · server-confirmed
+          </div>
+
+          <div id="banCard">
+            <div class="lbl">Ban issued</div>
+            <div class="id">Ban #A1F7-2K9</div>
+            <div class="kept"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="m5 12 4.5 4.5L19 7" stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Evidence kept</div>
+            <div class="srv">Decided by the server — not the client.</div>
+          </div>
+
+          <div id="facts">
+            <div class="fact" id="f1"><b>Server-side</b>Godmode, silent-aim &amp; blacklist checks</div>
+            <div class="fact" id="f2"><b>Frameworks</b>ESX · QBCore · QBox · standalone</div>
+            <div class="fact" id="f3"><b>Safe rollout</b>Log-only mode to start</div>
+            <div class="fact" id="f4"><b>Provable</b>Every ban carries an ID + evidence</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scene 4 — One-click install + outro -->
+      <div id="s4" class="scene clip" data-start="13.5" data-duration="6.5" data-track-index="0">
+        <div id="cfgCard">
+          <div class="bar"><i></i><i></i><i></i><span>server.cfg</span></div>
+          <pre><span class="cline" id="cl1"><span class="k">set</span> aeigs_api <span class="v">"https://panel/api/v1"</span></span>
+<span class="cline" id="cl2"><span class="k">set</span> aeigs_token <span class="v">"•••••••••••"</span></span>
+<span class="cline" id="cl3"><span class="k">ensure</span> aeigs-anticheat</span></pre>
+        </div>
+        <div id="onlinePill"><span class="d"></span>Server ONLINE</div>
+
+        <div id="outro" class="scene">
+          <div class="om">
+            <svg viewBox="0 0 24 24" fill="none"><defs><linearGradient id="g4" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6366f1"/><stop offset="1" stop-color="#a855f7"/></linearGradient></defs><path d="M12 2 20 5v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5l8-3Z" fill="url(#g4)"/><path d="m8.5 12 2.4 2.4L15.8 9.5" stroke="#05060a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <h1>Core Shield <span class="grad">Anti-Cheat</span></h1>
+          </div>
+          <div class="line">Bans your server can prove.</div>
+          <div class="tag">FiveM · ESX · QBCore · QBox · standalone</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      /* ---- Scene 1: hook (0–3.1) ---- */
+      gsap.set("#hookLine", { opacity: 0, y: 26 });
+      tl.to("#hookLine", { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.15);
+      tl.to("#hookLine", { opacity: 0, y: -18, duration: 0.35, ease: "power2.in" }, 2.75);
+
+      /* ---- Scene 2: reveal (3.0–6.6) ---- */
+      gsap.set("#shieldMark", { opacity: 0, scale: 0.7, transformOrigin: "50% 50%" });
+      gsap.set(".wordmark h1", { opacity: 0, y: 20 });
+      gsap.set("#subline", { opacity: 0, y: 14 });
+      tl.to("#shieldMark", { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(1.6)" }, 3.15);
+      tl.to(".wordmark h1", { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 3.3);
+      tl.to("#subline", { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, 3.9);
+      tl.to("#reveal", { opacity: 0, duration: 0.35, ease: "power2.in" }, 6.25);
+
+      /* ---- Scene 3: panel (6.5–13.6) ---- */
+      gsap.set("#panel", { opacity: 0, y: 30, scale: 0.985, transformOrigin: "50% 60%" });
+      gsap.set("#badge", { opacity: 0, x: -14 });
+      gsap.set("#banCard", { opacity: 0, x: 40, scale: 0.96, transformOrigin: "100% 50%" });
+      gsap.set("#rowFlag", { borderColor: "rgba(255,255,255,0.06)" });
+      gsap.set(["#f1","#f2","#f3","#f4"], { opacity: 0, y: 16 });
+
+      tl.to("#panel", { opacity: 1, y: 0, scale: 1, duration: 0.55, ease: "power3.out" }, 6.55);
+      tl.to("#rowFlag", { borderColor: "rgba(245,158,11,0.45)", duration: 0.3 }, 7.2);
+      tl.to("#badge", { opacity: 1, x: 0, duration: 0.4, ease: "power3.out" }, 7.7);
+      tl.to("#banCard", { opacity: 1, x: 0, scale: 1, duration: 0.45, ease: "back.out(1.5)" }, 8.6); // beat-locked: ban snap
+      tl.to("#f1", { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 9.6);   // beat-grid
+      tl.to("#f2", { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 10.4);
+      tl.to("#f3", { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 11.2);
+      tl.to("#f4", { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 12.0);
+      tl.to("#panel", { opacity: 0, y: -18, duration: 0.35, ease: "power2.in" }, 13.25);
+
+      /* ---- Scene 4: install + outro (13.5–20) ---- */
+      gsap.set("#cfgCard", { opacity: 0, y: 24 });
+      gsap.set("#onlinePill", { opacity: 0, scale: 0.9, transformOrigin: "50% 50%" });
+      tl.to("#cfgCard", { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" }, 13.55);
+      tl.to("#cl1", { opacity: 1, duration: 0.25 }, 13.7);
+      tl.to("#cl2", { opacity: 1, duration: 0.25 }, 14.2);
+      tl.to("#cl3", { opacity: 1, duration: 0.25 }, 14.7);
+      tl.to("#onlinePill", { opacity: 1, scale: 1, duration: 0.4, ease: "back.out(1.6)" }, 15.6); // beat-locked: online confirm
+      tl.to(["#cfgCard","#onlinePill"], { opacity: 0, duration: 0.4, ease: "power2.in" }, 16.7);
+      tl.to("#outro", { opacity: 1, duration: 0.5, ease: "power2.out" }, 17.0);
+      tl.fromTo("#outro .om", { y: 18 }, { y: 0, duration: 0.5, ease: "power3.out" }, 17.0);
+      tl.fromTo("#outro .line", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" }, 17.4);
+      tl.fromTo("#outro .tag", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 17.9);
+
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+Core Shield Anti-Cheat — share copy
+===================================
+
+Primary (X / Discord):
+Most FiveM anti-cheats run on the cheater's PC — they ask the cheater to report themselves. Core Shield doesn't. Detection runs server-side, so every ban reflects what your server actually saw — with an ID and its evidence. One click to install. ⚡🛡️
+
+Short (one-liner):
+Server-authoritative anti-cheat for FiveM. Bans your server can prove — ID + evidence, one-click install.
+
+LinkedIn:
+We built Core Shield, an anti-cheat for FiveM that runs where the player can't reach it. Godmode, silent-aim and blacklist checks are decided server-side — not by a script on the cheater's machine — so bans are backed by what the server observed, each with an ID and evidence. Works on ESX, QBCore, QBox and standalone, with a log-only mode to roll out safely and a one-click installer that configures server.cfg for you.
+
+Hashtags: #FiveM #GTAV #anticheat #roleplay #gameservers

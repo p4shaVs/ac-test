@@ -13,7 +13,7 @@ export interface BlacklistState {
 }
 
 const KIND_ICON: Record<string, keyof typeof Icons> = {
-  vehicle: "cube", ped: "user", weapon: "bolt", object: "cube", explosion: "bolt",
+  vehicle: "cube", ped: "user", weapon: "bolt", object: "cube",
 };
 
 const ACTIONS = [
@@ -22,13 +22,17 @@ const ACTIONS = [
   { key: "BAN", label: "Ban" },
 ] as const;
 
+// Only kinds the resource actually enforces server-side appear here:
+//   vehicle / ped / object → entityCreating guard (protection.lua)
+//   weapon                 → weaponDamageEvent + giveWeaponEvent (protection.lua)
+// Explosions are NOT model-hash based; blacklist them in
+// Configuration → Explosions → "Blacklisted Explosions" (that path is enforced).
 const TABS: { key: string; label: string; kind?: ModelKind }[] = [
   { key: "all", label: "All" },
-  { key: "vehicle", label: "Arabalar", kind: "vehicle" },
+  { key: "vehicle", label: "Vehicles", kind: "vehicle" },
   { key: "ped", label: "Peds", kind: "ped" },
-  { key: "weapon", label: "Silahlar", kind: "weapon" },
-  { key: "object", label: "Nesneler", kind: "object" },
-  { key: "explosion", label: "Patlamalar", kind: "explosion" },
+  { key: "weapon", label: "Weapons", kind: "weapon" },
+  { key: "object", label: "Objects", kind: "object" },
 ];
 
 const PAGE = 60;
@@ -71,7 +75,10 @@ export function ModelSearch({
         const json = await res.json();
         if (json.ok) {
           setTotal(json.data.total);
-          setItems((prev) => (reset ? json.data.items : [...prev, ...json.data.items]));
+          // Explosions are blacklisted via Configuration → Explosions, not here,
+          // so keep them out of the "All" results (their tab is already gone).
+          const incoming = (json.data.items as GtaModel[]).filter((m) => m.kind !== "explosion");
+          setItems((prev) => (reset ? incoming : [...prev, ...incoming]));
         }
       } finally {
         setLoading(false);
