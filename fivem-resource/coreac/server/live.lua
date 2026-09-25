@@ -722,6 +722,7 @@ end)
 local sPos = {}          -- src -> { x,y,z, t, seen }
 local tpGrace = {}       -- src -> muafiyet bitiş ms (yetkili ışınlama/yeni giriş/respawn)
 local noclipFallbackStrike = {}  -- src -> strike sayacı (NoClip yedek raporu)
+local jumpPending = {}    -- src -> { dist, t } — sıçrama görüldü, sınıfı bir sonraki örnekte belli olur
 
 function CAC.grantTp(src)
   tpGrace[tonumber(src)] = GetGameTimer() + 8000
@@ -897,8 +898,31 @@ local function teleportScan()
           local inVeh = GetVehiclePedIsIn(ped, false) ~= 0
           local perSec = dt > 0 and (dist / dt) or 0
           local limit = inVeh and 250.0 or 60.0
-          if inGame and settled and not granted and dist > 40.0 and perSec > limit
-              and not (CAC.isWhitelisted and CAC.isWhitelisted(src)) then
+          local pend = jumpPending[src]
+          if pend then
+            -- Bir önceki saniyede sıçrama görüldü. Işınlanma TEK bir sıçramadır,
+            -- sonra oyuncu durur/normal yürür. NoClip ise uçuştur: koordinat her
+            -- kare elle kaydırılır, yaya olduğu hâlde saniyede 12 m+ yatay
+            -- ilerler ama fizik hızı (velocity) düşüktür. Menü NoClip'lerinin
+            -- çoğu çarpışmayı kapatmadığı için collState sinyali gelmeyebilir;
+            -- eskiden bu durumda uçuş TELEPORT diye banlanıyordu.
+            jumpPending[src] = nil
+            if not granted and inGame then
+              local hMove = #(vector2(c.x, c.y) - vector2(prev.x, prev.y))
+              local vel = #(GetEntityVelocity(ped))
+              if recentlyNoclip(src) or (not inVeh and hMove > 12.0 and vel < 30.0) then
+                TriggerEvent('coreac:serverReport', src, 'NOCLIP', 'CRITICAL',
+                  { source = 'server_movement', distance = pend.dist, flight = math.floor(hMove) })
+              else
+                TriggerEvent('coreac:serverReport', src, 'TELEPORT', 'CRITICAL', { distance = pend.dist })
+              end
+            end
+          elseif inGame and settled and not granted and dist > 40.0 and perSec > limit
+              and not (CAC.isWhitelisted and CAC.isWhitelisted(src))
+              -- Yaya + yüksek fizik hızı = gerçek hareket (paraşüt/serbest düşüş,
+              -- ragdoll fırlaması). Işınlanma/NoClip koordinatı elle kaydırır,
+              -- velocity'yi büyütmez.
+              and (inVeh or #(GetEntityVelocity(ped)) < 30.0) then
             if recentlyNoclip(src) then
               -- Bu bir sıçrama değil NoClip uçuşu — TELEPORT atma. Client'ın
               -- kendi NoClip tespiti zaten ~2 sn içinde doğru sebeple banlar;
@@ -910,7 +934,8 @@ local function teleportScan()
                 TriggerEvent('coreac:serverReport', src, 'NOCLIP', 'CRITICAL', { source = 'server_fallback' })
               end
             else
-              TriggerEvent('coreac:serverReport', src, 'TELEPORT', 'CRITICAL', { distance = math.floor(dist) })
+              -- Hemen TELEPORT deme: 1 sn sonraki örnek uçuş mu sıçrama mı söyler.
+              jumpPending[src] = { dist = math.floor(dist), t = now }
             end
             sPos[src].seen = now + 5000  -- kısa süre tekrar tetiklenmesin
           end
@@ -924,7 +949,7 @@ local function teleportScan()
   for _, sid in ipairs(GetPlayers()) do online[tonumber(sid)] = true end
   for k in pairs(sPos) do
     if not online[k] then
-      sPos[k] = nil; tpGrace[k] = nil; noclipFallbackStrike[k] = nil; CollState[k] = nil; armourStrikes[k] = nil
+      sPos[k] = nil; tpGrace[k] = nil; noclipFallbackStrike[k] = nil; jumpPending[k] = nil; CollState[k] = nil; armourStrikes[k] = nil
       vehSpeedStreak[k] = nil
     end
   end

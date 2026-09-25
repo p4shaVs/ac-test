@@ -121,7 +121,8 @@ local function markLoaded(src)
 end
 local function markUnloaded(src)
   src = tonumber(src)
-  if src and src > 0 then loadedAt[src] = nil; unloadedAt[src] = GetGameTimer() end
+  -- Karakter değişimi: client kapısı da yeniden açılmalı (yeni spawn seçimi).
+  if src and src > 0 then loadedAt[src] = nil; unloadedAt[src] = GetGameTimer(); clientReadyAt[src] = nil end
 end
 
 AddEventHandler('playerJoining', function() joinedAt[source] = GetGameTimer() end)
@@ -160,14 +161,22 @@ function CAC.isInGame(src, settleMs)
   local now = GetGameTimer()
   settleMs = settleMs or 10000
 
-  if loadedAt[src] then return now - loadedAt[src] >= settleMs end
+  -- 1) Client'ın spawn kapısı açıldı (framework'ün CLIENT "yüklendi" olayı +
+  --    yerleşme süresi — yani spawn noktası SEÇİLDİKTEN sonra). Bu sinyali
+  --    erken göndermek hileciye fayda sağlamaz (kontroller yalnızca erken
+  --    başlar); göndermemek en fazla aşağıdaki süreler kadar geciktirir.
+  if clientReadyAt[src] then return now - clientReadyAt[src] >= settleMs end
+
+  -- 2) Framework'ün SUNUCU olayı geldi ama client sinyali yok. QBCore bu olayı
+  --    KARAKTER SEÇİMİNDE atar; ardından spawn-konumu seçim ekranı gelir. Eskiden
+  --    15 sn sonra tarama başlıyordu → oyuncu spawn noktasını seçince bu
+  --    ışınlanma TELEPORT olarak düşüyordu. Artık en az 90 sn beklenir.
+  if loadedAt[src] then return now - loadedAt[src] >= math.max(settleMs, 90000) end
 
   if hasFramework() then
     local since = math.max(joinedAt[src] or 0, unloadedAt[src] or 0)
     return since > 0 and now - since >= NO_SIGNAL_TIMEOUT
   end
-
-  if clientReadyAt[src] then return now - clientReadyAt[src] >= settleMs end
   local since = joinedAt[src]
   return since ~= nil and now - since >= 120000
 end
@@ -549,6 +558,27 @@ local function fireScreenshotBurst(src, ids, onDone)
 end
 
 -- ---------------------------------------------------------------------------
+-- Aynı oyuncu + aynı tespit tipi için 20 sn'de bir rapor. Örn. godmode'lu bir
+-- oyuncu sürekli vuruluyorsa sunucu kontrolü her birkaç isabette tetiklenir ve
+-- panele saniyede bir kayıt düşüyordu. Cezayı etkilemez: ilk rapor ceza
+-- verdiyse oyuncu zaten atılmıştır; yalnızca log verdiyse tekrarlar da log olurdu.
+-- ---------------------------------------------------------------------------
+local reportGate = {}
+local function reportAllowed(src, dtype)
+  local key = tostring(src) .. ':' .. tostring(dtype)
+  local now = GetGameTimer()
+  if reportGate[key] and now - reportGate[key] < 20000 then return false end
+  reportGate[key] = now
+  return true
+end
+AddEventHandler('playerDropped', function()
+  local prefix = tostring(source) .. ':'
+  for k in pairs(reportGate) do
+    if k:sub(1, #prefix) == prefix then reportGate[k] = nil end
+  end
+end)
+
+-- ---------------------------------------------------------------------------
 -- Client tespit köprüsü — client 'coreac:report' ile bildirir → API'ye yaz
 -- ---------------------------------------------------------------------------
 
@@ -556,6 +586,7 @@ RegisterNetEvent('coreac:report', function(dtype, severity, details)
   local src = source
   if Config.DetectionsEnabled == false then return end  -- tespitler geçici kapalı
   if CAC.eventLimited(src, 'report', 30, 10000) then return end
+  if not reportAllowed(src, CoreAC.NormalizeDetection(dtype)) then return end
   local ids = getIdents(src)
   local pname = GetPlayerName(src) or ('Player#' .. src)
   -- origin='client': rapor oyuncunun KENDİ oyun istemcisinden geldi. Hile
@@ -596,6 +627,7 @@ AddEventHandler('coreac:serverReport', function(src, dtype, severity, details)
   if Config.DetectionsEnabled == false then return end  -- tespitler geçici kapalı
   if not GetPlayerName(src) then return end
   if CAC.eventLimited(src, 'serverReport', 30, 10000) then return end
+  if not reportAllowed(src, dtype) then return end
   local ids = getIdents(src)
   local pname = GetPlayerName(src) or ('Player#' .. src)
   -- origin='server': tespiti sunucu kendi gözlemiyle üretti (godmode_guard,
