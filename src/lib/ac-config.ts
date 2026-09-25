@@ -73,7 +73,7 @@ export const AC_TABS: ACTab[] = [
         title: "Client Detections",
         desc: "Prevent client-side cheats and exploits",
         fields: [
-          T("Main", "AntiTeleport", "Anti Teleport", true, "Legit teleports must call exports['aeigs-anticheat']:markTeleport(src)"),
+          T("Main", "AntiTeleport", "Anti Teleport", true, "Scripts that move players (garages, houses, jobs) should call TriggerEvent('coreac:markTeleport', src) on the server or TriggerEvent('coreac:markTeleport') on the client first. Teleport detections are logged by default — raise them to Kick in Actions once your scripts are wired up."),
           T("Main", "AntiNoClip", "Anti NoClip", true),
           T("Main", "AntiSpeedHack", "Anti Speed Hack", true),
           T("Main", "AntiSuperJump", "Anti Super Jump", true),
@@ -81,7 +81,7 @@ export const AC_TABS: ACTab[] = [
           T("Main", "AntiClearTasks", "Anti Clear Ped Tasks", true, "Blocks clearing another player's ped tasks"),
           T("Main", "AntiSpectate", "Anti Spectate", true, "Your own admin spectate is exempt automatically"),
           T("Main", "AntiInvisible", "Anti Invisibility", true),
-          T("Main", "AntiNoRagdoll", "Anti No-Ragdoll", true, "Scripts that intentionally disable ragdoll should call exports['aeigs-anticheat']:canRagdoll(false)"),
+          T("Main", "AntiNoRagdoll", "Anti No-Ragdoll", true, "Scripts that intentionally disable ragdoll should call exports['<CoreAC folder>']:canRagdoll(false)"),
           T("Main", "AntiFreeCam", "Anti FreeCam", true, "Geometric check only — scripted cameras (character creator, cutscenes) are not flagged"),
           T("Main", "AntiPedModelChange", "Anti Model Change", true, "Multichar and clothing changes are recognised automatically"),
           T("Main", "AntiNightVisions", "Anti Night / Thermal Vision", true),
@@ -123,7 +123,7 @@ export const AC_TABS: ACTab[] = [
         title: "Weapon Spawn",
         desc: "Unauthorized weapon spawn / whitelist",
         fields: [
-          T("Weapons", "AntiWeaponSpawner", "Anti Weapon Spawn", false, "REQUIRES INTEGRATION: every script that hands out a weapon must call exports['aeigs-anticheat']:giveWeapon(hash). Without that it strips and flags every legitimately given weapon. Use the blacklist below instead if you have not wired it up."),
+          T("Weapons", "AntiWeaponSpawner", "Anti Weapon Spawn", false, "REQUIRES INTEGRATION: every script that hands out a weapon must call exports['<CoreAC folder>']:giveWeapon(hash). Without that it strips and flags every legitimately given weapon. Use the blacklist below instead if you have not wired it up."),
           L("Weapons", "AddonWeapons", "Add-On Weapons", "Custom/addon weapons to treat as legit (e.g. weapon_glock17)"),
           T("Weapons", "AntiGiveWeapons", "Anti Give Weapons", true),
           T("Weapons", "AntiRemoveWeapons", "Anti Remove Weapons", true),
@@ -186,11 +186,10 @@ export const AC_TABS: ACTab[] = [
           N("Entities", "VehiclesLimitIn5Seconds", "Vehicle Spawn Limit (per 5s)", 20, "Per player. Cheat menus spawn hundreds; keep this well above what your garages and job scripts create at once."),
           T("Entities", "AntiThrowVehicles", "Anti Vehicle Throwing", true),
           T("Entities", "AntiDeleteVehicles", "Anti Vehicle Deletion", true),
-          // KALDIRILDI: AntiSpeedModifier / AntiHandlingModifier. Modül bunları
-          // CoreAC.vehicleTopSpeedModifier / vehicleCheatPowerIncrease /
-          // vehicleGravityAmount üzerinden okuyor, ama GTA bu değerler için
-          // getter native'i sunmadığından o alanlar sabit kalıyor — kontrol
-          // hiçbir koşulda tetiklenemez. Ölü buton olmasın diye çıkarıldı.
+          // Değerler FiveM'in GetVehicleTopSpeedModifier / GetVehicleCheatPowerIncrease /
+          // GetVehicleGravityAmount getter'larından okunur (bridge/client.lua).
+          T("Entities", "AntiSpeedModifier", "Anti Vehicle Speed / Power Modifier", true, "Log only. Flags a vehicle whose top-speed or engine-power multiplier stays far past anything tuning or nitro scripts set (checked over ~9 s, so nitro bursts never count). Blatant speed hacks are caught server-side by the Vehicle Speed Hack guard."),
+          T("Entities", "AntiHandlingModifier", "Anti Vehicle Gravity / Handling Modifier", true, "Log only. Flags modified vehicle gravity — the 'stick to the road' and 'flying car' menu options."),
           T("Entities", "AntiVehiclePlateChanger", "Anti Vehicle Plate Changer", true),
           T("Entities", "AntiTeleportInVehicle", "Anti Teleport In Vehicle", true),
           T("Entities", "NoCarKill", "No Car Kill", false, "Gameplay change, not a detection: disables all car-ram damage"),

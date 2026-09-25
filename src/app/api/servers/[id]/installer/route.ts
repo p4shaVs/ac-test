@@ -7,11 +7,14 @@ import { env } from "@/lib/env";
 // Panel API tabanı gömülüdür; token gömülmez (installer çalışma anında sorar).
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: NextRequest, ctx: { params: { id: string } }) {
+// ?stealth=0 → kaynak "coreac" klasörüne kurulur; varsayılan (gizli ad) rastgele
+// bir klasör adı seçer ki hile menüleri AC'yi adıyla bulup durduramasın.
+export async function GET(req: NextRequest, ctx: { params: { id: string } }) {
   const { server } = await requireOwnedServer(ctx.params.id);
 
   const apiBase = (env.APP_URL || "http://localhost:3000").replace(/\/+$/, "");
-  const bat = buildInstallerBat({ apiBase, serverName: server.name });
+  const stealth = req.nextUrl.searchParams.get("stealth") !== "0";
+  const bat = buildInstallerBat({ apiBase, serverName: server.name, stealth });
   const safeName = server.name.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "server";
 
   return new Response(bat, {

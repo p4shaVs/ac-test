@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "./ui";
+import { CommandPalette } from "./command-palette";
+import { BRAND } from "@/lib/brand";
 import { Icons, type IconName } from "./icons";
 import { cn } from "@/lib/utils";
 
@@ -105,6 +107,19 @@ export function PanelShell({
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // Ctrl/Cmd + K opens the command palette from anywhere in the panel.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Bir sunucu detayındaysak sol menü sunucu menüsüne döner.
   const match = pathname.match(/^\/dashboard\/servers\/([^/]+)/);
@@ -217,12 +232,26 @@ export function PanelShell({
       </nav>
 
       <div className="shrink-0 border-t border-white/10 p-3">
+        <a
+          href={BRAND.discordUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mb-2 flex items-center gap-2.5 rounded-xl border border-[#5865F2]/25 bg-[#5865F2]/10 px-3 py-2 text-xs font-medium text-[#c9cdfb] transition hover:bg-[#5865F2]/20"
+        >
+          <Icons.discord size={15} /> Support on Discord
+          <Icons.arrowRight size={13} className="ml-auto opacity-60" />
+        </a>
         <div className="flex items-center gap-3 rounded-xl px-2 py-2">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-gradient text-sm font-bold text-white">
             {user.username.charAt(0).toUpperCase()}
           </span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-slate-200">{user.username}</p>
+            <p className="flex items-center gap-1.5 truncate text-sm font-medium text-slate-200">
+              {user.username}
+              {user.role === "ADMIN" && (
+                <span className="rounded bg-purple-500/15 px-1 py-px text-[9px] font-bold uppercase tracking-wider text-purple-300">Admin</span>
+              )}
+            </p>
             <p className="truncate text-xs text-slate-500">{user.email}</p>
           </div>
           <button onClick={logout} title="Sign out" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition hover:bg-white/5 hover:text-rose-300">
@@ -235,6 +264,12 @@ export function PanelShell({
 
   return (
     <div className="dash-root min-h-screen lg:grid lg:grid-cols-[264px_1fr]">
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        servers={servers}
+        isAdmin={user.role === "ADMIN"}
+      />
       <aside className="sticky top-0 hidden h-screen border-r border-white/10 bg-base-900/90 backdrop-blur-xl lg:block">
         {sidebar}
       </aside>
@@ -252,10 +287,15 @@ export function PanelShell({
             <Icons.menu size={20} />
           </button>
           <div className="flex flex-1 items-center gap-2">
-            <div className="hidden items-center gap-2 rounded-xl border border-white/10 bg-base-900/60 px-3 py-2 text-sm text-slate-500 sm:flex sm:w-64">
+            <button
+              onClick={() => setPaletteOpen(true)}
+              className="group flex items-center gap-2 rounded-xl border border-white/10 bg-base-900/60 px-3 py-2 text-sm text-slate-500 transition hover:border-brand-500/40 hover:text-slate-300 sm:w-72"
+              aria-label="Search pages and servers"
+            >
               <Icons.search size={16} />
-              <span>Quick search…</span>
-            </div>
+              <span className="hidden flex-1 text-left sm:block">Jump to a page or server…</span>
+              <kbd className="hidden rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 group-hover:text-slate-300 sm:block">Ctrl K</kbd>
+            </button>
           </div>
           <div className="flex items-center gap-2">
             {variant === "admin" ? (

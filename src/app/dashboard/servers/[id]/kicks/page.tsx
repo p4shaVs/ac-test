@@ -38,7 +38,7 @@ export default async function KicksPage({ params }: { params: { id: string } }) 
                   <td className="px-4 py-3 text-slate-400">{k.issuedBy}</td>
                   <td className="px-4 py-3">
                     <Badge tone={k.status === "DELIVERED" ? "green" : "amber"}>
-                      {k.status === "DELIVERED" ? "Delivered" : "Bekliyor"}
+                      {k.status === "DELIVERED" ? "Delivered" : "Pending"}
                     </Badge>
                   </td>
                   <td className="px-4 py-3 text-slate-500">{formatDateTime(k.createdAt)}</td>

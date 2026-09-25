@@ -14,10 +14,10 @@ function block(len: number) {
   return out;
 }
 function genKey() {
-  return `AEIGS-${block(4)}-${block(4)}-${block(4)}-${block(4)}`;
+  return `COREAC-${block(4)}-${block(4)}-${block(4)}-${block(4)}`;
 }
 function serverToken() {
-  const token = `aeigs_srv_${randomUUID().replace(/-/g, "")}${block(8)}`;
+  const token = `coreac_srv_${randomUUID().replace(/-/g, "")}${block(8)}`;
   const hash = createHmac("sha256", process.env.LICENSE_HMAC_SECRET || "dev")
     .update(token)
     .digest("hex");
@@ -93,28 +93,37 @@ async function main() {
   // publicly known admin login. It now comes from SEED_ADMIN_PASSWORD, or a
   // random one is generated and printed exactly once.
   const adminPassword = process.env.SEED_ADMIN_PASSWORD || randomBytes(12).toString("base64url");
-  const admin = await db.user.upsert({
-    where: { email: "admin@aeigs.gg" },
-    update: {},
-    create: {
-      email: "admin@aeigs.gg",
-      username: "admin",
-      passwordHash: await bcrypt.hash(adminPassword, 12),
-      role: "ADMIN",
-    },
+  // Databases seeded before the CoreAC rename hold these accounts under the old
+  // addresses; reuse them (creating a second "admin"/"demo" would hit the
+  // unique username index and abort the seed).
+  const existingAdmin = await db.user.findFirst({
+    where: { email: { in: ["admin@coreac.online", "admin@aeigs.gg"] } },
   });
-  const customer = await db.user.upsert({
-    where: { email: "demo@aeigs.gg" },
-    update: {},
-    create: {
-      email: "demo@aeigs.gg",
-      username: "demo",
-      passwordHash: await bcrypt.hash("Demo1234", 12),
-      role: "USER",
-    },
+  const admin =
+    existingAdmin ??
+    (await db.user.create({
+      data: {
+        email: "admin@coreac.online",
+        username: "admin",
+        passwordHash: await bcrypt.hash(adminPassword, 12),
+        role: "ADMIN",
+      },
+    }));
+  const existingDemo = await db.user.findFirst({
+    where: { email: { in: ["demo@coreac.online", "demo@aeigs.gg"] } },
   });
-  console.log(`✓ Users: admin@aeigs.gg / ${process.env.SEED_ADMIN_PASSWORD ? "(SEED_ADMIN_PASSWORD)" : adminPassword}  ·  demo@aeigs.gg (read-only demo, use /api/demo)`);
-  if (!process.env.SEED_ADMIN_PASSWORD) {
+  const customer =
+    existingDemo ??
+    (await db.user.create({
+      data: {
+        email: "demo@coreac.online",
+        username: "demo",
+        passwordHash: await bcrypt.hash("Demo1234", 12),
+        role: "USER",
+      },
+    }));
+  console.log(`✓ Users: ${admin.email} / ${existingAdmin ? "(existing account — password unchanged)" : process.env.SEED_ADMIN_PASSWORD ? "(SEED_ADMIN_PASSWORD)" : adminPassword}  ·  ${customer.email} (read-only demo, use /api/demo)`);
+  if (!existingAdmin && !process.env.SEED_ADMIN_PASSWORD) {
     console.log("  ⚠ Save the admin password above — it is not stored anywhere else. Change it after first sign-in.");
   }
 
@@ -345,7 +354,7 @@ async function main() {
   }).catch(() => {});
 
   console.log("\n✅ Seed tamamlandı!");
-  console.log("   Admin:    admin@aeigs.gg (password printed above)");
+  console.log("   Admin:    admin@coreac.online (password printed above)");
   console.log("   Demo:     open /api/demo — read-only, shared by all visitors");
 }
 

@@ -3,7 +3,7 @@
 // report, what it is called in the panel, and how hard it may punish.
 //
 // Every type here must match a value produced by CoreAC.Detections (see
-// fivem-resource/aeigs-anticheat/bridge/shared.lua). A type that is NOT in this
+// fivem-resource/coreac/bridge/shared.lua). A type that is NOT in this
 // registry is treated as unknown and can only ever be logged — never enforced.
 //
 // CONFIDENCE is the safety mechanism that lets us ship with enforcement ON:
@@ -48,11 +48,18 @@ const D = (
 export const DETECTION_TYPES: DetectionTypeDef[] = [
   // ------------------------------------------------------------- Movement
   D("NOCLIP", "NoClip", "movement", "strong", "KICK"),
-  D("TELEPORT", "Teleport", "movement", "strong", "KICK"),
+  // Every garage/house/job script that moves a player looks like a teleport
+  // until it calls coreac:markTeleport. Kicking by default punished honest
+  // players on servers that had not wired that up yet, so it starts as LOG;
+  // owners raise it to KICK in Actions once their scripts are integrated.
+  D("TELEPORT", "Teleport", "movement", "strong", "LOG"),
   D("SUPER_JUMP", "Super Jump", "movement", "strong", "KICK"),
   D("FLYHACK", "Fly Hack", "movement", "strong", "KICK"),
   D("SPEED_HACK", "Speed Hack (on foot)", "movement", "strong", "KICK"),
   D("VEHICLE_NOCLIP", "NoClip (vehicle)", "movement", "strong", "KICK"),
+  // Measured on the SERVER from the vehicle's own velocity, held for 3 s
+  // above a per-type ceiling no real vehicle reaches (server/live.lua).
+  D("VEHICLE_SPEED_HACK", "Vehicle Speed Hack (server-verified)", "movement", "strong", "KICK"),
   D("VEHICLE_SPEED", "Vehicle Speed Modifier", "movement", "heuristic", "LOG"),
   D("VEHICLE_HANDLING", "Vehicle Handling Modifier", "movement", "heuristic", "LOG"),
   D("VEHICLE_HIJACK", "Instant Vehicle Entry", "movement", "heuristic", "LOG"),

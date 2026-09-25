@@ -9,6 +9,8 @@ import { clientIp } from "@/lib/session";
 const patchSchema = z.object({
   role: z.enum(["USER", "ADMIN"]).optional(),
   unlock: z.boolean().optional(),
+  /** Ends every active session of the user (e.g. after a leaked password). */
+  revokeSessions: z.boolean().optional(),
 });
 
 export const PATCH = handler(
@@ -37,15 +39,24 @@ export const PATCH = handler(
       },
     });
 
+    let revoked = 0;
+    if (body.revokeSessions) {
+      const r = await db.session.updateMany({
+        where: { userId: target.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      revoked = r.count;
+    }
+
     await audit({
       userId: admin.id,
       action: "USER_UPDATE",
       targetType: "User",
       targetId: target.id,
       ip: clientIp(headers()),
-      meta: { role: body.role, unlock: body.unlock },
+      meta: { role: body.role, unlock: body.unlock, revokedSessions: body.revokeSessions ? revoked : undefined },
     });
 
-    return ok({ success: true });
+    return ok({ success: true, revokedSessions: revoked });
   }
 );

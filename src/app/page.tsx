@@ -5,7 +5,12 @@ import { Icons } from "@/components/icons";
 import { Reveal } from "@/components/reveal";
 import { HeroParallax } from "@/components/hero-parallax";
 import { Faq } from "@/components/faq";
-import { PricingTiers } from "@/components/pricing-tiers";
+import { PlanGrid } from "@/components/plan-grid";
+import { BRAND } from "@/lib/brand";
+
+// The pricing section reads the live product catalogue. Rendering per request
+// keeps `next build` from needing a database (see src/lib/env.ts).
+export const dynamic = "force-dynamic";
 
 // NOTE ON COPY: everything on this page has to be true of the shipped build.
 // The old version carried invented social proof (a "6000+ customers" counter
@@ -40,7 +45,7 @@ function Hero() {
       <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 pb-24 pt-16 sm:px-6 lg:grid-cols-2 lg:pt-24">
         <div>
           <h1 className="animate-slide-up text-5xl font-extrabold leading-[1.05] tracking-tight text-white sm:text-6xl">
-            Core Shield{" "}
+            {BRAND.name}{" "}
             <span className="bg-gradient-to-r from-brand-400 via-brand-300 to-accent-violet bg-clip-text text-transparent">
               Anti-Cheat
             </span>
@@ -140,7 +145,7 @@ function Features() {
           <FeatureCard
             icon="config"
             title="In-game admin menu"
-            text="Kick, ban, warn, spectate, revive, teleport, freeze and announce — with per-admin permissions set from the panel."
+            text="Kick, ban, spectate, revive, repair, disarm, mute, wipe a cheater's spawns and teleport to a waypoint — plus live detection alerts. Per-admin permissions come from the panel."
           >
             <IngameMenuMock />
           </FeatureCard>
@@ -338,7 +343,7 @@ function IngameMenuMock() {
       <div>
         <div className="text-[10px] font-semibold text-white">Admin</div>
         <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-          {["Kick", "Ban", "Warn", "Spectate", "Revive", "Freeze"].map((b) => (
+          {["Kick", "Ban", "Spectate", "Disarm", "Mute", "Wipe spawns"].map((b) => (
             <span
               key={b}
               className="rounded border border-white/10 bg-white/5 px-1.5 py-1 text-[7px] text-slate-300"
@@ -400,7 +405,7 @@ function HowItWorks() {
           </h2>
           <p className="mx-auto mt-3 max-w-2xl text-sm text-slate-400">
             Most false-positive complaints come from trusting a check that runs inside the
-            cheater&apos;s own game. Core Shield treats those as hints and keeps the verdict on the server.
+            cheater&apos;s own game. {BRAND.name} treats those as hints and keeps the verdict on the server.
           </p>
         </Reveal>
         <div className="grid gap-4 md:grid-cols-3">
@@ -448,8 +453,11 @@ function PricingSection() {
         <h2 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl">
           Choose your plan
         </h2>
+        <p className="mx-auto mt-3 max-w-xl text-sm text-slate-400">
+          Orders are handled in a ticket on our Discord — pick a plan to see how it works.
+        </p>
       </Reveal>
-      <PricingTiers />
+      <PlanGrid />
     </section>
   );
 }
@@ -467,12 +475,12 @@ function NeedHelp() {
             documentation covers installation and every protection in the panel.
           </p>
         </div>
-        <div className="flex shrink-0 gap-3">
+        <div className="flex shrink-0 flex-wrap gap-3">
           <LinkButton href="/docs" variant="secondary" icon="book">
             Documentation
           </LinkButton>
-          <LinkButton href="/register" icon="arrowRight">
-            Create an account
+          <LinkButton href={BRAND.discordUrl} external icon="discord">
+            Ask on Discord
           </LinkButton>
         </div>
       </Reveal>

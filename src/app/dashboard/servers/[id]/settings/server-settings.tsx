@@ -187,9 +187,9 @@ export function ServerSettings({ server, appUrl }: Props) {
               <label className="label">API URL</label>
               <div className="flex items-center gap-2">
                 <code className="flex-1 truncate rounded-lg border border-white/10 bg-base-900/80 px-3 py-2 font-mono text-sm text-slate-200">
-                  {appUrl || "https://panel.aeigs.gg"}/api/v1
+                  {appUrl || "https://coreac.online"}/api/v1
                 </code>
-                <CopyButton value={`${appUrl || "https://panel.aeigs.gg"}/api/v1`} label="" className="h-9 w-9 justify-center px-0" />
+                <CopyButton value={`${appUrl || "https://coreac.online"}/api/v1`} label="" className="h-9 w-9 justify-center px-0" />
               </div>
             </div>
             <div>

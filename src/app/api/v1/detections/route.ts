@@ -8,7 +8,7 @@ import { generateBanCode } from "@/lib/keys";
 import { parseJson } from "@/lib/utils";
 import { isWhitelisted } from "@/lib/bypass";
 import { sendWebhook } from "@/lib/discord";
-import { sanitizeActions, resolveAction, severityForType } from "@/lib/detection-actions";
+import { sanitizeActions, resolveAction, severityForType, detectionLabel } from "@/lib/detection-actions";
 import { recordNetworkBan } from "@/lib/network-bans";
 
 // Kaynak, bir hile tespitini raporlar. Aksiyon (LOG/KICK/BAN) müşterinin
@@ -177,9 +177,11 @@ export const POST = handler(async (req: NextRequest) => {
       // oyuncunun o an ekranında GERÇEKTEN gördüğü birkaç kareyi
       // screenshot-basic ile yakalayıp banla ilişkilendiriyoruz). Kaynak
       // screenshot-basic kurulu değilse client tarafı bunu zaten sessizce
-      // FAILED'a düşürür (bkz. client/main.lua aeigs:screenshot handler).
+      // FAILED'a düşürür (bkz. client/main.lua coreac:screenshot handler).
+      // Configuration → Settings → "Enable Gameplay Recording" (default on).
       const SHOT_COUNT = 5;
-      if (player.license) {
+      const recordEvidence = (config.ac as any)?.Settings?.EnableGameplayRecord !== false;
+      if (player.license && recordEvidence) {
         const shots = await db.$transaction(
           Array.from({ length: SHOT_COUNT }, (_, i) =>
             db.screenshotRequest.create({
@@ -236,6 +238,10 @@ export const POST = handler(async (req: NextRequest) => {
 
   // banned/kicked=true → kaynak oyuncuyu hemen atmalı.
   // screenshotRequestIds doluysa kaynak, DropPlayer'dan ÖNCE bu id'ler için
-  // aeigs:screenshot'ı tetikleyip gerçek ekran görüntüsü serisini yakalamalı.
-  return ok({ recorded: true, action, banned, kicked, banCode, whitelisted, screenshotRequestIds });
+  // coreac:screenshot'ı tetikleyip gerçek ekran görüntüsü serisini yakalamalı.
+  // label → oyun içi yönetici uyarısında okunur ad ("NoClip", "Silent Aim"…).
+  return ok({
+    recorded: true, action, banned, kicked, banCode, whitelisted, screenshotRequestIds,
+    label: detectionLabel(body.type),
+  });
 });

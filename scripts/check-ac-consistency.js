@@ -17,7 +17,7 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.join(__dirname, "..");
-const RESOURCE = path.join(ROOT, "fivem-resource", "aeigs-anticheat");
+const RESOURCE = path.join(ROOT, "fivem-resource", "coreac");
 
 // ---------------------------------------------------------------- helpers
 function luaFiles(dir, out = []) {
@@ -130,7 +130,7 @@ for (const [key, value] of detectionTable) {
 }
 
 // -------------------------------------------- 2b. Server-guard rule agreement
-// The "Server Guards" tab (src/lib/rules.ts) drives Aeigs.getRules() reads in
+// The "Server Guards" tab (src/lib/rules.ts) drives CAC.getRules() reads in
 // the resource. A rule key that no ACTIVE Lua file reads is a dead toggle; a
 // rule read by active Lua but missing from the panel is an orphaned check.
 // The disabled client/detections/ folder is NOT active, so reads that live
@@ -142,7 +142,7 @@ for (const m of rulesSrc.matchAll(/key:\s*"([a-z_]+)"/g)) panelRuleKeys.add(m[1]
 const ruleReads = new Map(); // key -> Set<file>
 for (const { file, src } of lua) {
   if (file.includes("client/detections/") || file.includes("client\\detections\\")) continue;
-  for (const re of [/ruleOn\(\s*'([a-z_]+)'/g, /getRules\(\)\s*\[\s*'([a-z_]+)'\s*\]/g, /Aeigs\.rule\(\s*'([a-z_]+)'/g]) {
+  for (const re of [/ruleOn\(\s*'([a-z_]+)'/g, /getRules\(\)\s*\[\s*'([a-z_]+)'\s*\]/g, /CAC\.rule\(\s*'([a-z_]+)'/g]) {
     for (const m of src.matchAll(re)) {
       if (!ruleReads.has(m[1])) ruleReads.set(m[1], new Set());
       ruleReads.get(m[1]).add(file);
@@ -153,7 +153,7 @@ for (const { file, src } of lua) {
 for (const key of panelRuleKeys) {
   if (!ruleReads.has(key)) {
     problems.push(
-      `DEAD RULE    "${key}" is offered on the Server Guards tab but no active Lua file reads it (Aeigs.getRules).`
+      `DEAD RULE    "${key}" is offered on the Server Guards tab but no active Lua file reads it (CAC.getRules).`
     );
   }
 }

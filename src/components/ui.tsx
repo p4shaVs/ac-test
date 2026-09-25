@@ -8,10 +8,10 @@ import { Icons, type IconName } from "./icons";
 /* -------------------------------------------------------------------------- */
 
 /**
- * Core Shield brand mark — an angular, faceted shield (protection) with a solid
- * hex "core" at its heart (the Core in CoreAC). Drawn inline so it inherits the
- * brand gradient and stays crisp at any size; the same geometry ships as
- * /logo-mark.svg, /logo.svg (lockup) and the favicon.
+ * CoreAC brand mark — an angular, faceted shield (protection) with a solid hex
+ * "core" at its heart. Drawn inline so it inherits the brand gradient and stays
+ * crisp at any size; the same geometry ships as /logo-mark.svg, /logo.svg
+ * (lockup) and the favicon.
  */
 export function LogoMark({ size = 36 }: { size?: number }) {
   return (
@@ -49,7 +49,7 @@ export function Logo({
       {withText && (
         <span className="flex flex-col leading-none">
           <span className="text-[15px] font-bold tracking-tight text-white">
-            Core Shield
+            CoreAC
           </span>
           <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-brand-300/80">
             Anti-Cheat
@@ -186,11 +186,12 @@ export function StatusBadge({ status }: { status: string }) {
     ACTIVE: { tone: "green", label: "Active" },
     UNUSED: { tone: "blue", label: "Unused" },
     SUSPENDED: { tone: "amber", label: "Suspended" },
-    REVOKED: { tone: "red", label: "Cancel" },
+    REVOKED: { tone: "red", label: "Revoked" },
     EXPIRED: { tone: "gray", label: "Expired" },
-    PENDING: { tone: "amber", label: "Bekliyor" },
+    PENDING: { tone: "amber", label: "Pending" },
     PAID: { tone: "green", label: "Paid" },
-    CANCELLED: { tone: "gray", label: "Cancel" },
+    CANCELLED: { tone: "gray", label: "Cancelled" },
+    REFUNDED: { tone: "gray", label: "Refunded" },
   };
   const m = map[status] ?? { tone: "gray" as const, label: status };
   return (

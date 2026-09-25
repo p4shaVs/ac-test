@@ -3,7 +3,7 @@ import { authenticateServer } from "@/lib/server-auth";
 import { buildResourceZip } from "@/lib/install-package";
 import { rateLimit } from "@/lib/ratelimit";
 
-// Installer bu ucu `Authorization: Bearer aeigs_srv_...` ile çağırır ve korumalı
+// Installer bu ucu `Authorization: Bearer coreac_srv_...` ile çağırır ve korumalı
 // kaynağı .zip olarak indirir. Token/lisans geçersizse authenticateServer 401/403
 // fırlatır (kaynak asla anonim indirilemez).
 export const dynamic = "force-dynamic";
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "application/zip",
-        "Content-Disposition": 'attachment; filename="aeigs-anticheat.zip"',
+        "Content-Disposition": 'attachment; filename="coreac.zip"',
         "Content-Length": String(zip.length),
         "Cache-Control": "no-store",
         "X-Server-Id": server.id,

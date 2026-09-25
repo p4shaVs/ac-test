@@ -79,9 +79,9 @@ export default async function ServerOverview({ params }: { params: { id: string 
   const expirySoon = days !== null && days <= 7;
 
   // Analytics peak/avg
-  const peak = overview.series.reduce((m, p) => Math.max(m, p.players), 0);
+  const peak = overview.series.reduce((m, p) => Math.max(m, p.detections), 0);
   const avg = overview.series.length
-    ? Math.round(overview.series.reduce((s, p) => s + p.players, 0) / overview.series.length)
+    ? Math.round(overview.series.reduce((s, p) => s + p.detections, 0) / overview.series.length)
     : 0;
 
   const base = `/dashboard/servers/${server.id}`;
@@ -128,23 +128,23 @@ export default async function ServerOverview({ params }: { params: { id: string 
         <Card className="xl:col-span-2">
           <div className="mb-4 flex items-start justify-between">
             <div>
-              <h3 className="text-sm font-semibold text-white">Server Analytics</h3>
-              <p className="text-xs text-slate-500">Last 24 hours</p>
+              <h3 className="text-sm font-semibold text-white">Detection activity</h3>
+              <p className="text-xs text-slate-500">Last 24 hours, per hour</p>
             </div>
             <div className="flex gap-5 text-right">
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-slate-500">Peak</p>
+                <p className="text-[10px] uppercase tracking-wider text-slate-500">Peak / h</p>
                 <p className="text-sm font-bold text-white">{peak}</p>
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-slate-500">Avg</p>
+                <p className="text-[10px] uppercase tracking-wider text-slate-500">Avg / h</p>
                 <p className="text-sm font-bold text-white">{avg}</p>
               </div>
             </div>
           </div>
           <AreaTrend data={overview.series} />
           <div className="mt-2 flex items-center justify-center gap-5 text-xs text-slate-400">
-            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-brand-500" /> Players</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-brand-500" /> Detections</span>
             <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500" /> Bans</span>
           </div>
         </Card>

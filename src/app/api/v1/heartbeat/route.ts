@@ -39,7 +39,7 @@ export const POST = handler(async (req: NextRequest) => {
   //
   // KRİTİK: burada HAM config dönülüyordu. Hiç ayar kaydetmemiş yeni bir
   // sunucuda `config.rules` tanımsız olduğu için kaynak tarafındaki
-  // Aeigs.getRules() boş tablo döndürüyor, dolayısıyla protection.lua /
+  // CAC.getRules() boş tablo döndürüyor, dolayısıyla protection.lua /
   // vehicle_guard.lua / session_guard.lua içindeki HER ruleOn(...) false
   // oluyordu: silent aim, damage multiplier, explosive bullets, vehicle
   // godmode, entity spam, chat flood, reconnect spam korumalarının tamamı

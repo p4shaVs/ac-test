@@ -3,6 +3,8 @@
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -20,11 +22,11 @@ const VIOLET = "#a855f7";
 
 export interface SeriesPoint {
   label: string;
-  players: number;
+  detections: number;
   bans?: number;
 }
 
-/** Referanslardaki "Sunucu Analitiği" alan grafiği. */
+/** Saatlik tespit + ban alan grafiği (son 24 saat). */
 export function AreaTrend({ data }: { data: SeriesPoint[] }) {
   return (
     <ResponsiveContainer width="100%" height={260}>
@@ -58,8 +60,8 @@ export function AreaTrend({ data }: { data: SeriesPoint[] }) {
         />
         <Area
           type="monotone"
-          dataKey="players"
-          name="Players"
+          dataKey="detections"
+          name="Detections"
           stroke={BRAND}
           strokeWidth={2}
           fill="url(#gPlayers)"
@@ -124,5 +126,32 @@ export function DonutChart({
         )}
       </div>
     </div>
+  );
+}
+
+export interface MoneyPoint {
+  label: string;
+  /** Whole currency units (e.g. euros), not cents. */
+  amount: number;
+}
+
+/** Daily revenue bars (admin dashboard). */
+export function MoneyBars({ data, currency = "EUR" }: { data: MoneyPoint[]; currency?: string }) {
+  const fmt = (v: number) =>
+    new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(v);
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <BarChart data={data} margin={{ top: 8, right: 4, left: -6, bottom: 0 }}>
+        <XAxis dataKey="label" tick={{ fill: "#64748b", fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={18} />
+        <YAxis tick={{ fill: "#64748b", fontSize: 11 }} axisLine={false} tickLine={false} width={52} tickFormatter={fmt} allowDecimals={false} />
+        <Tooltip
+          cursor={{ fill: "rgba(255,255,255,0.04)" }}
+          contentStyle={{ background: "#0d1019", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12 }}
+          labelStyle={{ color: "#94a3b8" }}
+          formatter={(v: number) => [fmt(v), "Revenue"]}
+        />
+        <Bar dataKey="amount" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={18} />
+      </BarChart>
+    </ResponsiveContainer>
   );
 }

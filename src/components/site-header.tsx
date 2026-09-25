@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Logo, LinkButton } from "./ui";
+import { Icons } from "./icons";
 import { getCurrentUser } from "@/lib/session";
+import { BRAND } from "@/lib/brand";
 
 const NAV = [
   { href: "/#features", label: "Features" },
@@ -19,12 +21,12 @@ export async function SiteHeader() {
           <Logo />
         </Link>
 
-        <nav className="hidden items-center gap-1 md:flex">
+        <nav className="hidden items-center gap-1 lg:flex">
           {NAV.map((n) => (
             <Link
               key={n.href}
               href={n.href}
-              className="rounded-lg px-3 py-2 text-sm font-medium text-slate-400 transition hover:text-white"
+              className="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-slate-400 transition hover:text-white"
             >
               {n.label}
             </Link>
@@ -32,6 +34,30 @@ export async function SiteHeader() {
         </nav>
 
         <div className="flex items-center gap-2">
+          {/* Compact menu below lg — plain <details>, no client JS needed. */}
+          <details className="group relative lg:hidden">
+            <summary
+              className="grid h-9 w-9 cursor-pointer list-none place-items-center rounded-lg text-slate-300 transition hover:bg-white/5 [&::-webkit-details-marker]:hidden"
+              aria-label="Menu"
+            >
+              <Icons.menu size={20} />
+            </summary>
+            <div className="absolute right-0 top-11 z-50 w-56 rounded-xl border border-white/10 bg-base-900 p-2 shadow-card">
+              {NAV.map((n) => (
+                <Link key={n.href} href={n.href} className="block rounded-lg px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white">
+                  {n.label}
+                </Link>
+              ))}
+              <Link href="/purchase" className="block rounded-lg px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white">
+                How to buy
+              </Link>
+              {!user && (
+                <Link href="/login" className="block rounded-lg px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white sm:hidden">
+                  Sign in
+                </Link>
+              )}
+            </div>
+          </details>
           {user ? (
             <>
               <LinkButton
@@ -45,7 +71,7 @@ export async function SiteHeader() {
             <>
               <Link
                 href="/login"
-                className="hidden rounded-lg px-3 py-2 text-sm font-medium text-slate-300 transition hover:text-white sm:block"
+                className="hidden whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-slate-300 transition hover:text-white sm:block"
               >
                 Sign in
               </Link>
@@ -94,13 +120,14 @@ export function SiteFooter() {
               links={[
                 { href: "/login", label: "Sign in" },
                 { href: "/register", label: "Register" },
-                { href: "/dashboard", label: "Panel" },
+                { href: "/purchase", label: "How to buy" },
+                { href: BRAND.discordUrl, label: "Discord" },
               ]}
             />
           </div>
         </div>
         <div className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-white/5 pt-6 text-xs text-slate-600 sm:flex-row">
-          <p>© {new Date().getFullYear()} Core Shield Anti-Cheat. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} CoreAC Anti-Cheat. All rights reserved.</p>
           <p>FiveM is a trademark of Cfx.re. This project is independent.</p>
         </div>
       </div>
@@ -121,12 +148,23 @@ function FooterCol({
       <ul className="space-y-2">
         {links.map((l) => (
           <li key={l.href + l.label}>
-            <Link
-              href={l.href}
-              className="text-sm text-slate-500 transition hover:text-slate-200"
-            >
-              {l.label}
-            </Link>
+            {l.href.startsWith("http") ? (
+              <a
+                href={l.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-slate-500 transition hover:text-slate-200"
+              >
+                {l.label}
+              </a>
+            ) : (
+              <Link
+                href={l.href}
+                className="text-sm text-slate-500 transition hover:text-slate-200"
+              >
+                {l.label}
+              </Link>
+            )}
           </li>
         ))}
       </ul>

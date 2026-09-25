@@ -9,22 +9,29 @@ import { revokeNetworkBan } from "@/lib/network-bans";
 
 export const dynamic = "force-dynamic";
 
-// Lift a ban from the in-game admin menu. The resource has already verified the
-// admin holds the "unban" permission (server/live.lua). Scoped to this
-// server's own bans — a ban id from another server returns 404.
-const schema = z.object({
-  banId: z.string().min(5).max(40),
-  by: z.string().max(80).default("In-Game Admin"),
-});
+// Lift a ban from the in-game admin menu (by internal id) or from the server
+// console (`ac unban AC-7K3QP9`, by the Ban ID the player was shown). The
+// resource has already verified the admin holds the "unban" permission, or the
+// call came from the console (server/live.lua, server/commands.lua). Scoped to
+// this server's own bans — an id or code from another server returns 404.
+const schema = z
+  .object({
+    banId: z.string().min(5).max(40).optional(),
+    code: z.string().trim().toUpperCase().regex(/^AC-[A-Z2-9]{6}$/).optional(),
+    by: z.string().max(80).default("In-Game Admin"),
+  })
+  .refine((b) => b.banId || b.code, { message: "banId or code is required" });
 
 export const POST = handler(async (req: NextRequest) => {
   const server = await authenticateServer(req);
   const rl = rateLimit(`ingame-unban:${server.id}`, 30, 60_000);
   if (!rl.success) throw new ApiError(429, "Rate limit");
 
-  const { banId, by } = schema.parse(await req.json());
+  const { banId, code, by } = schema.parse(await req.json());
 
-  const ban = await db.ban.findFirst({ where: { id: banId, serverId: server.id, active: true } });
+  const ban = await db.ban.findFirst({
+    where: { serverId: server.id, active: true, ...(banId ? { id: banId } : { code }) },
+  });
   if (!ban) throw new ApiError(404, "No active ban found");
 
   await db.$transaction([

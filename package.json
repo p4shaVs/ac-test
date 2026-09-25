@@ -1,8 +1,8 @@
 {
-  "name": "aeigs-anticheat",
+  "name": "coreac",
   "version": "0.1.0",
   "private": true,
-  "description": "Aeigs Anti-Cheat - FiveM anti-cheat SaaS platform (web panel + admin + license system)",
+  "description": "CoreAC Anti-Cheat - FiveM anti-cheat SaaS platform (web panel + admin + license system)",
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",

@@ -1,7 +1,7 @@
 // Server-authoritative guards (Configuration → "Server Guards" tab).
 //
 // These toggles drive the checks that run entirely on the SERVER, reading
-// Aeigs.getRules() in the FiveM resource (protection.lua, vehicle_guard.lua,
+// CAC.getRules() in the FiveM resource (protection.lua, vehicle_guard.lua,
 // session_guard.lua, live.lua). They are separate from the "Protections" tab,
 // which configures the CoreAC client modules via CoreAC.Config.* (ac-config.ts).
 //
@@ -31,7 +31,7 @@ export const RULE_GROUPS: RuleGroup[] = [
     icon: "bolt",
     description: "Server-side weapon and damage checks",
     rules: [
-      { key: "anti_silent_aim", label: "Anti Silent Aim", description: "Compares the shooter's real aim vector against the victim on the server — a hit while not aiming at the target is impossible.", default: true },
+      { key: "anti_silent_aim", label: "Anti Silent Aim", description: "Compares where the shooter was aiming at the moment of the shot with where the victim really was. Firearms on foot only; needs three hits more than 60° off target within 10 seconds, so a flick shot or a sticky bomb can never trigger it.", default: true },
       { key: "anti_damage_multiplier", label: "Anti Damage Multiplier", description: "Flags single hits above a sane weapon-damage ceiling.", default: true },
       { key: "anti_explosive_bullets", label: "Anti Explosive Bullets", description: "Detects bullet-type explosions fired in quick succession.", default: true },
       { key: "anti_illegal_weapon", label: "Anti Illegal Weapon Damage", description: "Flags weapon damage far beyond any real weapon.", default: true },
@@ -46,6 +46,7 @@ export const RULE_GROUPS: RuleGroup[] = [
     icon: "cube",
     description: "Server checks on vehicles, health and position",
     rules: [
+      { key: "anti_vehicle_speed", label: "Anti Vehicle Speed Hack", description: "The server reads every driven vehicle's real speed itself — the player's game cannot fake it. Held for 3 seconds above a ceiling no real vehicle reaches (cars 450 km/h, bikes 396, boats 270, helicopters 396, planes 720) = speed hack. Teleports never count; kicks at most.", default: true },
       { key: "anti_vehicle_godmode", label: "Anti Vehicle Godmode", description: "Detects a vehicle that takes real damage but never loses body health. Blames the driver.", default: true },
       { key: "anti_out_of_bounds", label: "Anti Out of Bounds", description: "Flags teleporting far outside the world bounds (under the map / into objects).", default: true },
       { key: "anti_explosion_spam", label: "Anti Explosion Spam", description: "Report-only. Notes players creating explosions unusually fast.", default: true },

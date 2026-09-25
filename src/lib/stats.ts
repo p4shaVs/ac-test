@@ -28,7 +28,7 @@ export interface OverviewData {
   detectionsByType: { name: string; value: number }[];
   dropReasons: { name: string; value: number }[];
   drops24h: number;
-  series: { label: string; players: number; bans: number }[];
+  series: { label: string; detections: number; bans: number }[];
 }
 
 /** Bir kullanıcının tüm sunucuları için özet metrikler. */
@@ -50,7 +50,7 @@ export async function getUserOverview(
       drops24h: 0,
       series: emptyHourlyBuckets().map((b) => ({
         label: b.label,
-        players: 0,
+        detections: 0,
         bans: 0,
       })),
     };
@@ -127,13 +127,13 @@ export async function getUserOverview(
   const buckets = emptyHourlyBuckets();
   const series = buckets.map((b, idx) => {
     const next = idx < buckets.length - 1 ? buckets[idx + 1].ts : Date.now() + 1;
-    const players = detectionRows.filter(
+    const detections = detectionRows.filter(
       (d) => d.createdAt.getTime() >= b.ts && d.createdAt.getTime() < next
     ).length;
     const bans = banRows.filter(
       (x) => x.createdAt.getTime() >= b.ts && x.createdAt.getTime() < next
     ).length;
-    return { label: b.label, players, bans };
+    return { label: b.label, detections, bans };
   });
 
   return {

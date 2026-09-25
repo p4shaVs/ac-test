@@ -1,14 +1,14 @@
 // =============================================================================
 // Minimal, bağımlılıksız ZIP oluşturucu (STORE / sıkıştırmasız).
 //
-// FiveM kaynağını (aeigs-anticheat) tek bir .zip olarak paketleyip installer'a
+// FiveM kaynağını (coreac) tek bir .zip olarak paketleyip installer'a
 // (PowerShell `Expand-Archive`) uygun biçimde sunmak için kullanılır. STORE
 // yöntemi seçildi: küçük bir kaynak (~1 MB) için sıkıştırmaya gerek yok ve her
 // zip çözücüyle %100 uyumlu (deflate köşe durumları yok).
 // =============================================================================
 
 export interface ZipEntry {
-  /** Zip içindeki yol (ileri eğik çizgi). Örn. "aeigs-anticheat/config.lua". */
+  /** Zip içindeki yol (ileri eğik çizgi). Örn. "coreac/config.lua". */
   path: string;
   data: Buffer;
 }

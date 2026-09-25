@@ -20,11 +20,19 @@ const levelColor: Record<string, string> = {
   DETECTION: "text-brand-300",
 };
 
-const QUICK = [
-  { label: "Delete vehicles", cmd: "aeigs:deleteVehicles" },
-  { label: "Delete peds", cmd: "aeigs:deletePeds" },
-  { label: "Delete objects", cmd: "aeigs:deleteObjects" },
-  { label: "Send announcement", cmd: "aeigs:announce " },
+// Every quick command is a real sub-command of the resource's console command
+// (fivem-resource/coreac/server/commands.lua). The old buttons sent
+// "aeigs:deleteVehicles" etc., which nothing on the server registered.
+// Commands ending in a space are filled into the input for you to finish.
+const QUICK: { label: string; cmd: string; confirm?: string }[] = [
+  { label: "Players online", cmd: "ac players" },
+  { label: "Delete empty vehicles", cmd: "ac clear vehicles", confirm: "Delete every vehicle on the server that has no player in it?" },
+  { label: "Delete NPCs", cmd: "ac clear peds", confirm: "Delete every NPC on the server? Players are never touched." },
+  { label: "Delete objects", cmd: "ac clear objects", confirm: "Delete every networked object on the server (props spawned by scripts included)?" },
+  { label: "Reload config", cmd: "ac reload" },
+  { label: "Send announcement", cmd: "ac announce " },
+  { label: "Ban info", cmd: "ac baninfo " },
+  { label: "Unban", cmd: "ac unban " },
 ];
 
 export function ConsoleClient({
@@ -98,7 +106,11 @@ export function ConsoleClient({
         {QUICK.map((q) => (
           <button
             key={q.cmd}
-            onClick={() => (q.cmd.endsWith(" ") ? setCmd(q.cmd) : send(q.cmd))}
+            onClick={() => {
+              if (q.cmd.endsWith(" ")) return setCmd(q.cmd);
+              if (q.confirm && !window.confirm(q.confirm)) return;
+              send(q.cmd);
+            }}
             className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/10"
           >
             {q.label}
@@ -132,7 +144,7 @@ export function ConsoleClient({
           <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono text-brand-400">$</span>
           <input
             className="input pl-7 font-mono"
-            placeholder="type a command… (e.g. aeigs:announce Hello)"
+            placeholder="type a command… (e.g. ac announce Server restart in 5 minutes)"
             value={cmd}
             onChange={(e) => setCmd(e.target.value)}
           />
@@ -142,7 +154,10 @@ export function ConsoleClient({
         </button>
       </form>
       <p className="text-xs text-slate-500">
-        Commands are queued and run by the resource on its next poll.
+        Commands are queued and run by the resource on its next poll (≈5 s). Type{" "}
+        <code className="rounded bg-white/5 px-1 font-mono text-slate-300">ac</code> for the CoreAC command list —
+        its output appears here. Any other server command (e.g. <code className="rounded bg-white/5 px-1 font-mono text-slate-300">restart myresource</code>) needs{" "}
+        <code className="rounded bg-white/5 px-1 font-mono text-slate-300">add_ace resource.&lt;CoreAC folder&gt; command allow</code>, which the installer adds.
       </p>
     </div>
   );

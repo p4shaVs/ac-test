@@ -13,17 +13,13 @@ export const POST = handler(async (req: NextRequest) => {
 
   const license = await db.licenseKey.findFirst({
     where: { id: body.licenseKeyId, ownerId: user.id },
-    include: { servers: true },
   });
   if (!license) throw new ApiError(404, "Licence not found");
   if (license.status === "REVOKED" || license.status === "SUSPENDED") {
     throw new ApiError(403, "This licence cannot be used");
   }
-  if (license.expiresAt && license.expiresAt < new Date()) {
+  if (license.status === "EXPIRED" || (license.expiresAt && license.expiresAt < new Date())) {
     throw new ApiError(403, "The licence has expired");
-  }
-  if (license.servers.length >= license.maxServers) {
-    throw new ApiError(409, "This licence has reached its server limit");
   }
 
   const { token, hash } = generateServerToken();
@@ -38,6 +34,12 @@ export const POST = handler(async (req: NextRequest) => {
         apiTokenHash: hash,
       },
     });
+    // Limit kontrolü yazmadan SONRA (eşzamanlı iki istek limiti aşamasın —
+    // bkz. servers/activate).
+    const attached = await tx.server.count({ where: { licenseKeyId: license.id } });
+    if (attached > license.maxServers) {
+      throw new ApiError(409, "This licence has reached its server limit");
+    }
     // İlk aktivasyonda lisansı ACTIVE yap.
     if (license.status === "UNUSED") {
       await tx.licenseKey.update({

@@ -51,7 +51,7 @@ end)
 
 -- Anti-cheat'in ürettiği her tespiti burada da görürüz (AC'nin kendi
 -- raporlama yolunu dinliyoruz — panel gecikmesini beklemeden).
-AddEventHandler('aeigs:serverReport', function(src, dtype, severity, details)
+AddEventHandler('coreac:serverReport', function(src, dtype, severity, details)
     log(('^2TESPİT^7  oyuncu=%s tip=%s severity=%s kaynak=sunucu'):format(
         tostring(src), tostring(dtype), tostring(severity)))
 end)
@@ -90,6 +90,6 @@ RegisterCommand('cs_status', function(source)
     -- kendi Lua durumunda çalışır). Aynı bilgiyi kaynağın okuduğu convar'dan
     -- alıyoruz — GlobalState ise resource'lar arası paylaşımlıdır.
     log(('Tespitler: %s   |   Bağlı oyuncu: %d'):format(
-        GetConvar('aeigs_detections', 'true') == 'true' and '^2AÇIK^7' or '^1KAPALI^7',
+        GetConvar('coreac_detections', GetConvar('aeigs_detections', 'true')) == 'true' and '^2AÇIK^7' or '^1KAPALI^7',
         #GetPlayers()))
 end, true)

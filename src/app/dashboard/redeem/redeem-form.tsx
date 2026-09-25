@@ -38,7 +38,7 @@ export function RedeemForm() {
     <form onSubmit={submit} className="space-y-3">
       <input
         className="input font-mono uppercase tracking-wider"
-        placeholder="AEIGS-XXXX-XXXX-XXXX-XXXX"
+        placeholder="COREAC-XXXX-XXXX-XXXX-XXXX"
         value={key}
         onChange={(e) => setKey(e.target.value)}
         maxLength={26}

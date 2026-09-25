@@ -1,31 +1,14 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { SiteHeader, SiteFooter } from "@/components/site-header";
-import { Badge } from "@/components/ui";
 import { Icons } from "@/components/icons";
-import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/session";
-import { formatMoney, parseJson } from "@/lib/utils";
-import { featureLabel } from "@/lib/features";
-import { BuyButton } from "./buy-button";
+import { PlanGrid } from "@/components/plan-grid";
+import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = { title: "Pricing" };
 export const dynamic = "force-dynamic";
 
-const intervalLabel: Record<string, string> = {
-  MONTHLY: "/ ay",
-  YEARLY: "/ year",
-  LIFETIME: "lifetime",
-};
-
-export default async function PricingPage() {
-  const [products, user] = await Promise.all([
-    db.product.findMany({
-      where: { active: true },
-      orderBy: { sortOrder: "asc" },
-    }),
-    getCurrentUser(),
-  ]);
-
+export default function PricingPage() {
   return (
     <div className="min-h-screen">
       <SiteHeader />
@@ -41,79 +24,28 @@ export default async function PricingPage() {
           </p>
         </div>
 
-        {products.length === 0 ? (
-          <div className="mt-16 rounded-2xl border border-dashed border-white/10 p-12 text-center text-slate-500">
-            No plans are listed yet.
+        <div className="mt-16">
+          <PlanGrid />
+        </div>
+
+        <div className="mx-auto mt-12 flex max-w-3xl flex-col items-center justify-between gap-4 rounded-2xl border border-white/10 bg-base-900/50 p-6 text-center sm:flex-row sm:text-left">
+          <div className="flex items-center gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#5865F2]/15 text-[#aab1fb]">
+              <Icons.discord size={20} />
+            </span>
+            <p className="text-sm text-slate-400">
+              Orders are taken in a ticket on <span className="font-semibold text-slate-200">{BRAND.discordLabel}</span>.
+              Already have a key?{" "}
+              <Link href="/dashboard/redeem" className="text-brand-300 hover:text-brand-200">
+                Redeem it
+              </Link>
+              .
+            </p>
           </div>
-        ) : (
-          <div className="mt-16 grid gap-6 lg:grid-cols-3">
-            {products.map((p, i) => {
-              const features = parseJson<string[]>(p.features, []);
-              const featured = i === 1; // ortadaki paket vurgulu
-              return (
-                <div
-                  key={p.id}
-                  className={
-                    "card relative flex flex-col p-7 " +
-                    (featured
-                      ? "border-brand-500/40 shadow-glow ring-1 ring-brand-500/20"
-                      : "")
-                  }
-                >
-                  {featured && (
-                    <span className="absolute -top-3 left-1/2 -translate-x-1/2">
-                      <Badge tone="blue">
-                        <Icons.crown size={12} /> Most popular
-                      </Badge>
-                    </span>
-                  )}
-                  <h3 className="text-lg font-bold text-white">{p.name}</h3>
-                  <p className="mt-1 min-h-[40px] text-sm text-slate-400">
-                    {p.description}
-                  </p>
-                  <div className="mt-5 flex items-end gap-1.5">
-                    <span className="text-4xl font-extrabold text-white">
-                      {formatMoney(p.priceCents, p.currency)}
-                    </span>
-                    <span className="pb-1 text-sm text-slate-500">
-                      {intervalLabel[p.interval] ?? ""}
-                    </span>
-                  </div>
-
-                  <div className="my-6 h-px bg-white/5" />
-
-                  <ul className="flex-1 space-y-3">
-                    {features.map((f) => (
-                      <li
-                        key={f}
-                        className="flex items-center gap-2.5 text-sm text-slate-300"
-                      >
-                        <span className="grid h-5 w-5 place-items-center rounded-full bg-emerald-500/15 text-emerald-400">
-                          <Icons.check size={13} />
-                        </span>
-                        {featureLabel(f)}
-                      </li>
-                    ))}
-                  </ul>
-
-                  <div className="mt-7">
-                    <BuyButton
-                      productId={p.id}
-                      productName={p.name}
-                      isLoggedIn={!!user}
-                      featured={featured}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <p className="mt-10 text-center text-xs text-slate-500">
-          Card payments are not wired up yet — a purchase creates a licence key after
-          manual confirmation.
-        </p>
+          <Link href="/purchase" className="btn-secondary shrink-0">
+            How buying works <Icons.arrowRight size={15} />
+          </Link>
+        </div>
       </main>
       <SiteFooter />
     </div>

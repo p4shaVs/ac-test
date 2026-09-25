@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { handler, ok, ApiError } from "@/lib/api";
 import { registerSchema } from "@/lib/validation";
 import { hashPassword } from "@/lib/password";
-import { createSession, clientIp } from "@/lib/session";
+import { createSession, clientIp, isDemoEmail } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 import { audit } from "@/lib/audit";
 
@@ -14,6 +14,13 @@ export const POST = handler(async (req: NextRequest) => {
   if (!rl.success) throw new ApiError(429, "Too many attempts, please wait");
 
   const body = registerSchema.parse(await req.json());
+
+  // The public demo address is reserved. If it were registrable on a
+  // database that was never seeded, /api/demo would sign every visitor into
+  // whoever claimed it.
+  if (isDemoEmail(body.email)) {
+    throw new ApiError(409, "Email is already taken", "DUPLICATE");
+  }
 
   // İlk kullanıcı otomatik ADMIN olsun (kurulum kolaylığı).
   const userCount = await db.user.count();

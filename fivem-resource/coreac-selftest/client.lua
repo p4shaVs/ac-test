@@ -13,7 +13,7 @@
 -- =============================================================================
 
 local ENABLED = GetConvarInt('coreac_selftest', 0) == 1
-local AC = 'aeigs-anticheat'
+local AC = 'coreac'
 
 local function msg(text, color)
     TriggerEvent('chat:addMessage', {

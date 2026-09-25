@@ -1,4 +1,4 @@
-// Aeigs Anti-Cheat — veritabanı şeması
+// CoreAC Anti-Cheat — veritabanı şeması
 // Yerel/tek makine kurulumu: SQLite (dosya tabanlı, ekstra sunucu gerekmez).
 // İleride buluta taşınırsa provider'ı "postgresql" yapmak yeterli; enum'lar
 // zaten string olarak modellendiği için taşıma sorunsuzdur.
@@ -101,7 +101,7 @@ model Order {
 
 model LicenseKey {
   id          String   @id @default(cuid())
-  key         String   @unique // AEIGS-XXXX-XXXX-XXXX-XXXX
+  key         String   @unique // COREAC-XXXX-XXXX-XXXX-XXXX (eski: AEIGS-…)
   productId   String?
   product     Product? @relation(fields: [productId], references: [id])
 

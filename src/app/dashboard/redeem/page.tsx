@@ -20,7 +20,7 @@ export default function RedeemPage() {
             </span>
             <div>
               <h3 className="text-sm font-semibold text-white">Licence key</h3>
-              <p className="text-xs text-slate-500">in AEIGS-XXXX-XXXX-XXXX-XXXX format</p>
+              <p className="text-xs text-slate-500">in COREAC-XXXX-XXXX-XXXX-XXXX format</p>
             </div>
           </div>
           <RedeemForm />

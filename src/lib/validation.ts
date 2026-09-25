@@ -75,6 +75,9 @@ export const createProductSchema = z.object({
 
 export const generateKeySchema = z.object({
   productId: z.string().optional(),
+  // E-posta YA DA kullanıcı adı (Discord'daki müşteri panel adını verir).
+  owner: z.string().trim().max(120).optional(),
+  /** @deprecated eski istemciler için — `owner` kullanın. */
   ownerEmail: z.string().trim().toLowerCase().email().optional(),
   features: z.array(z.enum(FEATURE_KEYS as [string, ...string[]])).default([]),
   maxServers: z.number().int().min(1).max(50).default(1),
@@ -87,4 +90,20 @@ export const updateKeySchema = z.object({
   status: z.enum(["UNUSED", "ACTIVE", "SUSPENDED", "REVOKED", "EXPIRED"]).optional(),
   features: z.array(z.enum(FEATURE_KEYS as [string, ...string[]])).optional(),
   note: z.string().trim().max(200).optional(),
+  maxServers: z.number().int().min(1).max(50).optional(),
+  /** Süreyi uzat: bitiş tarihine (geçmişse bugüne) bu kadar gün ekler. */
+  extendDays: z.number().int().min(1).max(3650).optional(),
+  /** Süresiz yap (bitiş tarihini kaldırır). */
+  lifetime: z.literal(true).optional(),
+  /** Sahibi değiştir: e-posta ya da kullanıcı adı; "" = sahipsiz yap. */
+  owner: z.string().trim().max(120).optional(),
+});
+
+// Discord'da yapılan satışı panele işler: sipariş (PAID) + müşteriye bağlı anahtar.
+export const recordSaleSchema = z.object({
+  customer: z.string().trim().min(1, "Enter the customer's email or username").max(120),
+  productId: z.string().min(1, "Pick a product"),
+  amountCents: z.number().int().min(0).max(1_000_000).optional(),
+  reference: z.string().trim().max(120).optional(),
+  maxServers: z.number().int().min(1).max(50).default(1),
 });

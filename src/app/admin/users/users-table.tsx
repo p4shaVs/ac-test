@@ -69,7 +69,7 @@ export function UsersTable({
       </div>
 
       <div className="overflow-x-auto rounded-2xl border border-white/5 bg-base-850/60">
-        <table className="w-full min-w-[760px] text-sm">
+        <table className="w-full min-w-[900px] text-sm">
           <thead>
             <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wide text-slate-500">
               <th className="px-4 py-3 font-medium">User</th>
@@ -115,12 +115,27 @@ export function UsersTable({
                     {u.locked && (
                       <MiniBtn label="Unlock" onClick={() => patch(u.id, { unlock: true })} disabled={busy === u.id} />
                     )}
+                    <MiniBtn
+                      label="Sign out everywhere"
+                      onClick={() => {
+                        if (confirm(`End every active session of ${u.username}?${u.id === currentUserId ? " This signs you out too." : ""}`)) {
+                          patch(u.id, { revokeSessions: true });
+                        }
+                      }}
+                      disabled={busy === u.id}
+                    />
                     {u.role === "ADMIN" ? (
                       u.id !== currentUserId && (
                         <MiniBtn label="Revoke admin" danger onClick={() => patch(u.id, { role: "USER" })} disabled={busy === u.id} />
                       )
                     ) : (
-                      <MiniBtn label="Admin Yap" onClick={() => patch(u.id, { role: "ADMIN" })} disabled={busy === u.id} />
+                      <MiniBtn
+                        label="Make admin"
+                        onClick={() => {
+                          if (confirm(`Give ${u.username} full admin access to the platform?`)) patch(u.id, { role: "ADMIN" });
+                        }}
+                        disabled={busy === u.id}
+                      />
                     )}
                   </div>
                 </td>

@@ -50,7 +50,7 @@ function threatColor(score: number) {
 }
 const ACTIVITY_LABEL: Record<string, string> = {
   driving: "In vehicle", walking: "On foot", shooting: "Shooting",
-  swimming: "Swimming", parachuting: "Parachuting", idle: "Bekliyor",
+  swimming: "Swimming", parachuting: "Parachuting", idle: "Idle",
   falling: "Falling", ragdoll: "Yerde",
 };
 

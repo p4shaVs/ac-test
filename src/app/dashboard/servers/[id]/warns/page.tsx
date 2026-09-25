@@ -38,7 +38,7 @@ export default async function WarnsPage({ params }: { params: { id: string } }) 
                   <td className="px-4 py-3 text-slate-400">{w.issuedBy}</td>
                   <td className="px-4 py-3">
                     <Badge tone={w.status === "DELIVERED" ? "green" : "amber"}>
-                      {w.status === "DELIVERED" ? "Delivered" : "Bekliyor"}
+                      {w.status === "DELIVERED" ? "Delivered" : "Pending"}
                     </Badge>
                   </td>
                   <td className="px-4 py-3 text-slate-500">{formatDateTime(w.createdAt)}</td>

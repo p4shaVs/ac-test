@@ -7,6 +7,7 @@ import { generateLicenseKey } from "@/lib/keys";
 import { sanitizeFeatures } from "@/lib/features";
 import { audit } from "@/lib/audit";
 import { clientIp } from "@/lib/session";
+import { findUserByRef } from "@/lib/users";
 
 /**
  * Admin key generator: seçilen özelliklerle N adet lisans anahtarı üretir.
@@ -30,11 +31,12 @@ export const POST = handler(async (req: NextRequest) => {
     }
   }
 
-  // Sahip e-postası verildiyse kullanıcıyı bul.
+  // Sahip verildiyse (e-posta ya da kullanıcı adı) kullanıcıyı bul.
   let ownerId: string | null = null;
-  if (body.ownerEmail) {
-    const owner = await db.user.findUnique({ where: { email: body.ownerEmail } });
-    if (!owner) throw new ApiError(404, "No user found with that email");
+  const ownerRef = body.owner || body.ownerEmail;
+  if (ownerRef) {
+    const owner = await findUserByRef(ownerRef);
+    if (!owner) throw new ApiError(404, "No user found with that email or username");
     ownerId = owner.id;
   }
 
@@ -60,7 +62,9 @@ export const POST = handler(async (req: NextRequest) => {
         ownerId,
         status: "UNUSED",
         features: JSON.stringify(finalFeatures),
-        maxServers: 1, // her anahtar tek sunucu için
+        // Şema 1–50 aralığını doğruluyor. Eskiden burada sabit 1 yazılıydı ve
+        // formdan gelen değer sessizce yok sayılıyordu.
+        maxServers: body.maxServers,
         expiresAt,
         note: body.note,
         createdById: admin.id,
@@ -73,7 +77,7 @@ export const POST = handler(async (req: NextRequest) => {
     userId: admin.id,
     action: "KEY_GENERATE",
     ip: clientIp(headers()),
-    meta: { quantity: body.quantity, features: finalFeatures, productId, ownerId },
+    meta: { quantity: body.quantity, maxServers: body.maxServers, features: finalFeatures, productId, ownerId },
   });
 
   return ok({ keys: created }, 201);

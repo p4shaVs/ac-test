@@ -13,8 +13,9 @@ const nav: NavSection[] = [
   {
     title: "Sales",
     items: [
-      { href: "/admin/products", label: "Products", icon: "cube" },
+      { href: "/admin/orders", label: "Orders", icon: "cart" },
       { href: "/admin/keys", label: "Licence Keys", icon: "key" },
+      { href: "/admin/products", label: "Products", icon: "cube" },
     ],
   },
   {

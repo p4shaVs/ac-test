@@ -99,7 +99,7 @@ const config: Config = {
         "slide-up": "slide-up 0.6s cubic-bezier(0.22,1,0.36,1) both",
         "slide-in": "slide-in 0.5s cubic-bezier(0.22,1,0.36,1) both",
         "scale-in": "scale-in 0.4s cubic-bezier(0.22,1,0.36,1) both",
-        "page-enter": "page-enter 0.5s cubic-bezier(0.22,1,0.36,1) both",
+        "page-enter": "page-enter 0.5s cubic-bezier(0.22,1,0.36,1) backwards",
         float: "float 5s ease-in-out infinite",
         shimmer: "shimmer 1.6s infinite",
         "pulse-ring": "pulse-ring 2s ease-out infinite",

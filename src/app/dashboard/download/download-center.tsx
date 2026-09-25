@@ -20,6 +20,7 @@ export function DownloadCenter({ appUrl, servers }: { appUrl: string; servers: S
   const [token, setToken] = useState<string | null>(null);
   const [regen, setRegen] = useState(false);
   const [showManual, setShowManual] = useState(false);
+  const [stealth, setStealth] = useState(true);
 
   const apiUrl = `${appUrl}/api/v1`;
 
@@ -95,9 +96,25 @@ export function DownloadCenter({ appUrl, servers }: { appUrl: string; servers: S
                 it once — that&apos;s how it proves the licence is yours.
               </Step>
               <Step n={2} title="Download the installer">
+                <label className="mb-3 mt-1 flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-base-900/50 px-3.5 py-3">
+                  <input
+                    type="checkbox"
+                    checked={stealth}
+                    onChange={(e) => setStealth(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-white/20 bg-base-900"
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-slate-200">Stealth folder name (recommended)</span>
+                    <span className="block text-xs text-slate-500">
+                      Installs under a random name like <code className="text-slate-400">qx_7k2m9d4a</code> instead of{" "}
+                      <code className="text-slate-400">coreac</code>, so cheat menus can&apos;t find and stop the anti-cheat by name.
+                      Re-running the installer later keeps the same folder.
+                    </span>
+                  </span>
+                </label>
                 <a
-                  href={`/api/servers/${active.id}/installer`}
-                  className="btn-primary mt-1 inline-flex"
+                  href={`/api/servers/${active.id}/installer${stealth ? "" : "?stealth=0"}`}
+                  className="btn-primary inline-flex"
                   download
                 >
                   <Icons.download size={16} /> Download installer (.bat)
@@ -137,15 +154,18 @@ export function DownloadCenter({ appUrl, servers }: { appUrl: string; servers: S
                   <Icons.download size={15} /> Download resource (.zip)
                 </a>
                 <ol className="space-y-2 text-sm text-slate-400">
-                  <li>1. Extract into <code className="text-slate-300">resources/</code> (creates the <code className="text-slate-300">aeigs-anticheat</code> folder).</li>
-                  <li>2. Add these lines to <code className="text-slate-300">server.cfg</code>:</li>
+                  <li>1. Extract into <code className="text-slate-300">resources/</code> (creates the <code className="text-slate-300">coreac</code> folder — you may rename it).</li>
+                  <li>2. Add these lines to <code className="text-slate-300">server.cfg</code>, <b className="text-slate-300">above</b> your other <code className="text-slate-300">ensure</code> lines:</li>
                 </ol>
                 <pre className="overflow-x-auto rounded-xl border border-white/10 bg-base-950 p-3 font-mono text-xs text-slate-300">
-{`set aeigs_api "${apiUrl}"
-set aeigs_token "<your token>"
-ensure aeigs-anticheat`}
+{`set coreac_api "${apiUrl}"
+set coreac_token "<your token>"
+add_ace resource.coreac command allow
+ensure coreac`}
                 </pre>
-                <p className="text-xs text-slate-500">3. Restart the server.</p>
+                <p className="text-xs text-slate-500">
+                  3. Restart the server. If you renamed the folder, use the new name in the last two lines.
+                </p>
               </div>
             )}
           </Card>
@@ -195,8 +215,10 @@ ensure aeigs-anticheat`}
             <ul className="space-y-2.5 text-sm text-slate-400">
               {[
                 ["shieldCheck", "Verifies your licence with the panel"],
-                ["cube", "Downloads & extracts the protected resource"],
-                ["config", "Writes server.cfg (with a backup)"],
+                ["cube", "Downloads & installs the protected resource"],
+                ["config", "Writes server.cfg above your other resources (with a backup)"],
+                ["key", "Grants the resource command access for the web console"],
+                ["history", "Updates in place and removes an old Aeigs-era install"],
                 ["check", "Leaves nothing running until you restart"],
               ].map(([icon, text]) => {
                 const Icon = Icons[icon as keyof typeof Icons];
