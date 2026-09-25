@@ -1,24 +1,29 @@
-local godModeStrike = CoreAC.StrikesSystem.createStrikeSystem(
-    "GodMode",
-    2,
-    function(playerId)
-        CoreAC.DetectPlayer(CoreAC.Detections.ANTI_INVINCIBLE, {
-            type = "Invincible",
-        })
-    end,
-    10000
-)
-
-local godModeStrike2 = CoreAC.StrikesSystem.createStrikeSystem(
-    "GodMode2",
-    2,
-    function(playerId)
-        CoreAC.DetectPlayer(CoreAC.Detections.ANTI_INVINCIBLE, {
-            type = "Not Damagable",
-        })
-    end,
-    10000
-)
+-- ---------------------------------------------------------------------------
+-- GODMODE (client bayrakları) — YANLIŞ-POZİTİF DÜZELTMESİ
+--
+-- Eski kontrol "GetPlayerInvincible true" (ya da GetEntityCanBeDamaged false /
+-- mermi-yakın dövüş korumaları) görünce 2 örnekte raporluyordu. Bu bayrakları
+-- hilelerle AYNI native'lerle MEŞRU scriptler de koyar:
+--   * qb-adminmenu godmode ve "developer mode" → SetPlayerInvincible her karede
+--   * qb-ambulancejob yerde yatan oyuncu, txAdmin godmode/noclip, spawn
+--     koruması, güvenli bölge (greenzone), cutscene/iç mekân yükleme...
+-- shared.js'deki "bunu bir script yaptı" kancası yalnızca bu resource'un
+-- içinde çalıştığı için AC bunları hileden ayıramıyor ve oyuncu hiçbir şey
+-- yapmazken "durduk yere" GODMODE düşüyordu (girişte kick dahil).
+--
+-- Artık bayrak TEK BAŞINA tespit değildir. Rapor için hepsi gerekir:
+--   * dokunulmazlık bayrağı kesintisiz IMMUNE_MIN_MS sürmeli,
+--   * oyuncu bu sırada AKTİF ÇATIŞMADA olmalı (son COMBAT_MS içinde ateş
+--     etti ya da yakın dövüşe girdi) — godmode hilecisi çatışmaya girer;
+--     boşta duran, yerde yatan ya da güvenli bölgedeki oyuncu girmez,
+--   * framework yaralı/ölü durumu, txAdmin modu, donmuş/görünmez ped, araç,
+--     cutscene, ekran kararması gibi meşru dokunulmazlık hâlleri dışında.
+-- Asıl (kandırılamaz) godmode tespiti sunucudadır: server/godmode_guard.lua
+-- vurulan oyuncunun can+zırh havuzunun düşmediğini ölçer.
+-- ---------------------------------------------------------------------------
+local IMMUNE_MIN_MS = 6000
+local COMBAT_MS     = 15000
+local immuneSince   = nil
 
 -- Can/zırh istatistik ihlali: art arda iki kontrolde sürmeli (bkz. aşağı).
 local healthStatsStrike = CoreAC.StrikesSystem.createStrikeSystem(
@@ -70,33 +75,56 @@ local checkGodMode = LPH_JIT_MAX(function()
         end
     end
 
-    if CoreAC.Config.Main.AntiNoCombatDamages and not CoreAC.proofsEnabled and not CoreAC.isPlayerDead and not CoreAC.hasChangedPedModel then
-        local a, bulletProof, b , c , d , meleeProof , e , f , g = GetEntityProofs(CoreAC.playerPed)
-        if (bulletProof == 1) then
-            CoreAC.DetectPlayer(CoreAC.Detections.ANTI_NO_COMBAT_DAMAGES, {
-                type = "Bullet Proof",
-            })
-            return
-        elseif (meleeProof == 1)  then
-            CoreAC.DetectPlayer(CoreAC.Detections.ANTI_NO_COMBAT_DAMAGES, {
-                type = "Melee Proof",
-            })
-            return
+    -- Hangi dokunulmazlık bayrağı açık? (panel: Anti Invincibility /
+    -- Anti Damage Immunity)
+    local flag = nil
+    if CoreAC.Config.Main.AntiInvincible then
+        if CoreAC.playerInvincible or CoreAC.playerInvincible2 then
+            flag = "Invincible"
+        elseif not CoreAC.entityCanBeDamaged then
+            flag = "Not Damagable"
+        end
+    end
+    if not flag and CoreAC.Config.Main.AntiNoCombatDamages then
+        local _, bulletProof, _, _, _, meleeProof = GetEntityProofs(CoreAC.playerPed)
+        -- Çıkış parametreleri build'e göre 1/0 ya da true/false döner.
+        if bulletProof == 1 or bulletProof == true then
+            flag = "Bullet Proof"
+        elseif meleeProof == 1 or meleeProof == true then
+            flag = "Melee Proof"
         end
     end
 
-    if CoreAC.Config.Main.AntiInvincible and not CoreAC.isPlayerDead and not IsEntityPositionFrozen(CoreAC.playerPed) and not IsPlayerCamControlDisabled(CoreAC.playerPed) and not CoreAC.isPedRunningRagdollTask then
-        if not CoreAC.isPlayerDead and not IsEntityPositionFrozen(CoreAC.playerPed) and not IsPlayerCamControlDisabled(CoreAC.playerPed) and not CoreAC.isPedRunningRagdollTask and not CoreAC.isInvincible and (CoreAC.playerInvincible or CoreAC.playerInvincible2) and not CoreAC.hasChangedPedModel then
-            godModeStrike()
-        end
-        if not CoreAC.isPlayerDead and not IsEntityPositionFrozen(CoreAC.playerPed) and not IsPlayerCamControlDisabled(CoreAC.playerPed) and not CoreAC.isPedRunningRagdollTask and not CoreAC.isInvincible and CoreAC.canBeDamaged and not CoreAC.entityCanBeDamaged and not CoreAC.hasChangedPedModel then
-            godModeStrike2()
-        end
+    local ped = CoreAC.playerPed
+    local legit = CoreAC.isPlayerDead
+        or CoreAC.isPlayerInVehicle
+        or CoreAC.isPedRunningRagdollTask
+        or IsEntityPositionFrozen(ped)
+        or not IsEntityVisible(ped)
+        or not IsPlayerControlOn(PlayerId())
+        or IsCutscenePlaying()
+        or CoreAC.isNetworkInSpectatorMode
+        or CoreAC.isSpectating
+        or (CAC.adminTool ~= nil)
+        or (CAC.fadeRecent and CAC.fadeRecent(5000))
+        or (CAC.tpGrace and CAC.tpGrace())
+        or (CAC.reviveGrace and CAC.reviveGrace())
+        or (CAC.isDowned and CAC.isDowned())
 
-        -- KALDIRILDI: GetPedConfigFlag(ped, 6) "bulletproof vest" doğrudan-ban'ı
-        -- güvenilmezdi (flag birçok legit durumda set olabiliyor) ve strike'sız
-        -- anında raporluyordu → false-positive. Godmode zaten strike'lı native
-        -- bayrak kontrolü + server godmode_guard ile kapsanıyor.
+    if not flag or legit then
+        immuneSince = nil
+        return
+    end
+
+    local now = GetGameTimer()
+    immuneSince = immuneSince or now
+    if now - immuneSince >= IMMUNE_MIN_MS and CAC.inCombat and CAC.inCombat(COMBAT_MS) then
+        CoreAC.DetectPlayer(CoreAC.Detections.ANTI_INVINCIBLE, {
+            type = flag,
+            immuneForMs = now - immuneSince,
+            inCombat = true,
+        })
+        immuneSince = now  -- sonraki rapor en erken IMMUNE_MIN_MS sonra (+ rapor throttle'ı)
     end
 end)
 

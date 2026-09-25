@@ -48,7 +48,7 @@ export default async function ServerOverview({ params }: { params: { id: string 
       where: { serverId: server.id },
       orderBy: { createdAt: "desc" },
       take: 11,
-      select: { id: true, playerName: true, type: true, severity: true, action: true, createdAt: true },
+      select: { id: true, playerName: true, type: true, severity: true, action: true, details: true, createdAt: true },
     }),
     db.ban.findMany({
       where: { serverId: server.id, active: true },
@@ -173,6 +173,14 @@ export default async function ServerOverview({ params }: { params: { id: string 
                     <span className="truncate text-sm font-medium text-slate-200">{detectionLabel(d.type)}</span>
                     <span className="block truncate text-xs text-slate-500">{d.playerName}</span>
                   </span>
+                  {d.details?.includes('"bypass":"staff"') && (
+                    <span
+                      title="Server staff — logged only (Settings → Never punish server staff)"
+                      className="rounded-md bg-brand-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-300"
+                    >
+                      Staff
+                    </span>
+                  )}
                   <span className={cn("rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", ACT[d.action ?? "LOG"] ?? ACT.LOG)}>
                     {d.action ?? "LOG"}
                   </span>

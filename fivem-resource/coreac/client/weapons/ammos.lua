@@ -1,5 +1,12 @@
 local hasAddedAmmo = false
 
+-- Tek atışlık okuma (atış olayı mermi düşmeden önce gelebilir) sınırsız mermi
+-- sayılmasın: 10 sn içinde İKİ ayrı doğrulama gerekir. Sınırsız mermi kullanan
+-- saniyede onlarca atış yaptığı için bu gecikme tespiti kaçırmaz.
+local infiniteAmmoStrike = CoreAC.StrikesSystem.createStrikeSystem("InfiniteAmmo", 2, function(_, info)
+    CoreAC.DetectPlayer(CoreAC.Detections.ANTI_INFINITE_AMMO, info)
+end, 10000)
+
 local function isPedAWitness(witnesses, ped)
     if not witnesses then return false end
     
@@ -104,20 +111,22 @@ AddEventHandler("CEventGunShot", LPH_JIT_MAX(function(witnesses, shooter)
         local weaponName = weapData and weapData.weaponName or weaponHash
         
         if ammoInWeapon > 0 and ammoInWeapon >= lastAmmoInWeapon then
-            CoreAC.DetectPlayer(CoreAC.Detections.ANTI_INFINITE_AMMO, {
+            infiniteAmmoStrike(nil, {
                 ammoInWeapon = ammoInWeapon,
                 lastAmmoInWeapon = lastAmmoInWeapon,
                 weapon = weaponName,
             })
+            lastShotTime = currentTime
             return
         end
 
         if ammoInClip > 0 and ammoInClip >= lastAmmoInClip then
-            CoreAC.DetectPlayer(CoreAC.Detections.ANTI_INFINITE_AMMO, {
+            infiniteAmmoStrike(nil, {
                 ammoInClip = ammoInClip,
                 lastAmmoInClip = lastAmmoInClip,
                 weapon = weaponName,
             })
+            lastShotTime = currentTime
             return
         end
 

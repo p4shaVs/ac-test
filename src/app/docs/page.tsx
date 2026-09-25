@@ -113,8 +113,13 @@ ensure coreac`}</Code>
 
             <Section id="integrate" title="Integrating your scripts">
               <p>
-                Most false flags come from scripts that legitimately teleport, revive or protect players. Tell {BRAND.name} first —
-                these events work whatever your resource folder is called:
+                Recognised automatically, no changes needed: teleports done behind a screen fade (almost every QBCore/ESX
+                apartment, house, elevator, hospital, prison and spawn script), QBCore <C>/tp</C> <C>/tpm</C>, txAdmin
+                teleport/bring/spectate/noclip/god mode and qb-adminmenu goto/bring/spectate.
+              </p>
+              <p>
+                For anything else that legitimately teleports, revives or protects players, tell {BRAND.name} first — these events
+                work whatever your resource folder is called:
               </p>
               <Card className="space-y-4 p-5">
                 <div>
@@ -135,9 +140,11 @@ TriggerEvent('coreac:markRevive')           -- client`}</Code>
                 </div>
               </Card>
               <p>
-                Death/last-stand states from QBCore, QBox and the common medical scripts are recognised automatically. Put your
-                staff on the <b className="text-slate-300">Trust Whitelist</b> so tools from other admin menus (noclip, god mode)
-                are never punished. The old <C>aeigs:markTeleport</C> / <C>aeigs:markRevive</C> event names still work.
+                Death/last-stand states from QBCore, QBox and the common medical scripts are recognised automatically. Server
+                staff (txAdmin admins, QBCore/ESX admins, ACE <C>command</C>, in-game admins added in the panel) are never
+                auto-kicked or banned while <b className="text-slate-300">Settings → Never punish server staff</b> is on — their
+                detections are still logged with a <b className="text-slate-300">Staff</b> tag. Turn it off to test the anti-cheat
+                with your own admin account. The old <C>aeigs:markTeleport</C> / <C>aeigs:markRevive</C> event names still work.
               </p>
               <p>
                 Only needed if you enable the matching option: <C>{`exports['<folder>']:giveWeapon(hash)`}</C> (Anti Weapon Spawn),{" "}

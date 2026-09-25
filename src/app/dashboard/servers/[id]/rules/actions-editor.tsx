@@ -6,6 +6,7 @@ import { Icons } from "@/components/icons";
 import {
   DETECTION_TYPES,
   DETECTION_CATEGORIES,
+  bestConfidence,
   defaultActions,
   type DetectionAction,
   type DetectionConfidence,
@@ -126,7 +127,13 @@ export function ActionsEditor({
       <div className="grid gap-3 md:grid-cols-2">
         {items.map((d) => {
           const current = actions[d.type] ?? d.defaultAction;
-          const conf = CONFIDENCE_META[d.confidence];
+          const conf = CONFIDENCE_META[bestConfidence(d)];
+          // Server-verified evidence may go further than the player's own client
+          // report of the same type (e.g. NoClip: client → kick, server → ban).
+          const split = d.serverConfidence && d.serverConfidence !== d.confidence;
+          const note = split
+            ? `Server-verified detections can go up to ${ACTION_META[CONFIDENCE_META[d.serverConfidence!].max].label}; reports from the player's own game are capped at ${ACTION_META[CONFIDENCE_META[d.confidence].max].label}.`
+            : conf.note;
           return (
             <div
               key={d.type}
@@ -135,10 +142,10 @@ export function ActionsEditor({
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-slate-200">{d.label}</p>
                 <span
-                  title={conf.note}
+                  title={note}
                   className={cn("mt-1 inline-block rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset", conf.tone)}
                 >
-                  {conf.label} · max {ACTION_META[conf.max].label}
+                  {split ? `Server-verified · max ${ACTION_META[conf.max].label}` : `${conf.label} · max ${ACTION_META[conf.max].label}`}
                 </span>
               </div>
               <div className="flex shrink-0 items-center gap-1 rounded-lg border border-white/10 bg-base-900/60 p-1">
@@ -148,7 +155,7 @@ export function ActionsEditor({
                     <button
                       key={a}
                       disabled={blocked}
-                      title={blocked ? conf.note : undefined}
+                      title={blocked ? note : undefined}
                       onClick={() => setFor(d.type, a)}
                       className={cn(
                         "rounded-md border px-2.5 py-1 text-xs font-semibold transition",

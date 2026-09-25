@@ -120,6 +120,7 @@ CoreAC.Detections = {
     ANTI_SPEED_HACK                 = 'SPEED_HACK',
     ANTI_AIM_BOT                    = 'AIMBOT',
     ANTI_FREE_CAM                   = 'FREECAM',
+    ANTI_FREE_CAM_WEAK              = 'FREECAM_SUSPECTED',  -- eski geometrik kontroller (yalnızca log)
     ANTI_NIGHT_VISIONS              = 'NIGHT_VISION',
     ANTI_PED_MODEL_CHANGE           = 'MODEL_CHANGE',
     ANTI_NO_RAGDOLL                 = 'NO_RAGDOLL',
@@ -255,6 +256,7 @@ CoreAC.Config = {
     },
     Settings = {
         CommandPrefix              = 'ac',
+        StaffBypass                = true,   -- sunucu yetkilileri otomatik kick/ban yemez (yalnızca log)
         EnableGameplayRecord       = false,
         EnableAntiBackdoors        = true,
         StopServerWhenDetected     = false,

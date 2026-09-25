@@ -236,6 +236,9 @@ local function heartbeat()
       TriggerClientEvent('coreac:rules', -1, ServerConfig.rules or {})
       -- Panelden yönetilen "Protected Events" honeypot listesi (client/events.lua).
       TriggerClientEvent('coreac:protectedEvents', -1, ServerConfig.protectedEvents or {})
+      -- Aynı liste SUNUCU tarafında da tuzak: hile menüleri bu olayları çoğunlukla
+      -- TriggerServerEvent ile yollar; client tuzağı bunları hiç görmez.
+      if CAC.setProtectedServerEvents then CAC.setProtectedServerEvents(ServerConfig.protectedEvents or {}) end
       -- Tam CoreAC config (panel Configuration sayfası) — CoreAC.Config'e uygula.
       if ServerConfig.ac and CAC.applyAcConfig then
         CAC.applyAcConfig(ServerConfig.ac)
@@ -586,9 +589,16 @@ RegisterNetEvent('coreac:report', function(dtype, severity, details)
   local src = source
   if Config.DetectionsEnabled == false then return end  -- tespitler geçici kapalı
   if CAC.eventLimited(src, 'report', 30, 10000) then return end
-  if not reportAllowed(src, CoreAC.NormalizeDetection(dtype)) then return end
+  local ntype = CoreAC.NormalizeDetection(dtype)
+  if not reportAllowed(src, ntype) then return end
+  -- Doğrulanmış admin aracı (txAdmin noclip/godmode…) bu tespiti açıklıyor.
+  if CAC.toolExempt and CAC.toolExempt(src, ntype) then return end
   local ids = getIdents(src)
   local pname = GetPlayerName(src) or ('Player#' .. src)
+  -- Client'ın gönderdiği ayrıntılara GÜVENİLMEZ: sunucunun kendi işaret
+  -- alanlarını (aksiyon isteği, köken, muafiyet) client taklit edemesin.
+  local det = type(details) == 'table' and details or { info = tostring(details or '') }
+  det.__action, det.__origin, det.bypass = nil, nil, nil
   -- origin='client': rapor oyuncunun KENDİ oyun istemcisinden geldi. Hile
   -- istemcisi o süreci kontrol ettiği için bu raporlar panelde asla "kesin"
   -- sayılmaz — en fazla KICK'e kadar çıkabilir (bkz. detection-actions.ts).
@@ -598,7 +608,9 @@ RegisterNetEvent('coreac:report', function(dtype, severity, details)
     playerName = pname,
     license = ids.license,
     origin = 'client',
-    details = type(details) == 'table' and details or { info = tostring(details or '') },
+    -- Yetkili (sunucunun doğruladığı admin): tespit loglanır, ceza verilmez.
+    bypass = (CAC.staffBypass and CAC.staffBypass(src)) and 'staff' or nil,
+    details = det,
   }, function(ok, data)
     if not (ok and data and GetPlayerName(src)) then return end
     -- Oyundaki yetkili yöneticilere anlık uyarı (server/live.lua).
@@ -627,7 +639,12 @@ AddEventHandler('coreac:serverReport', function(src, dtype, severity, details)
   if Config.DetectionsEnabled == false then return end  -- tespitler geçici kapalı
   if not GetPlayerName(src) then return end
   if CAC.eventLimited(src, 'serverReport', 30, 10000) then return end
-  if not reportAllowed(src, dtype) then return end
+  -- Kara liste raporlarında aksiyon da anahtara girer: "Remove" logundan hemen
+  -- sonra gelen KICK'e yükseltilmiş rapor 20 sn süzgecine takılmasın.
+  local gateKey = dtype
+  if type(details) == 'table' and details.__action then gateKey = tostring(dtype) .. ':' .. tostring(details.__action) end
+  if not reportAllowed(src, gateKey) then return end
+  if CAC.toolExempt and CAC.toolExempt(src, dtype) then return end
   local ids = getIdents(src)
   local pname = GetPlayerName(src) or ('Player#' .. src)
   -- origin='server': tespiti sunucu kendi gözlemiyle üretti (godmode_guard,
@@ -639,13 +656,18 @@ AddEventHandler('coreac:serverReport', function(src, dtype, severity, details)
   local det = type(details) == 'table' and details or { info = tostring(details or '') }
   local origin = 'server'
   if det.__origin == 'client' then origin = 'client' end
-  det.__origin = nil
+  -- Kara liste: model başına seçilen aksiyon (REMOVE/KICK/BAN) panele iletilir
+  -- (bkz. CAC.enforceBlacklist). Bu olay yalnızca sunucu içinden tetiklenir.
+  local requested = det.__action
+  det.__origin, det.__action, det.bypass = nil, nil, nil
   CAC.request('/detections', 'POST', {
     type = tostring(dtype or 'UNKNOWN'),
     severity = tostring(severity or 'MEDIUM'),
     playerName = pname,
     license = ids.license,
     origin = origin,
+    requestedAction = requested,
+    bypass = (CAC.staffBypass and CAC.staffBypass(src)) and 'staff' or nil,
     details = det,
   }, function(ok, data)
     if not (ok and data and GetPlayerName(src)) then return end

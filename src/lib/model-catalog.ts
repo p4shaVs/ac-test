@@ -11,6 +11,22 @@ function toModel(r: Row): GtaModel {
   return { name: r[0], label: r[1], kind: KIND_NAMES[r[2]], hash: r[3] };
 }
 
+let byHash: Map<number, string> | null = null;
+
+/**
+ * Catalog name for a stored blacklist model. The picker saves the numeric
+ * (unsigned) hash, so a row's `model` is usually "3078201489" rather than
+ * "adder"; this maps it back so the page can show the row as listed.
+ */
+export function modelNameForHash(model: string): string {
+  if (!/^-?d+$/.test(model)) return model.toLowerCase();
+  if (!byHash) {
+    byHash = new Map();
+    for (const r of DATA.rows) byHash.set(r[3] >>> 0, r[0]);
+  }
+  return byHash.get(Number(model) >>> 0) ?? model;
+}
+
 export interface SearchResult {
   items: GtaModel[];
   total: number;

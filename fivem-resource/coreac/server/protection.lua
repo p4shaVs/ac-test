@@ -59,10 +59,17 @@ AddEventHandler('explosionEvent', function(sender, ev)
     end
   end
 
+  -- Patlama selinden KORUMA: 10 sn'de 8'den fazla patlama (araç patlamaları
+  -- dahil — "araç fırlat, patlat" trolü CoreAC modülünün araç kaynaklı
+  -- patlamaları atlayan limitine takılmıyordu) → fazlası iptal edilir. Araç
+  -- patlamasının göndereni aracın o anki sahibidir (kurban olabilir), bu yüzden
+  -- burada ceza yok: yalnızca engel + log (EXPLOSION, heuristic).
   if ruleOn('anti_explosion_spam') then
     if tooFast('expl:' .. src, 8, 10000) then
-      TriggerEvent('coreac:serverReport', src, 'EXPLOSION', 'HIGH', { type = etype })
-      -- Engellemek için: CancelEvent()
+      CancelEvent()
+      if not tooFast('explrep:' .. src, 1, 10000) then
+        TriggerEvent('coreac:serverReport', src, 'EXPLOSION', 'HIGH', { type = etype, blocked = true })
+      end
     end
   end
 end)
@@ -97,6 +104,24 @@ AddEventHandler('entityCreating', function(handle)
       return
     end
   end
+end)
+
+-- Sunucunun KENDİ oluşturduğu entity'ler (qb-garages/araç satıcısı gibi
+-- CreateVehicleServerSetter kullanan scriptler) entityCreating'den geçmez.
+-- Client kaynaklı yasaklı oluşumlar yukarıda zaten iptal edildiği için buraya
+-- gelen yasaklı model ya sunucu scriptinindir ya da kara liste yüklenmeden
+-- önce oluşmuştur: kimse cezalandırılmadan kaldırılır ve loglanır.
+AddEventHandler('entityCreated', function(handle)
+  if not handle or handle == 0 or not DoesEntityExist(handle) then return end
+  local entry = CAC.blacklistLookup and CAC.blacklistLookup(GetEntityModel(handle))
+  if not entry then return end
+  local kindMap = { vehicle = 2, ped = 1, object = 3 }
+  if kindMap[entry.kind] ~= GetEntityType(handle) then return end
+  -- Oyuncunun kendi ped'i asla silinmez (yasaklı modele geçiş entityCreating'de ele alınır).
+  if entry.kind == 'ped' and IsPedAPlayer(handle) then return end
+  DeleteEntity(handle)
+  CAC.log('INFO', 'blacklist', ('Removed blacklisted %s "%s" (spawned by a server script)')
+    :format(entry.kind, tostring(entry.label or entry.model)))
 end)
 
 -- ---------------------------------------------------------------------------

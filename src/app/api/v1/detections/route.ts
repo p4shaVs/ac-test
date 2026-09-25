@@ -8,7 +8,7 @@ import { generateBanCode } from "@/lib/keys";
 import { parseJson } from "@/lib/utils";
 import { isWhitelisted } from "@/lib/bypass";
 import { sendWebhook } from "@/lib/discord";
-import { sanitizeActions, resolveAction, severityForType, detectionLabel } from "@/lib/detection-actions";
+import { sanitizeActions, resolveAction, capByConfidence, severityForType, detectionLabel } from "@/lib/detection-actions";
 import { recordNetworkBan } from "@/lib/network-bans";
 
 // Kaynak, bir hile tespitini raporlar. Aksiyon (LOG/KICK/BAN) müşterinin
@@ -24,6 +24,12 @@ const schema = z.object({
   // the cheat client owns that process. Older resource builds omit it; treat
   // a missing value as "client" so the cautious path is the default.
   origin: z.enum(["server", "client"]).default("client"),
+  // Set by the resource (never by the player's client) when the player is
+  // server staff and Settings → Staff Bypass is on: logged, never punished.
+  bypass: z.enum(["staff"]).optional(),
+  // Blacklist hits carry the action chosen for that model on the Blacklist
+  // page (REMOVE = block + log only).
+  requestedAction: z.enum(["REMOVE", "LOG", "KICK", "BAN"]).optional(),
 });
 
 export const POST = handler(async (req: NextRequest) => {
@@ -50,6 +56,8 @@ export const POST = handler(async (req: NextRequest) => {
   const rawDetails = { ...(body.details ?? {}) } as Record<string, unknown>;
   const replay = Array.isArray(rawDetails.replay) ? rawDetails.replay : [];
   delete rawDetails.replay;
+  delete rawDetails.bypass;
+  if (body.bypass) rawDetails.bypass = body.bypass;
 
   const detection = await db.detection.create({
     data: {
@@ -93,7 +101,7 @@ export const POST = handler(async (req: NextRequest) => {
 
   void sendWebhook(server.config, "detection", server.name, {
     player: body.playerName,
-    reason: `${body.type} (${severity})${whitelisted ? " — BYPASSED (whitelisted)" : ""}`,
+    reason: `${body.type} (${severity})${whitelisted ? " — BYPASSED (whitelisted)" : body.bypass === "staff" ? " — staff (not punished)" : ""}`,
     identifiers: player
       ? { license: player.license, discord: player.discord, steam: player.steam, ip: player.ip }
       : undefined,
@@ -107,11 +115,21 @@ export const POST = handler(async (req: NextRequest) => {
   const actions = sanitizeActions(config.actions);
   let action = resolveAction(actions, body.type, body.origin);
 
+  // Kara liste: model başına Blacklist sayfasında seçilen aksiyon geçerlidir
+  // (tipin varsayılanı değil). Eskiden "Remove" seçilen model bile tipin
+  // varsayılanı olan BAN'a düşüyordu.
+  if (body.requestedAction && body.origin === "server" && body.type.startsWith("BLACKLIST_")) {
+    const requested = body.requestedAction === "REMOVE" ? "LOG" : body.requestedAction;
+    action = capByConfidence(requested, body.type, body.origin);
+  }
+
   // BAN, lisansın "auto_ban" özelliğine bağlıdır (paket/monetizasyon); yoksa
   // KICK'e düşer (LOG kararıysa LOG kalır).
   const features = parseJson<string[]>((server as any).licenseKey?.features ?? "[]", []);
   if (action === "BAN" && !features.includes("auto_ban")) action = "KICK";
   if (whitelisted || !player) action = "LOG";
+  // Yetkili muafiyeti (Settings → Staff Bypass): tespit kayıtlı, ceza yok.
+  if (body.bypass === "staff") action = "LOG";
 
   // LOG-ONLY (deneme) modu: Configuration → Settings'ten açılır. Açıkken HİÇBİR
   // tespit kick/ban ATMAZ (ban kaydı bile açılmaz) — sadece kaydedilir/loglanır.

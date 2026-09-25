@@ -4,7 +4,7 @@ local freecamStrike1 = CoreAC.StrikesSystem.createStrikeSystem(
     "Freecam1",
     2,
     function(playerId, distanceFromCam)
-        CoreAC.DetectPlayer(CoreAC.Detections.ANTI_FREE_CAM, {
+        CoreAC.DetectPlayer(CoreAC.Detections.ANTI_FREE_CAM_WEAK, {
             distance = math.floor(distanceFromCam)
         })
     end,
@@ -15,7 +15,7 @@ local freecamStrike2 = CoreAC.StrikesSystem.createStrikeSystem(
     "Freecam2",
     2,
     function(playerId, distanceFromCam)
-        CoreAC.DetectPlayer(CoreAC.Detections.ANTI_FREE_CAM, {
+        CoreAC.DetectPlayer(CoreAC.Detections.ANTI_FREE_CAM_WEAK, {
             distance = math.floor(distanceFromCam)
         })
     end,
@@ -26,7 +26,7 @@ local freecamStrike3 = CoreAC.StrikesSystem.createStrikeSystem(
     "Freecam3",
     2,
     function(playerId, distanceFromCam)
-        CoreAC.DetectPlayer(CoreAC.Detections.ANTI_FREE_CAM, {
+        CoreAC.DetectPlayer(CoreAC.Detections.ANTI_FREE_CAM_WEAK, {
             distance = math.floor(distanceFromCam)
         })
     end,
@@ -37,7 +37,7 @@ local freecamStrike4 = CoreAC.StrikesSystem.createStrikeSystem(
     "Freecam4",
     2,
     function(playerId, distanceFromCam)
-        CoreAC.DetectPlayer(CoreAC.Detections.ANTI_FREE_CAM, {
+        CoreAC.DetectPlayer(CoreAC.Detections.ANTI_FREE_CAM_WEAK, {
             distance = math.floor(distanceFromCam)
         })
     end,
@@ -64,7 +64,7 @@ local checkFreecam = LPH_JIT_MAX(function()
     local camRot = GetFinalRenderedCamRot(2)
 
     if screenX == 0 and screenY == 0 and IsEntityOnScreen(CoreAC.playerPed) and IsEntityOccluded(CoreAC.playerPed) then
-        CoreAC.DetectPlayer(CoreAC.Detections.ANTI_FREE_CAM, {
+        CoreAC.DetectPlayer(CoreAC.Detections.ANTI_FREE_CAM_WEAK, {
             detection = "Phaze"
         })
         return
@@ -80,7 +80,7 @@ local checkFreecam = LPH_JIT_MAX(function()
     -- Aşağıdaki geometrik kontroller (kamera oyuncudan uzakta + oyuncu ekranda
     -- değil) gerçek freecam imzasıdır ve entegrasyon GEREKTİRMEZ; onlar kaldı.
     if renderingCam == -1 and not IsEntityOnScreen(CoreAC.playerPed) and not IsCinematicIdleCamRendering() and not NetworkIsInSpectatorMode() and (IsCinematicCamRendering() and (isCamFoot or not isDistanceFromCamLegit)) and not IsCinematicCamInputActive() and (isCamFoot or (isCamVehicle and not isFirstPersonCam)) then
-        CoreAC.DetectPlayer(CoreAC.Detections.ANTI_FREE_CAM, {
+        CoreAC.DetectPlayer(CoreAC.Detections.ANTI_FREE_CAM_WEAK, {
             detection = "Bypass #1",
             distance = math.floor(distanceFromCam)
         })
@@ -106,6 +106,65 @@ local checkFreecam = LPH_JIT_MAX(function()
 end)
 
 CoreAC.RegisterDetection("freecam", checkFreecam, 3000)
+
+-- ---------------------------------------------------------------------------
+-- FREECAM — "Script Cam" (asıl tespit, FREECAM tipi)
+--
+-- Menü freecam'lerinin neredeyse hepsi bir SCRIPT KAMERASI açıp onu WASD ile
+-- uçurur. Yukarıdaki eski kontrollerin tamamı yalnızca script kamerası YOKKEN
+-- (renderingCam == -1) çalıştığı için bu en yaygın freecam türü hiç
+-- yakalanmıyordu.
+--
+-- Meşru script kameraları (karakter oluşturma, spawn seçimi, kıyafet/araç
+-- galerisi, cutscene, ev dekorasyonu) ya oyuncu kontrolünü kapatır ya NUI
+-- odağı açar ya da oyuncunun yakınında kalır. Bu yüzden:
+--   * kamera oyuncudan SC_DIST (80 m) uzakta,
+--   * oyuncu kontrolü AÇIK, NUI odağı / duraklatma menüsü YOK,
+--   * cutscene / player switch / izleme modu / ekran kararması / txAdmin aracı
+--     / ölü-yaralı DEĞİL,
+--   * art arda SC_SAMPLES ölçüm (~6 sn) sürmeli.
+-- Not: sunucunda "drone" gibi uzaktan kamera scripti varsa Actions'ta FreeCam'i
+-- Log'a çek.
+-- ---------------------------------------------------------------------------
+local SC_DIST    = 80.0
+local SC_SAMPLES = 3
+local scStreak   = 0
+
+local checkScriptCam = LPH_JIT_MAX(function()
+    if not CoreAC.Config.Main.AntiFreeCam then return end
+    local cam = GetRenderingCam()
+    if cam == -1 then scStreak = 0 return end
+
+    local ped = PlayerPedId()
+    local dist = #(GetFinalRenderedCamCoord() - GetEntityCoords(ped))
+    local legit = IsNuiFocused()
+        or IsPauseMenuActive()
+        or not IsPlayerControlOn(PlayerId())
+        or IsCutscenePlaying()
+        or IsPlayerSwitchInProgress()
+        or NetworkIsInSpectatorMode()
+        or CoreAC.isSpectating
+        or CoreAC.isPlayerDead
+        or (CAC.spectateGrace and CAC.spectateGrace())
+        or (CAC.fadeRecent and CAC.fadeRecent(5000))
+        or (CAC.adminTool ~= nil)
+        or (CAC.isDowned and CAC.isDowned())
+
+    if dist > SC_DIST and not legit then
+        scStreak = scStreak + 1
+        if scStreak >= SC_SAMPLES then
+            scStreak = 0
+            CoreAC.DetectPlayer(CoreAC.Detections.ANTI_FREE_CAM, {
+                detection = "Script Cam",
+                distance = math.floor(dist),
+            })
+        end
+    else
+        scStreak = 0
+    end
+end)
+
+CoreAC.RegisterDetection("freecamScript", checkScriptCam, 2000)
 
 exports("createCam", LPH_NO_VIRTUALIZE(function(cam)
     if CoreAC.debug.short_executions then

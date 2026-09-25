@@ -1,5 +1,3 @@
-local NC_oldCoords, NC_oldSpeed, NC_oldStateValid = vector3(0, 0, 0), 0.0, false
-
 local noclipHeightBypass = CoreAC.StrikesSystem.createStrikeSystem(
 -- b3JpZ2luYWwgb3duZXIgb2YgdGhpcyBzb3VyY2UgaXMgRk1B
     "AntiNoClipHeightBypass",
@@ -36,26 +34,6 @@ local noclipFallBypass = CoreAC.StrikesSystem.createStrikeSystem(
     10000
 )
 
-local function isValidNoclipState()
-    return (not CoreAC.isPlayerInVehicle or (CoreAC.isPlayerDriver and CoreAC.isPlayerInVehicle and not CoreAC.isPlayerDead and CoreAC.vehicleSpeed < 3 and IsVehicleStopped(CoreAC.playerCurrentVehicle) and (not IsVehicleOnAllWheels(CoreAC.playerCurrentVehicle) or IsEntityPositionFrozen(CoreAC.playerCurrentVehicle) or GetEntityCollisionDisabled(CoreAC.playerCurrentVehicle)))) and
-        not CoreAC.isPedOnVehicle and
-        (not CoreAC.isPedFalling or (CoreAC.isPedFalling and CoreAC.playerSpeed == 0.0)) and
-        not (IsEntityAttached(CoreAC.playerPed) and not CoreAC.isPlayerInVehicle or false) and
-        not CoreAC.isAttachedToAPlayer and
-        not IsCutscenePlaying() and
-        -- Yetkili izleme: admin ped'i hedefin üstünde DONDURULUR (düşüp ölmesin).
-        -- Donmuş + havada ped aşağıdaki koşula uyar; bayrak yalnızca sunucu
-        -- onaylı yoldan (CAC.markSpectate / setSpectatorMode export) açılır.
-        not CoreAC.isSpectating and
-        CoreAC.pedType ~= 28 and
-        (IsEntityPositionFrozen(CoreAC.playerPed) or GetEntityCollisionDisabled(CoreAC.playerPed) or (CoreAC.playerHeight > 4.0 and CoreAC.playerSpeed < 1)) and
-        (GetVehiclePedIsEntering(CoreAC.playerPed) == 0) and
-        not CoreAC.hasTeleported and
-        not IsPedInParachuteFreeFall(CoreAC.playerPed) and
-        not CoreAC.isPedJumpingOutOfVehicle and
-        #(CoreAC.playerCoords - vector3(0, 0, 0)) > 100
-end
-
 local checkNoclip = LPH_JIT_MAX(function()
     if not CoreAC.Config.Main.AntiNoClip then return end
 
@@ -90,6 +68,9 @@ local checkNoclip = LPH_JIT_MAX(function()
         and not CoreAC.isPedRunningRagdollTask
         and not CoreAC.isPlayerInVehicle
         and not CoreAC.hasTeleported
+        and CAC.adminTool == nil
+        and not (CAC.tpGrace and CAC.tpGrace())
+        and not (CAC.fadeRecent and CAC.fadeRecent(3000))
     then
         local vel = CoreAC.playerVelocity or vector3(0, 0, 0)
         -- Serbest düşüşte |vz| birkaç saniyede 10+ m/s olur. 0.5'in altı ve
@@ -108,21 +89,97 @@ local checkNoclip = LPH_JIT_MAX(function()
         return
     end
 
-    local currentStateValid = isValidNoclipState()
-    if NC_oldStateValid and currentStateValid and
-        (NC_oldSpeed == CoreAC.playerSpeed or ((CoreAC.playerSpeed < 1.2) and (NC_oldSpeed < 1.2))) and
-        #(NC_oldCoords - CoreAC.playerCoords) > 15 and
-        ((GetNetworkTime() - (CoreAC.GetSecuredStateBag("_WS:LastTeleportedTimer") or 0)) > 10000)
-    then
-        CoreAC.DetectPlayer(CoreAC.Detections.ANTI_NO_CLIP)
-    end
-
-    NC_oldCoords = CoreAC.playerCoords
-    NC_oldSpeed = CoreAC.playerSpeed
-    NC_oldStateValid = currentStateValid
+    -- KALDIRILDI: "donmuş / çarpışma kapalı / 4 m+ havada ve hız<1" durumunda
+    -- 3 sn'de 15 m+ gitme kontrolü. Menü NoClip'lerinin çoğu bu durumların
+    -- HİÇBİRİNE uymuyordu (ped donmaz, çarpışma açık, yere yakın uçar) → NoClip
+    -- neredeyse hiç yakalanmıyor, hızlı uçuş ise 1 sn'lik teleport kontrolüne
+    -- takılıp TELEPORT sebebiyle atılıyordu. Yerini aşağıdaki fiziksel kontrol
+    -- aldı.
 end)
 
 CoreAC.RegisterDetection("noclip", checkNoclip, 3000)
+
+-- ---------------------------------------------------------------------------
+-- NOCLIP — "fizik hızının açıklamadığı sürekli hareket"
+--
+-- Gerçek her hareket (yürüme, koşma, düşme, yüzme, paraşüt, ragdoll fırlaması)
+-- ped'in FİZİK HIZINA (GetEntityVelocity) yansır: yarım saniyede alınan yol ≈
+-- hız × süre. NoClip ise koordinatı her karede elle kaydırır; ped saniyede
+-- onlarca metre ilerlerken fizik hızı ~0 kalır. Işınlanma bunu TEK örnekte
+-- yapar (sonra oyuncu durur) — NoClip ise art arda yapar. Bu yüzden:
+--   * her 500 ms'de: alınan yol > 3 m VE > (hız × süre × 2.5 + 2 m) ise şüpheli
+--   * art arda 4 şüpheli örnek (~2 sn) ve toplam 15 m+ → NOCLIP
+-- Meşru durumlar muaf: araç / araç üstü / bağlı (taşınma, kelepçeli götürülme)
+-- / izleme modu / ekran kararması / script ışınlaması / txAdmin aracı.
+-- ---------------------------------------------------------------------------
+local FL_STEP_MIN   = 3.0
+local FL_SLACK      = 2.0
+local FL_RATIO      = 2.5
+local FL_STREAK     = 4
+local FL_TOTAL_MIN  = 15.0
+
+local fl = { pos = nil, t = 0, n = 0, dist = 0.0 }
+CAC.noclipSuspectAt = 0
+
+local function flightExempt(ped)
+    return CoreAC.isPlayerInVehicle
+        or CoreAC.isPedOnVehicle
+        or IsEntityAttached(ped)
+        or CoreAC.isAttachedToAPlayer
+        or CoreAC.isPedRunningRagdollTask
+        or GetVehiclePedIsEntering(ped) ~= 0
+        or CoreAC.isPedJumpingOutOfVehicle
+        or IsCutscenePlaying()
+        or IsPlayerSwitchInProgress()
+        or CoreAC.isNetworkInSpectatorMode
+        or CoreAC.isSpectating
+        or (CAC.spectateGrace and CAC.spectateGrace())
+        or (CAC.tpGrace and CAC.tpGrace())
+        or (CAC.fadeRecent and CAC.fadeRecent(3000))
+        or (CAC.adminTool ~= nil)
+        or CoreAC.hasTeleported
+        or CoreAC.pedType == 28
+end
+
+local checkNoclipFlight = LPH_JIT_MAX(function()
+    if not CoreAC.Config.Main.AntiNoClip then return end
+    local ped = PlayerPedId()
+    local pos = GetEntityCoords(ped)
+    local now = GetGameTimer()
+
+    if flightExempt(ped) or not fl.pos then
+        fl.pos, fl.t, fl.n, fl.dist = pos, now, 0, 0.0
+        return
+    end
+
+    local dt = (now - fl.t) / 1000.0
+    local moved = #(pos - fl.pos)
+    fl.pos, fl.t = pos, now
+    -- Takılma/alt-tab: arada çok zaman geçtiyse ölçüm anlamsız.
+    if dt <= 0.0 or dt > 1.5 then fl.n, fl.dist = 0, 0.0 return end
+
+    local physical = #(GetEntityVelocity(ped)) * dt
+    if moved > FL_STEP_MIN and moved > physical * FL_RATIO + FL_SLACK then
+        fl.n = fl.n + 1
+        fl.dist = fl.dist + moved
+        -- Tek örnek bir ışınlanma da olabilir; "uçuş" sayılması için art arda
+        -- en az iki açıklanamayan örnek gerekir (teleport.lua bunu okur).
+        if fl.n >= 2 then CAC.noclipSuspectAt = now end
+    else
+        fl.n, fl.dist = 0, 0.0
+    end
+
+    if fl.n >= FL_STREAK and fl.dist >= FL_TOTAL_MIN then
+        CoreAC.DetectPlayer(CoreAC.Detections.ANTI_NO_CLIP, {
+            reason = "Flight",
+            distance = math.floor(fl.dist),
+            seconds = math.floor(fl.n * dt * 10) / 10,
+        })
+        fl.n, fl.dist = 0, 0.0
+    end
+end)
+
+CoreAC.RegisterDetection("noclipFlight", checkNoclipFlight, 500)
 
 -- (Geliştirici hata ayıklama komutu kaldırıldı: herhangi bir oyuncu F8'den
 -- çalıştırıp tespit iç ayrıntılarını görebiliyordu — hile yazarlarına bilgi sızıntısı.)

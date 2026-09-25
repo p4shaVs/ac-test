@@ -24,6 +24,14 @@ export interface DetectionTypeDef {
   category: string;
   confidence: DetectionConfidence;
   defaultAction: DetectionAction;
+  /**
+   * Confidence when the SERVER itself produced the evidence (origin=server).
+   * Used where the server measures something the client cannot fake — e.g.
+   * NoClip: the player's own position/velocity stream showing seconds of
+   * movement physics cannot explain. Client reports of the same type keep
+   * `confidence` (and client "confirmed" is still capped to strong).
+   */
+  serverConfidence?: DetectionConfidence;
 }
 
 export const DETECTION_CATEGORIES = [
@@ -42,12 +50,16 @@ const D = (
   label: string,
   category: string,
   confidence: DetectionConfidence,
-  defaultAction: DetectionAction
-): DetectionTypeDef => ({ type, label, category, confidence, defaultAction });
+  defaultAction: DetectionAction,
+  serverConfidence?: DetectionConfidence
+): DetectionTypeDef => ({ type, label, category, confidence, defaultAction, serverConfidence });
 
 export const DETECTION_TYPES: DetectionTypeDef[] = [
   // ------------------------------------------------------------- Movement
-  D("NOCLIP", "NoClip", "movement", "strong", "KICK"),
+  // Client NoClip reports cap at KICK. The server's own check (server/live.lua:
+  // 4+ seconds of on-foot movement the synced velocity cannot explain, riders
+  // and falls excluded) is physics evidence and may ban.
+  D("NOCLIP", "NoClip", "movement", "strong", "BAN", "confirmed"),
   // Every garage/house/job script that moves a player looks like a teleport
   // until it calls coreac:markTeleport. Kicking by default punished honest
   // players on servers that had not wired that up yet, so it starts as LOG;
@@ -103,11 +115,16 @@ export const DETECTION_TYPES: DetectionTypeDef[] = [
   // ------------------------------------------------------- Visual / Camera
   D("INVISIBLE", "Invisibility", "visual", "strong", "KICK"),
   D("SPECTATE", "Unauthorized Spectate", "visual", "strong", "KICK"),
-  D("FREECAM", "FreeCam", "visual", "heuristic", "LOG"),
+  // Script camera held far from the player with full control and no UI open
+  // (client/freecam.lua "Script Cam"). The older geometric checks report
+  // FREECAM_SUSPECTED instead and never punish.
+  D("FREECAM", "FreeCam", "visual", "strong", "KICK"),
+  D("FREECAM_SUSPECTED", "FreeCam (weak signal)", "visual", "heuristic", "LOG"),
   D("MODEL_CHANGE", "Ped Model Change", "visual", "heuristic", "LOG"),
   D("PROP_DISGUISE", "Prop Disguise", "visual", "heuristic", "LOG"),
   D("NIGHT_VISION", "Night / Thermal Vision", "visual", "heuristic", "LOG"),
-  D("VOICE_EXPLOIT", "Voice Range Exploit", "visual", "heuristic", "LOG"),
+  // Voice range held above 100 m — no voice system or megaphone script uses that.
+  D("VOICE_EXPLOIT", "Voice Range Exploit", "visual", "strong", "KICK"),
 
   // -------------------------------------------------------- Entity / Spawn
   D("BLACKLIST_VEHICLE", "Blacklisted Vehicle", "entity", "confirmed", "BAN"),
@@ -169,6 +186,9 @@ export const DETECTION_TYPES: DetectionTypeDef[] = [
   // LOG vs KICK from the server's own network policy (config.network.action).
   D("NETWORK_BAN", "Network Reputation Match", "other", "heuristic", "LOG"),
   D("CHAT_FLOOD", "Chat Flood", "other", "strong", "KICK"),
+  // interact-sound abuse seen by the server: sounds pushed to the whole server,
+  // to a huge radius, or spammed (the "megaphone / earrape" troll).
+  D("SOUND_EXPLOIT", "Sound / Megaphone Abuse", "other", "strong", "KICK"),
   D("RECONNECT_SPAM", "Reconnect Spam", "other", "heuristic", "LOG"),
   D("CHEAT_MENU_SUSPECTED", "Cheat Menu Suspected (weak signal)", "other", "heuristic", "LOG"),
   D("AFK_BYPASS", "AFK Bypass", "other", "heuristic", "LOG"),
@@ -235,9 +255,18 @@ export type DetectionOrigin = "server" | "client";
  * reaching entityCreating — can justify a ban.
  */
 function effectiveConfidence(type: string, origin: DetectionOrigin): DetectionConfidence {
+  const def = BY_TYPE.get(type);
+  if (origin === "server" && def?.serverConfidence) return def.serverConfidence;
   const c = detectionConfidence(type);
   if (origin === "client" && c === "confirmed") return "strong";
   return c;
+}
+
+/** Highest confidence this type can reach from any origin (for the Actions UI). */
+export function bestConfidence(def: DetectionTypeDef): DetectionConfidence {
+  const rank: Record<DetectionConfidence, number> = { heuristic: 0, strong: 1, confirmed: 2 };
+  const s = def.serverConfidence;
+  return s && rank[s] > rank[def.confidence] ? s : def.confidence;
 }
 
 /**

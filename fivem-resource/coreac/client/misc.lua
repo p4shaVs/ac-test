@@ -1,3 +1,7 @@
+-- Menzil art arda iki ölçümde (~10 sn) 100 m üstünde kalmalı. pma-voice
+-- bağırma ~6-15 m, megafon scriptleri ~30-50 m kullanır; "herkese konuşma"
+-- hilesi yüzlerce/binlerce metre ayarlar.
+local voiceStreak = 0
 local checkVoiceExploits = LPH_JIT_MAX(function()
     if not CoreAC.Config.Main.AntiVoiceExploits then
         return
@@ -10,20 +14,24 @@ local checkVoiceExploits = LPH_JIT_MAX(function()
     -- Eşik 20'ydi; pma-voice / mumble-voip gibi YAYGIN ses sistemleri "bağırma"
     -- modunda 30-32'ye kadar çıkar → her bağıran oyuncu işaretleniyordu. Hiçbir
     -- meşru ses sisteminin kullanmadığı bir seviyeye çekildi.
-    local VOICE_MAX = 50.0
+    local VOICE_MAX = 100.0
     local talkerProximity = NetworkGetTalkerProximity() or 0
     local talkerProximity2 = MumbleGetTalkerProximity() or 0
     if (CoreAC.tonumber(talkerProximity) and talkerProximity >= VOICE_MAX) or
         (CoreAC.tonumber(talkerProximity2) and talkerProximity2 >= VOICE_MAX) then
         local scriptTalkerProximity = CoreAC.GetSecuredStateBag("_WS:TalkerProximity")
-        if not CoreAC.tonumber(scriptTalkerProximity) or
-            (scriptTalkerProximity ~= talkerProximity and scriptTalkerProximity ~= talkerProximity2) then
+        voiceStreak = voiceStreak + 1
+        if voiceStreak >= 2 and (not CoreAC.tonumber(scriptTalkerProximity) or
+            (scriptTalkerProximity ~= talkerProximity and scriptTalkerProximity ~= talkerProximity2)) then
+            voiceStreak = 0
             CoreAC.DetectPlayer(CoreAC.Detections.ANTI_VOICE_EXPLOITS, {
                 voiceRange = talkerProximity > talkerProximity2 and talkerProximity or talkerProximity2,
                 script = scriptTalkerProximity
             })
             return
         end
+    else
+        voiceStreak = 0
     end
 end)
 

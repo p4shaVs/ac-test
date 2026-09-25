@@ -33,8 +33,25 @@ end
 -- ---------------------------------------------------------------------------
 -- Kara liste (blacklist) — client'lara iletilir, orada uygulanır
 -- ---------------------------------------------------------------------------
-local BlacklistByHash = {}  -- modelHash -> { kind, model, action }
+local BlacklistByHash = {}  -- modelHash -> { kind, model, label, action }
 local WeaponList = {}       -- client'a gönderilecek yasaklı silahlar { hash, action }
+
+-- Aynı model hash'i iki biçimde dolaşır: panel kataloğu İŞARETSİZ kaydeder
+-- ("3078201489" = adder), GetHashKey/client native'leri İŞARETLİ döner
+-- (-1216765807), sunucu native'leri build'e göre ikisinden birini. Eskiden
+-- tablo tek biçimle doluyordu → hash'in en üst biti dolu olan modellerin
+-- (adder, zentorno, RPG... katalogdaki modellerin yaklaşık yarısı) kara
+-- listesi HİÇ eşleşmiyor, araç serbestçe çıkarılabiliyordu.
+local U32 = 4294967296
+local function hashForms(h)
+  h = tonumber(h)
+  if not h then return nil, nil end
+  h = math.floor(h)
+  if h < 0 then return h, h + U32 end
+  if h >= 2147483648 then return h - U32, h end
+  return h, h
+end
+
 local function refreshBlacklist()
   CAC.request('/blacklist', 'GET', nil, function(ok, data)
     if ok and data and data.blacklist then
@@ -42,9 +59,12 @@ local function refreshBlacklist()
       local byHash, weapons = {}, {}
       for _, b in ipairs(Blacklist) do
         -- model bir isim ("adder") ya da sayısal hash olabilir
-        local h = tonumber(b.model) or GetHashKey(b.model)
-        byHash[h] = b
-        if b.kind == 'weapon' then weapons[#weapons + 1] = { hash = h, action = b.action } end
+        local signed, unsigned = hashForms(tonumber(b.model) or GetHashKey(b.model))
+        if signed then
+          byHash[signed] = b
+          byHash[unsigned] = b
+          if b.kind == 'weapon' then weapons[#weapons + 1] = { hash = signed, action = b.action } end
+        end
       end
       BlacklistByHash = byHash
       WeaponList = weapons
@@ -72,40 +92,52 @@ end)
 
 --- Bir entity model hash'i kara listedeyse kaydını döndürür.
 function CAC.blacklistLookup(modelHash)
-  return BlacklistByHash[modelHash]
+  local signed, unsigned = hashForms(modelHash)
+  if not signed then return nil end
+  return BlacklistByHash[signed] or BlacklistByHash[unsigned]
 end
 
---- Kara liste ihlalini uygular (protection.lua entityCreating içinden çağrılır).
-function CAC.enforceBlacklist(owner, entry, model)
+--- Kara liste ihlalini uygular (entity/silah olayları içinden çağrılır).
+--- Oluşum/hasar ÇAĞIRAN tarafından zaten iptal edilmiştir; burada yalnızca
+--- raporlanır. `actionOverride` verilirse modelin aksiyonu yerine o kullanılır
+--- (ör. elde tutulan yasaklı silah → yalnızca 'REMOVE').
+--
+-- HATA DÜZELTİLDİ: eskiden burada panel /detections'a ayrıca rapor gidiyor,
+-- panel tipin VARSAYILANINI (BLACKLIST_* = BAN) uyguluyordu. Yani Blacklist
+-- sayfasında "Remove" seçilen model bile oyuncuyu banlıyor, KICK seçilen
+-- model hem kick hem ban üretiyordu. Artık karar tek yerde: modelin seçilen
+-- aksiyonu isteğe eklenir, panel onu Log-Only / bypass listesi / yetkili
+-- muafiyetiyle birlikte uygular (Remove = yalnızca log).
+local blacklistHits = {}  -- src -> { zaman damgaları } (tekrar eden denemeler)
+
+function CAC.enforceBlacklist(owner, entry, model, actionOverride)
   if not owner or owner <= 0 then return end
   if CAC.isWhitelisted(owner) then return end
-  local ids = CAC.getIdents(owner)
   local pname = GetPlayerName(owner) or ('Player#' .. owner)
-  CAC.log('DETECTION', 'blacklist', ('Blacklist: %s "%s" — %s'):format(entry.kind, entry.model, pname))
-  CAC.request('/detections', 'POST', {
-    type = 'BLACKLIST_' .. string.upper(entry.kind),
-    severity = (entry.action == 'BAN') and 'CRITICAL' or 'HIGH',
-    playerName = pname,
-    license = ids.license,
-    origin = 'server',
-    details = { model = entry.model, action = entry.action },
-  }, nil)
-  -- Kara liste kendi kararını verir (model başına KICK/BAN, Blacklist
-  -- sayfasından seçilir) — bu yüzden Log-Only modunu BURADA da uygulamalıyız.
-  -- Aksi halde "Log-Only: asla kick/ban atma" açıkken kara liste yine banlıyordu.
-  if CAC.isLogOnly and CAC.isLogOnly() then return end
-  if entry.action == 'KICK' then
-    DropPlayer(owner, '[CoreAC] You have been kicked from this server.')
-  elseif entry.action == 'BAN' then
-    CAC.request('/ingame-action', 'POST', {
-      type = 'BAN', reason = ('Blacklist: %s (%s)'):format(entry.model, entry.kind),
-      by = 'AntiCheat', license = ids.license, playerName = pname,
-    }, function(ok, data)
-      if CAC.refreshBans then CAC.refreshBans() end
-      DropPlayer(owner, ('[CoreAC] You are banned from this server. | Ban ID: %s'):format((data and data.banCode) or '—'))
-    end)
+  local name = entry.label or entry.model
+  local action = actionOverride or entry.action or 'REMOVE'
+
+  -- "Remove" tek bir denemeyi cezalandırmaz (yanlış eşleşme/masum script
+  -- ihtimali). Ama aynı oyuncu 60 sn'de 3+ yasaklı model spawn etmeye
+  -- çalışıyorsa bu bir spawner menüsüdür → KICK'e yükselt. (Elde tutulan
+  -- silah — actionOverride 'REMOVE' — yükseltilmez; o yalnızca kaldırılır.)
+  if action == 'REMOVE' and not actionOverride then
+    local now = GetGameTimer()
+    local fresh = {}
+    for _, t in ipairs(blacklistHits[owner] or {}) do if now - t < 60000 then fresh[#fresh + 1] = t end end
+    fresh[#fresh + 1] = now
+    blacklistHits[owner] = fresh
+    if #fresh >= 3 then action = 'KICK' end
   end
+
+  CAC.log('DETECTION', 'blacklist', ('Blacklist: %s "%s" — %s'):format(entry.kind, tostring(name), pname))
+  TriggerEvent('coreac:serverReport', owner, 'BLACKLIST_' .. string.upper(entry.kind), 'CRITICAL', {
+    model = tostring(name),
+    hash = tostring(entry.model),
+    __action = action,
+  })
 end
+AddEventHandler('playerDropped', function() blacklistHits[source] = nil end)
 
 -- ---------------------------------------------------------------------------
 -- Canlı konum / can / kalkan — client gönderir, toplu API'ye aktarılır
@@ -724,8 +756,16 @@ local tpGrace = {}       -- src -> muafiyet bitiş ms (yetkili ışınlama/yeni 
 local noclipFallbackStrike = {}  -- src -> strike sayacı (NoClip yedek raporu)
 local jumpPending = {}    -- src -> { dist, t } — sıçrama görüldü, sınıfı bir sonraki örnekte belli olur
 
-function CAC.grantTp(src)
-  tpGrace[tonumber(src)] = GetGameTimer() + 8000
+local flight = {}         -- src -> { n, d } — art arda "açıklanamayan" hareket (NoClip uçuşu)
+local heldWeaponGate = {} -- src -> son yasaklı-silah raporu (ms)
+
+function CAC.grantTp(src, ms)
+  src = tonumber(src)
+  if not src then return end
+  local untilT = GetGameTimer() + (tonumber(ms) or 8000)
+  if not tpGrace[src] or tpGrace[src] < untilT then tpGrace[src] = untilT end
+  jumpPending[src] = nil
+  flight[src] = nil
 end
 
 -- Sunucu taraflı revive muafiyeti (vehicle_guard.lua'nın armor-regen kontrolü
@@ -750,7 +790,7 @@ end
 -- Meşru oynanışta bu sınıra yaklaşılmaz; aşan istek muafiyet ALMAZ ve loglanır.
 -- (Eskiden respawnAnchor 5 sn'de 10 kez = fiilen sınırsız muafiyet veriyordu.)
 -- ---------------------------------------------------------------------------
-local GRACE_BUDGET, GRACE_WINDOW = 6, 60000
+local GRACE_BUDGET, GRACE_WINDOW = 8, 60000
 local graceUse = {}   -- src -> { zaman damgaları }
 
 function CAC.consumeGraceBudget(src, why)
@@ -841,6 +881,22 @@ local function checkVehicleSpeed(src, ped, now)
   end
 end
 
+--- Oyuncu bir aracın ÜSTÜNDE mi taşınıyor? (tren/tır/tekne güvertesi) — o
+--- zaman yaya olduğu hâlde hızlı ilerler. Yalnızca uçuş şüphesi başladığında
+--- çağrılır (nadir), bu yüzden tüm araçları dolaşmak ucuzdur.
+local function ridingVehicle(c)
+  for _, veh in ipairs(GetAllVehicles()) do
+    local vc = GetEntityCoords(veh)
+    local dz = c.z - vc.z
+    if dz > -1.0 and dz < 6.0 and #(vector2(c.x, c.y) - vector2(vc.x, vc.y)) < 12.0 then
+      return true
+    end
+  end
+  return false
+end
+
+local FLIGHT_SAMPLES = 4   -- sn — sunucu kanıtı BAN'a kadar gidebilir, bu yüzden tutucu
+
 local function teleportScan()
   local now = GetGameTimer()
   for _, sid in ipairs(GetPlayers()) do
@@ -887,6 +943,23 @@ local function teleportScan()
           checkVehicleSpeed(src, ped, now)
         end
 
+        -- ELDE YASAKLI SİLAH (Blacklist → Weapons). Eskiden yalnızca bu silahla
+        -- birine HASAR verilince yakalanıyordu; elde taşımak serbestti. Sunucu
+        -- seçili silahı kendisi okur ve kaldırır. Yalnızca taşımak cezayı
+        -- (kick/ban) tetiklemez — silah kaldırılıp loglanır; kullanılırsa
+        -- (hasar olayı) modelin seçilen aksiyonu uygulanır (protection.lua).
+        if inGame then
+          local okW, w = pcall(GetSelectedPedWeapon, ped)
+          local entry = okW and w and w ~= 0 and CAC.blacklistLookup(w) or nil
+          if entry and entry.kind == 'weapon' and not (CAC.isWhitelisted and CAC.isWhitelisted(src)) then
+            pcall(RemoveWeaponFromPed, ped, w)
+            if not heldWeaponGate[src] or now - heldWeaponGate[src] > 20000 then
+              heldWeaponGate[src] = now
+              CAC.enforceBlacklist(src, entry, w, 'REMOVE')
+            end
+          end
+        end
+
         local prev = sPos[src]
         if not prev then
           sPos[src] = { x = c.x, y = c.y, z = c.z, t = now, seen = now }
@@ -898,46 +971,77 @@ local function teleportScan()
           local inVeh = GetVehiclePedIsIn(ped, false) ~= 0
           local perSec = dt > 0 and (dist / dt) or 0
           local limit = inVeh and 250.0 or 60.0
+          local vel = #(GetEntityVelocity(ped))
+          local okA, attachedTo = pcall(GetEntityAttachedTo, ped)
+          local attached = okA and attachedTo and attachedTo ~= 0
+          local eligible = inGame and settled and not granted
+            and not (CAC.isWhitelisted and CAC.isWhitelisted(src))
+
+          -- NOCLIP UÇUŞU (yaya): fizik hızının açıklamadığı sürekli hareket.
+          -- Gerçek her hareket (koşma, düşme, paraşüt, ragdoll) velocity'ye
+          -- yansır; NoClip koordinatı elle kaydırır, velocity ~0 kalır. Işınlanma
+          -- bunu tek örnekte yapar, NoClip art arda. Sprint ~7 m/s → 12 m/s
+          -- tabanı yürüyen/koşan oyuncuyu asla kapsamaz; taşınan/kelepçeli
+          -- götürülen (bağlı) oyuncu ve araçtakiler hariç.
+          -- Ağırlıklı olarak AŞAĞI yönlü hareket düşüştür (uçaktan/helikopterden
+          -- atlama): sunucunun gördüğü hız gecikmeli gelse bile uçuş sayılmaz.
+          local dz = c.z - prev.z
+          local hdist = #(vector2(c.x, c.y) - vector2(prev.x, prev.y))
+          local descending = dz < -2.0 and -dz >= hdist
+          local unexplained = not inVeh and not attached and not descending and dt > 0.3 and dt < 2.5
+            and dist > math.max(12.0 * dt, vel * dt * 2.5 + 4.0)
+          if eligible and unexplained then
+            -- Bir aracın üstündeyse (tren/tır) bu örnek sayılmaz ama seri de
+            -- sıfırlanmaz: park etmiş arabaların üstünden geçen NoClip kaçmasın.
+            if not ridingVehicle(c) then
+              local f = flight[src] or { n = 0, d = 0.0 }
+              f.n, f.d = f.n + 1, f.d + dist
+              flight[src] = f
+              if f.n >= FLIGHT_SAMPLES then
+                flight[src], jumpPending[src] = nil, nil
+                TriggerEvent('coreac:serverReport', src, 'NOCLIP', 'CRITICAL',
+                  { source = 'server_flight', distance = math.floor(f.d), seconds = f.n })
+                prev.seen = now + 5000  -- kısa süre tekrar tetiklenmesin
+              end
+            end
+          else
+            flight[src] = nil
+          end
+
           local pend = jumpPending[src]
           if pend then
             -- Bir önceki saniyede sıçrama görüldü. Işınlanma TEK bir sıçramadır,
-            -- sonra oyuncu durur/normal yürür. NoClip ise uçuştur: koordinat her
-            -- kare elle kaydırılır, yaya olduğu hâlde saniyede 12 m+ yatay
-            -- ilerler ama fizik hızı (velocity) düşüktür. Menü NoClip'lerinin
-            -- çoğu çarpışmayı kapatmadığı için collState sinyali gelmeyebilir;
-            -- eskiden bu durumda uçuş TELEPORT diye banlanıyordu.
+            -- sonra oyuncu durur/normal yürür. Hareket açıklanamaz biçimde
+            -- sürüyorsa bu bir NoClip uçuşudur: TELEPORT deme, yukarıdaki uçuş
+            -- sayacı NOCLIP olarak raporlar (eskiden "noclip açınca teleport
+            -- banı" buradan geliyordu).
             jumpPending[src] = nil
-            if not granted and inGame then
-              local hMove = #(vector2(c.x, c.y) - vector2(prev.x, prev.y))
-              local vel = #(GetEntityVelocity(ped))
-              if recentlyNoclip(src) or (not inVeh and hMove > 12.0 and vel < 30.0) then
-                TriggerEvent('coreac:serverReport', src, 'NOCLIP', 'CRITICAL',
-                  { source = 'server_movement', distance = pend.dist, flight = math.floor(hMove) })
-              else
-                TriggerEvent('coreac:serverReport', src, 'TELEPORT', 'CRITICAL', { distance = pend.dist })
-              end
+            if not granted and inGame and not unexplained and not recentlyNoclip(src) then
+              TriggerEvent('coreac:serverReport', src, 'TELEPORT', 'CRITICAL', { distance = pend.dist })
+              prev.seen = now + 5000  -- kısa süre tekrar tetiklenmesin
             end
-          elseif inGame and settled and not granted and dist > 40.0 and perSec > limit
-              and not (CAC.isWhitelisted and CAC.isWhitelisted(src))
+          elseif eligible and dist > 40.0 and perSec > limit
               -- Yaya + yüksek fizik hızı = gerçek hareket (paraşüt/serbest düşüş,
               -- ragdoll fırlaması). Işınlanma/NoClip koordinatı elle kaydırır,
               -- velocity'yi büyütmez.
-              and (inVeh or #(GetEntityVelocity(ped)) < 30.0) then
+              and (inVeh or vel < 30.0) then
             if recentlyNoclip(src) then
-              -- Bu bir sıçrama değil NoClip uçuşu — TELEPORT atma. Client'ın
-              -- kendi NoClip tespiti zaten ~2 sn içinde doğru sebeple banlar;
-              -- o çalışmadıysa (devre dışı bırakılmış olabilir) yedek olarak
-              -- birkaç kez üst üste görülünce sunucu NOCLIP diye raporlar.
+              -- Çarpışması kapalı NoClip uçuşu — TELEPORT atma. Client'ın kendi
+              -- NoClip tespiti zaten doğru sebeple raporlar; o çalışmadıysa
+              -- (devre dışı bırakılmış olabilir) birkaç kez üst üste görülünce
+              -- sunucu NOCLIP diye raporlar.
               noclipFallbackStrike[src] = (noclipFallbackStrike[src] or 0) + 1
               if noclipFallbackStrike[src] >= 3 then
                 noclipFallbackStrike[src] = 0
                 TriggerEvent('coreac:serverReport', src, 'NOCLIP', 'CRITICAL', { source = 'server_fallback' })
+                prev.seen = now + 5000
               end
-            else
+            elseif not flight[src] or flight[src].n < 2 then
               -- Hemen TELEPORT deme: 1 sn sonraki örnek uçuş mu sıçrama mı söyler.
+              -- (Burada bekleme süresi başlatılmaz; uçuş sayacı işlemeye devam
+              -- etmeli ki NoClip gecikmeden NOCLIP olarak yakalansın.)
               jumpPending[src] = { dist = math.floor(dist), t = now }
             end
-            sPos[src].seen = now + 5000  -- kısa süre tekrar tetiklenmesin
           end
           prev.x, prev.y, prev.z, prev.t = c.x, c.y, c.z, now
         end
@@ -950,7 +1054,7 @@ local function teleportScan()
   for k in pairs(sPos) do
     if not online[k] then
       sPos[k] = nil; tpGrace[k] = nil; noclipFallbackStrike[k] = nil; jumpPending[k] = nil; CollState[k] = nil; armourStrikes[k] = nil
-      vehSpeedStreak[k] = nil
+      vehSpeedStreak[k] = nil; flight[k] = nil; heldWeaponGate[k] = nil
     end
   end
 end

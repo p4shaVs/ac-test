@@ -47,6 +47,8 @@ server_scripts {
   'server/protection.lua',
   'server/godmode_guard.lua',
   'server/vehicle_guard.lua',
+  'server/staff_tools.lua',   -- yetkili tanıma + txAdmin/qb-adminmenu araç muafiyeti
+  'server/entity_guard.lua',  -- fırlatılan araç, ses/megafon trolü, sunucu tuzak olayları
   'server/session_guard.lua',
   'server/liveness_guard.lua',
   'server/event_guard.lua',
@@ -100,6 +102,9 @@ client_scripts {
 
   -- 4. CAC client çekirdeği (CAC.report, replay buffer, grace flags)
   'client/core.lua',
+
+  -- 4b. Meşru ışınlanma (ekran kararması / admin olayları) + çatışma durumu
+  'client/legit_moves.lua',
 
   -- 5. CAC kendi tespit modülleri (client/detections/*) — DEVRE DIŞI.
   -- Tek tespit sistemi artık CoreAC modülleri (client/*.lua, vehicles/, weapons/).

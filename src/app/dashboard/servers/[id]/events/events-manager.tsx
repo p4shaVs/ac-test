@@ -83,8 +83,10 @@ export function EventsManager({
             <Icons.activity size={16} className="text-brand-400" /> Your protected events
           </h3>
           <p className="mb-4 text-xs text-slate-500">
-            Add an event <b className="text-slate-300">one at a time</b> and test it. When a player fires it, they are flagged
-            (kick — never an auto-ban, so a mistake can&apos;t ban anyone).
+            Add an event <b className="text-slate-300">one at a time</b> and test it. A player who fires it — locally or by
+            sending it to the server — is flagged as <i>Cheat Menu Event</i> (kick by default; raise it to ban in Actions once you
+            trust your list). Events named after a resource installed on your server (e.g. <code className="font-mono">qb-core:…</code>)
+            are ignored automatically.
           </p>
 
           <div className="flex gap-2">
@@ -92,7 +94,7 @@ export function EventsManager({
               <Icons.plus size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
               <input
                 className="input pl-9 font-mono text-sm"
-                placeholder="myresource:client:doThing"
+                placeholder="esx_truckerjob:pay"
                 value={value}
                 onChange={(e) => { setValue(e.target.value); setError(null); }}
                 onKeyDown={(e) => e.key === "Enter" && add()}
@@ -141,8 +143,8 @@ export function EventsManager({
               use will flag real players. When unsure, add it and watch the Events feed for a day before trusting it.
             </p>
             <p className="mt-2 text-xs leading-relaxed text-amber-200/70">
-              Client-local events only for now — don&apos;t add server→client events like{" "}
-              <code className="font-mono">hospital:client:Revive</code>.
+              Trapped on the server (cheat menus fire money/job exploits with TriggerServerEvent) and on the client. Never
+              add server→client events like <code className="font-mono">hospital:client:Revive</code>.
             </p>
           </Card>
 

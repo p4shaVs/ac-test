@@ -12,7 +12,11 @@
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "setup": "node scripts/panel.mjs setup",
+    "panel": "node scripts/panel.mjs start",
+    "panel:update": "node scripts/panel.mjs update",
+    "admin:reset": "node scripts/panel.mjs reset-admin"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

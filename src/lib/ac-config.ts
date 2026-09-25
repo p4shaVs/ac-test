@@ -73,7 +73,7 @@ export const AC_TABS: ACTab[] = [
         title: "Client Detections",
         desc: "Prevent client-side cheats and exploits",
         fields: [
-          T("Main", "AntiTeleport", "Anti Teleport", true, "Scripts that move players (garages, houses, jobs) should call TriggerEvent('coreac:markTeleport', src) on the server or TriggerEvent('coreac:markTeleport') on the client first. Teleport detections are logged by default — raise them to Kick in Actions once your scripts are wired up."),
+          T("Main", "AntiTeleport", "Anti Teleport", true, "Teleports behind a screen fade (QBCore/ESX houses, apartments, elevators, hospital, prison, spawn) and txAdmin / qb-adminmenu / QBCore /tp teleports are recognised automatically. Other scripts that move players should call TriggerEvent('coreac:markTeleport', src) on the server or TriggerEvent('coreac:markTeleport') on the client first. Teleport detections are logged by default."),
           T("Main", "AntiNoClip", "Anti NoClip", true),
           T("Main", "AntiSpeedHack", "Anti Speed Hack", true),
           T("Main", "AntiSuperJump", "Anti Super Jump", true),
@@ -82,11 +82,11 @@ export const AC_TABS: ACTab[] = [
           T("Main", "AntiSpectate", "Anti Spectate", true, "Your own admin spectate is exempt automatically"),
           T("Main", "AntiInvisible", "Anti Invisibility", true),
           T("Main", "AntiNoRagdoll", "Anti No-Ragdoll", true, "Scripts that intentionally disable ragdoll should call exports['<CoreAC folder>']:canRagdoll(false)"),
-          T("Main", "AntiFreeCam", "Anti FreeCam", true, "Geometric check only — scripted cameras (character creator, cutscenes) are not flagged"),
+          T("Main", "AntiFreeCam", "Anti FreeCam", true, "Flags a script camera held 80 m+ from the player for ~6 s while they have full control and no menu/UI open (character creators, cutscenes and garages don't qualify). If you run a drone/remote-camera script, set FreeCam to Log in Actions."),
           T("Main", "AntiPedModelChange", "Anti Model Change", true, "Multichar and clothing changes are recognised automatically"),
           T("Main", "AntiNightVisions", "Anti Night / Thermal Vision", true),
           T("Main", "AntiInfiniteStamina", "Anti Infinite Stamina", true),
-          T("Main", "AntiVoiceExploits", "Anti Voice Range Exploits", true, "Triggers above 50 m — well past what pma-voice/mumble use for shouting"),
+          T("Main", "AntiVoiceExploits", "Anti Voice / Sound Exploits", true, "Voice range held above 100 m (megaphone scripts use ~30-50 m), and interact-sound abuse checked on the server: sounds pushed to everyone, to a huge radius, above full volume or spammed."),
           T("Main", "AntiAFKBypass", "Anti AFK Bypass", true, "Flags wander/scenario tasks on your ped — turn off if your server applies AFK animations"),
         ],
       },
@@ -184,7 +184,7 @@ export const AC_TABS: ACTab[] = [
           // Düşük tutulursa meşru oynanış tetikler (QBCore interior + mobilya,
           // soygun propları, iş araçları aynı anda onlarca spawn eder).
           N("Entities", "VehiclesLimitIn5Seconds", "Vehicle Spawn Limit (per 5s)", 20, "Per player. Cheat menus spawn hundreds; keep this well above what your garages and job scripts create at once."),
-          T("Entities", "AntiThrowVehicles", "Anti Vehicle Throwing", true),
+          T("Entities", "AntiThrowVehicles", "Anti Vehicle Throwing", true, "Server-side: a driverless vehicle flying faster than 250 km/h is deleted on the spot (protects the victim). The owner is only flagged when they created that vehicle and it happens twice within 30 s."),
           T("Entities", "AntiDeleteVehicles", "Anti Vehicle Deletion", true),
           // Değerler FiveM'in GetVehicleTopSpeedModifier / GetVehicleCheatPowerIncrease /
           // GetVehicleGravityAmount getter'larından okunur (bridge/client.lua).
@@ -305,6 +305,7 @@ export const AC_TABS: ACTab[] = [
         desc: "How detections are acted on",
         fields: [
           T("Settings", "LogOnly", "Log-Only Mode (never kick/ban)", false, "Detections are still recorded and shown in the panel, but nobody is kicked or banned. Use it when rolling out a risky protection, then turn it back off."),
+          T("Settings", "StaffBypass", "Never punish server staff", true, "Admins verified by the server (txAdmin, QBCore/ESX admin, ACE 'command', in-game admins added here) are never auto-kicked or banned — their admin tools (noclip, godmode, teleport) look exactly like cheats. Detections are still logged and marked 'staff'. Turn this off to test the anti-cheat with your own admin account."),
           T("Settings", "EnableGameplayRecord", "Enable Gameplay Recording", true, "Captures a short screenshot burst at the moment of an auto-ban (requires screencapture or screenshot-basic)"),
         ],
       },

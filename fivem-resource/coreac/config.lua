@@ -32,7 +32,7 @@ Config.ResourceSyncInterval= 45   -- kaynak listesini gönderir
 Config.LogFlushInterval    = 10   -- birikmiş logları gönderir
 Config.PositionInterval    = 3    -- canlı konum/can/kalkan gönderimi (harita/izleme)
 Config.WhitelistInterval   = 60   -- bypass listesini tazeler
-Config.BlacklistInterval   = 60   -- kara listeyi tazeler
+Config.BlacklistInterval   = 15   -- kara listeyi tazeler (panelde eklenen model ~15 sn'de uygulanır)
 Config.AdminInterval       = 60   -- yönetici listesi + izinleri tazeler
 Config.ScreenshotInterval  = 5    -- bekleyen ekran görüntüsü isteklerini çeker
 
