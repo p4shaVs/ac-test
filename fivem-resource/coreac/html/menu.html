@@ -6,47 +6,27 @@
   <link rel="stylesheet" href="menu.css" />
 </head>
 <body>
-  <!-- Announcement banner — top center, shows even when the menu is closed. -->
-  <div id="banner" class="banner"></div>
+  <!-- Announcements, admin messages and warnings — top centre, shown even when the panel is closed. -->
+  <div id="notices" class="notices"></div>
 
-  <!-- Direct-message popups — bottom right, independent of the menu. -->
-  <div id="dmStack" class="dm-stack"></div>
-
-  <!-- Live anti-cheat alerts for staff — top right, independent of the menu. -->
+  <!-- Live anti-cheat alerts for staff — top right, independent of the panel. -->
   <div id="alertStack" class="alert-stack"></div>
 
-  <!-- Admin panel -->
+  <!-- Admin panel (/cac) -->
   <div id="root" class="hidden">
-    <div class="panel" role="dialog" aria-label="Admin panel">
-      <div class="panel-glow"></div>
-
+    <div class="panel" role="dialog" aria-label="CoreAC admin panel">
       <header class="head">
         <div class="brand">
-          <span class="mark">
-            <svg viewBox="0 0 64 64" aria-hidden="true">
-              <defs>
-                <linearGradient id="csMark" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0" stop-color="#818cf8" />
-                  <stop offset="0.5" stop-color="#6366f1" />
-                  <stop offset="1" stop-color="#a855f7" />
-                </linearGradient>
-              </defs>
-              <path d="M32 5 L57 14 V32.5 L32 59 L7 32.5 V14 Z" fill="none" stroke="url(#csMark)" stroke-width="5" stroke-linejoin="round" />
-              <path d="M32 22 L40 26.6 V35.8 L32 40.4 L24 35.8 V26.6 Z" fill="url(#csMark)" />
-            </svg>
-          </span>
-          <div class="brand-text">
-            <span id="brand">CoreAC</span>
-            <span class="sub">Admin Panel</span>
-          </div>
+          <span class="logo" id="brand">CORE<b>AC</b></span>
+          <span class="crumb" id="crumb">Players</span>
         </div>
         <div class="head-right">
-          <div id="specPill" class="pill spec hidden">
+          <div id="specPill" class="chip spec hidden">
             <span class="dot"></span><span id="specText">Spectating</span>
-            <button id="specStop" class="pill-btn">Stop</button>
+            <button id="specStop" class="chip-btn">Stop</button>
           </div>
-          <div class="pill online"><span class="dot live"></span><span id="onlineCount">0</span><span class="pill-lbl">online</span></div>
-          <button id="close" class="icon-btn" title="Close (Esc)"></button>
+          <div class="chip"><span class="dot live"></span><b id="onlineCount">0</b> online</div>
+          <button id="close" class="close-btn" title="Close">ESC</button>
         </div>
       </header>
 

@@ -155,7 +155,7 @@ TriggerEvent('coreac:markRevive')           -- client`}</Code>
 
             <Section id="menu" title="In-game admin menu">
               <p>
-                Open it with <C>/acmenu</C> or <C>F6</C>. Add admins on your server&apos;s <b className="text-slate-300">Admins</b> page
+                Open it with <C>/cac</C> (no key by default). Add admins on your server&apos;s <b className="text-slate-300">Admins</b> page
                 with the identifier shown by <C>/ac id</C>, and tick what each one may do — the server re-checks every action.
               </p>
               <ul className="list-disc space-y-1 pl-5">
@@ -185,7 +185,7 @@ ac reload                           pull the configuration from the panel now`}<
                       ["coreac_api", "Panel API URL (…/api/v1). Must be public for screenshots."],
                       ["coreac_token", "The server token from the Download page."],
                       ["coreac_detections", "\"false\" pauses every detection (test mode)."],
-                      ["coreac_menu_key", "Admin menu key, default F6. Empty = no key."],
+                      ["coreac_menu_key", "Optional key that opens /cac (e.g. F6). Empty by default."],
                       ["coreac_logo", "Public logo URL for the connect/ban card."],
                       ["coreac_ss_upload", "Custom screenshot upload URL (optional)."],
                     ].map(([k, v]) => (

@@ -7,7 +7,7 @@ import { rateLimit } from "@/lib/ratelimit";
 import { generateBanCode } from "@/lib/keys";
 import { parseJson } from "@/lib/utils";
 import { isWhitelisted } from "@/lib/bypass";
-import { sendWebhook } from "@/lib/discord";
+import { sendWebhook, webhookEnabled } from "@/lib/discord";
 import { sanitizeActions, resolveAction, capByConfidence, severityForType, detectionLabel } from "@/lib/detection-actions";
 import { recordNetworkBan } from "@/lib/network-bans";
 
@@ -91,21 +91,12 @@ export const POST = handler(async (req: NextRequest) => {
 
   // Bypass (whitelist) kontrolü — muaf oyuncular ne kick ne ban yer.
   const whitelisted = player
-    ? await isWhitelisted(server.id, {
-        license: player.license,
-        discord: player.discord,
-        steam: player.steam,
-        ip: player.ip,
-      })
+    ? await isWhitelisted(
+        server.id,
+        { license: player.license, discord: player.discord, steam: player.steam, ip: player.ip },
+        body.type // scoped entries only exempt the protections they list
+      )
     : false;
-
-  void sendWebhook(server.config, "detection", server.name, {
-    player: body.playerName,
-    reason: `${body.type} (${severity})${whitelisted ? " — BYPASSED (whitelisted)" : body.bypass === "staff" ? " — staff (not punished)" : ""}`,
-    identifiers: player
-      ? { license: player.license, discord: player.discord, steam: player.steam, ip: player.ip }
-      : undefined,
-  });
 
   // ---------------------------------------------------------------------
   // Aksiyon kararı: müşterinin Yapılandırma → Aksiyonlar'da tespit tipi
@@ -218,14 +209,6 @@ export const POST = handler(async (req: NextRequest) => {
         screenshotRequestIds = shots.map((s) => s.id);
       }
 
-      void sendWebhook(server.config, "autoban", server.name, {
-        player: player.name,
-        reason: body.type,
-        code: banCode,
-        by: "AntiCheat",
-        identifiers: { license: player.license, discord: player.discord, steam: player.steam, ip: player.ip },
-      });
-
       // Feed the (permanent) ban into the network reputation — only if this
       // server opted to contribute. Hashed identifiers only; see network-bans.ts.
       await recordNetworkBan(server, {
@@ -253,6 +236,24 @@ export const POST = handler(async (req: NextRequest) => {
   }
 
   await db.detection.update({ where: { id: detection.id }, data: { action } });
+
+  // Discord: ONE message per detection, sent after the outcome is known
+  // (it used to post "detection" before the decision and "autoban" again after).
+  const hookEvent = banned && webhookEnabled(server.config, "autoban") ? "autoban" : "detection";
+  void sendWebhook(server.config, hookEvent, server.name, {
+    player: body.playerName,
+    detectionLabel: detectionLabel(body.type),
+    action,
+    origin: body.origin,
+    staff: body.bypass === "staff",
+    code: banCode ?? undefined,
+    by: whitelisted ? "Trust whitelist (not punished)" : undefined,
+    evidence: rawDetails,
+    identifiers: player
+      ? { license: player.license, discord: player.discord, steam: player.steam, ip: player.ip }
+      : undefined,
+    panelPath: banned ? `/dashboard/servers/${server.id}/bans` : `/dashboard/servers/${server.id}/logs`,
+  });
 
   // banned/kicked=true → kaynak oyuncuyu hemen atmalı.
   // screenshotRequestIds doluysa kaynak, DropPlayer'dan ÖNCE bu id'ler için

@@ -181,6 +181,10 @@ function pingClass(p) {
   if (p < 160) return "p-mid";
   return "p-bad";
 }
+function pingNode(p) {
+  if (typeof p !== "number") return null;
+  return h("span", { class: "ping " + pingClass(p) }, h("span", { class: "bars" }, h("i"), h("i"), h("i")), (p > 0 ? p : "—") + "ms");
+}
 function short(text, n) {
   const s = String(text || "");
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
@@ -231,11 +235,16 @@ function visibleTabs() { return TABS.filter((t) => !t.perms || t.perms.some(can)
 function renderTabs() {
   const nav = $("tabs");
   nav.textContent = "";
-  visibleTabs().forEach((t) => {
+  visibleTabs().forEach((t, i) => {
     if (t.sep) nav.appendChild(h("div", { class: "tab-sep" }));
-    nav.appendChild(h("button", { class: "tab" + (TAB === t.id ? " active" : ""), onclick: () => switchTab(t.id) }, icon(t.icon), h("span", null, t.label)));
+    nav.appendChild(h("button", { class: "tab" + (TAB === t.id ? " active" : ""), onclick: () => switchTab(t.id) },
+      icon(t.icon), h("span", null, t.label), i < 9 ? h("kbd", null, String(i + 1)) : null));
   });
-  nav.appendChild(h("div", { class: "tab-foot" }, `Esc${MENU_KEY ? " or " + MENU_KEY : ""} to close.`, h("br"), "Every action is re-checked by the server."));
+  nav.appendChild(h("div", { class: "tab-foot" },
+    h("kbd", null, "1–" + Math.min(visibleTabs().length, 9)), " switch  ", h("kbd", null, "/"), " search", h("br"),
+    h("kbd", null, "Esc"), " close · every action is re-checked by the server."));
+  const cur = TABS.find((t) => t.id === TAB);
+  $("crumb").textContent = cur ? cur.label : "";
 }
 function switchTab(id) {
   if (TAB === id) return;
@@ -323,12 +332,9 @@ function renderPlayerList() {
   list.forEach((p) => {
     const nm = p.name || "Player#" + p.id;
     R.plist.appendChild(h("button", { class: "prow" + (p.id === SELECTED ? " active" : ""), onclick: () => selectPlayer(p.id) },
-      avatarNode(p.avatar, nm, "mini-av"),
-      h("span", { class: "pmeta" },
-        h("span", { class: "pname" }, nm),
-        h("span", { class: "psub" }, h("span", { class: "pid" }, "#" + p.id), p.id === SELF ? h("span", { class: "you" }, "You") : null)
-      ),
-      typeof p.ping === "number" ? h("span", { class: "ping " + pingClass(p.ping) }, (p.ping > 0 ? p.ping : "—") + "ms") : null
+      h("span", { class: "pid" }, "#" + p.id),
+      h("span", { class: "pname" }, h("span", { style: "overflow:hidden;text-overflow:ellipsis" }, nm), p.id === SELF ? h("span", { class: "you" }, "You") : null),
+      pingNode(p.ping)
     ));
   });
 }
@@ -343,22 +349,12 @@ function selectPlayer(id) {
 }
 function requestDetail(id) { post("playerDetail", { id }); }
 
-function ring(pct, color, label) {
-  const C = 138.23; // 2*pi*22
+function meter(label, pct, color) {
   const has = pct !== null && pct !== undefined;
   const val = has ? clamp(pct, 0, 100) : 0;
-  const svg = document.createElementNS(NS, "svg");
-  svg.setAttribute("viewBox", "0 0 52 52"); svg.setAttribute("width", "52"); svg.setAttribute("height", "52");
-  const mk = (cls, extra) => {
-    const c = document.createElementNS(NS, "circle");
-    c.setAttribute("cx", "26"); c.setAttribute("cy", "26"); c.setAttribute("r", "22");
-    c.setAttribute("fill", "none"); c.setAttribute("stroke-width", "5"); c.setAttribute("class", cls);
-    for (const k in (extra || {})) c.setAttribute(k, extra[k]);
-    return c;
-  };
-  svg.appendChild(mk("track"));
-  svg.appendChild(mk("val", { stroke: color, "stroke-dasharray": C, "stroke-dashoffset": C * (1 - val / 100), "stroke-linecap": "round" }));
-  return h("div", { class: "ring" }, svg, h("div", { class: "ring-c" }, h("b", null, has ? Math.round(val) : "—"), h("span", null, label)));
+  return h("div", null,
+    h("div", { class: "meter-top" }, label, h("b", null, has ? Math.round(val) : "—")),
+    h("div", { class: "meter" }, h("i", { style: `width:${val}%;background:${color}` })));
 }
 
 function stat(label, value, tone) {
@@ -375,8 +371,8 @@ function renderDetail() {
 
   if (SELECTED === null) {
     box.appendChild(h("div", { class: "detail-empty" }, h("span", { class: "big" }, icon("user")),
-      h("div", { style: "font-weight:800;color:var(--text);font-size:15px" }, "No player selected"),
-      h("div", null, "Pick a player to see their profile, history and actions.")));
+      h("b", null, "No player selected"),
+      h("div", null, "Pick a player on the left to see their profile, history and actions.")));
     return;
   }
 
@@ -397,18 +393,21 @@ function renderDetail() {
         h("span", { class: "pid" }, "#" + SELECTED),
         isSelf ? h("span", { class: "you" }, "You") : null,
         online ? badge("Online", "b-green") : badge("Left", "b-gray"),
-        typeof live.ping === "number" ? h("span", { class: "ping " + pingClass(live.ping) }, (live.ping > 0 ? live.ping : "—") + " ms") : null,
         live.inVehicle ? badge("In vehicle", "b-blue") : null,
-        live.muted ? badge("Muted", "b-amber") : null
+        live.muted ? badge("Muted", "b-amber") : null,
+        pingNode(live.ping)
       )
-    ),
-    (hpPct !== null || arPct !== null) ? h("div", { class: "rings" }, ring(hpPct, "#34d399", "HP"), ring(arPct, "#818cf8", "Armor")) : null
+    )
   ));
+
+  if (hpPct !== null || arPct !== null) {
+    box.appendChild(h("div", { class: "vitals" }, meter("Health", hpPct, "var(--ok)"), meter("Armor", arPct, "var(--info)")));
+  }
 
   if (prof) {
     const ts = typeof prof.trustScore === "number" ? prof.trustScore : null;
     const c = prof.counts || {};
-    box.appendChild(h("div", { class: "stats" },
+    box.appendChild(h("div", { class: "strip" },
       stat("Trust", ts === null ? "—" : ts, ts === null ? "" : ts >= 70 ? "good" : ts >= 40 ? "mid" : "bad"),
       stat("Playtime", fmtPlay(prof.playtimeSec)),
       stat("Detections", c.detections || 0, (c.detections || 0) > 0 ? "mid" : ""),
@@ -417,35 +416,36 @@ function renderDetail() {
       stat("Warns", c.warns || 0, (c.warns || 0) > 0 ? "mid" : "")
     ));
   } else if (DETAIL && DETAIL.loading) {
-    box.appendChild(h("div", { class: "state", style: "padding:14px" }, h("div", { class: "spinner" })));
+    box.appendChild(h("div", { class: "state", style: "padding:18px" }, h("div", { class: "spinner" })));
   }
 
   if (live.license || live.discord) {
-    box.appendChild(h("div", { class: "ids" }, live.license ? idRow("License", live.license) : null, live.discord ? idRow("Discord", live.discord) : null));
+    box.appendChild(h("div", { class: "block" }, h("div", { class: "block-t" }, "Identifiers"),
+      h("div", { class: "ids" }, live.license ? idRow("License", live.license) : null, live.discord ? idRow("Discord", live.discord) : null)));
   }
 
   if (online) {
+    const groups = [];
     ACTION_GROUPS.forEach((g) => {
       const items = g.items.filter((a) => can(a.perm || a.key) && (!isSelf || a.self) && !(a.hideIf && a.hideIf(live)));
       if (!items.length) return;
-      box.appendChild(h("div", { class: "agroup" },
+      groups.push(h("div", { class: "agroup" },
         h("div", { class: "agroup-t" }, g.title),
         h("div", { class: "actions" }, items.map((a) => h("button", { class: "btn " + (a.tone || ""), onclick: () => runAction(a, SELECTED, name) }, icon(a.icon), a.label)))
       ));
     });
+    if (groups.length) box.appendChild(h("div", { class: "block" }, h("div", { class: "block-t" }, "Actions"), groups));
   }
 
   if (prof) {
-    box.appendChild(h("div", { class: "section-t" }, "Recent history"));
     const hist = arr(prof.history);
-    if (!hist.length) {
-      box.appendChild(h("div", { class: "t-muted", style: "padding:4px 2px" }, prof.known ? "Clean record — nothing on file." : "First time seen on this server."));
-    } else {
-      box.appendChild(h("div", { class: "timeline" }, hist.map((ev) => {
-        const k = KIND[ev.kind] || [ev.kind || "Event", "b-gray"];
-        return h("div", { class: "ev" }, badge(k[0], k[1]), h("span", { class: "ev-text", title: ev.text || "" }, ev.text || ""), h("span", { class: "ev-by" }, (ev.by ? ev.by + " · " : "") + ago(ev.at)));
-      })));
-    }
+    box.appendChild(h("div", { class: "block" }, h("div", { class: "block-t" }, "Recent history"),
+      !hist.length
+        ? h("div", { class: "t-muted" }, prof.known ? "Clean record — nothing on file." : "First time seen on this server.")
+        : h("div", { class: "timeline" }, hist.map((ev) => {
+            const k = KIND[ev.kind] || [ev.kind || "Event", "b-gray"];
+            return h("div", { class: "ev" }, badge(k[0], k[1]), h("span", { class: "ev-text", title: ev.text || "" }, ev.text || ""), h("span", { class: "ev-by" }, (ev.by ? ev.by + " · " : "") + ago(ev.at)));
+          }))));
   }
 }
 
@@ -474,10 +474,14 @@ function runAction(a, id, name, confirmed) {
   setTimeout(() => { if (SELECTED === id) requestDetail(id); }, 1200);
 }
 
+function modalCard(title, sub, ...body) {
+  return h("div", { class: "modal-card" },
+    h("div", { class: "modal-head" }, h("h3", { title }, title), sub ? h("div", { class: "m-sub" }, sub) : null),
+    h("div", { class: "modal-body" }, body));
+}
+
 function confirmWipe(a, id, name) {
-  showModal(h("div", { class: "modal-card" },
-    h("h3", { title: name }, `Wipe spawns of ${short(name, 28)}`),
-    h("div", { class: "m-sub" }, `#${id} · Deletes every vehicle, object and NPC this player created on the server.`),
+  showModal(modalCard(`Wipe spawns · ${short(name, 28)}`, `#${id} · deletes every vehicle, object and NPC this player created on the server.`,
     h("div", { class: "t-muted", style: "font-size:12px;line-height:1.5" },
       "Use it after a cheater filled the map with props or cars. Their own garage vehicles count too — other players and the map are never touched."),
     h("div", { class: "row-end" },
@@ -541,9 +545,7 @@ function openActionModal(kind, id, name) {
   }
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
 
-  showModal(h("div", { class: "modal-card" },
-    h("h3", { title: name }, `${cfg.title} ${short(name, 30)}`),
-    h("div", { class: "m-sub" }, `#${id} · ${cfg.sub}`),
+  showModal(modalCard(`${cfg.title} · ${short(name, 30)}`, `#${id} · ${cfg.sub}`,
     h("label", null, kind === "dm" ? "Message" : "Reason"),
     input,
     h("div", { class: "presets" }, REASONS[kind].map((r) => h("button", { class: "preset", onclick: () => { input.value = r; input.focus(); } }, r))),
@@ -558,9 +560,7 @@ function openActionModal(kind, id, name) {
 }
 
 function confirmUnban(row) {
-  showModal(h("div", { class: "modal-card" },
-    h("h3", { title: row.name }, `Unban ${short(row.name, 30)}`),
-    h("div", { class: "m-sub" }, `Ban ID ${row.code || "—"} · ${row.reason || "No reason"}`),
+  showModal(modalCard(`Unban · ${short(row.name, 30)}`, `Ban ID ${row.code || "—"} · ${row.reason || "No reason"}`,
     h("div", { class: "t-muted", style: "font-size:12px" }, "They can join again straight away. This also clears your network-reputation contribution."),
     h("div", { class: "row-end" },
       h("button", { class: "btn", onclick: closeModal }, "Cancel"),
@@ -578,7 +578,7 @@ const TABLES = {
       { label: "Ban ID", w: "12%", cls: "t-code", cell: (r) => r.code || "—" },
       { label: "Reason", title: (r) => r.reason, cell: (r) => r.reason },
       { label: "By", w: "14%", cls: "t-muted", cell: (r) => r.by },
-      { label: "Issued", w: "10%", cls: "t-muted", cell: (r) => ago(r.at) },
+      { label: "Issued", w: "10%", cls: "t-time", cell: (r) => ago(r.at) },
       { label: "Expires", w: "12%", cell: (r) => (r.permanent || !r.expiresAt ? badge("Permanent", "b-red") : badge(untilText(r.expiresAt), "b-amber")) },
       { label: "", w: "86px", right: true, cell: (r) => (can("unban") ? h("button", { class: "btn sm", onclick: () => confirmUnban(r) }, "Unban") : null) },
     ],
@@ -589,7 +589,7 @@ const TABLES = {
       { label: "Player", w: "24%", cls: "t-name", cell: (r) => r.name },
       { label: "Reason", title: (r) => r.reason, cell: (r) => r.reason },
       { label: "By", w: "20%", cls: "t-muted", cell: (r) => r.by },
-      { label: "When", w: "12%", cls: "t-muted", cell: (r) => ago(r.at) },
+      { label: "When", w: "12%", cls: "t-time", cell: (r) => ago(r.at) },
     ],
   },
   warns: {
@@ -598,7 +598,7 @@ const TABLES = {
       { label: "Player", w: "24%", cls: "t-name", cell: (r) => r.name },
       { label: "Reason", title: (r) => r.reason, cell: (r) => r.reason },
       { label: "By", w: "20%", cls: "t-muted", cell: (r) => r.by },
-      { label: "When", w: "12%", cls: "t-muted", cell: (r) => ago(r.at) },
+      { label: "When", w: "12%", cls: "t-time", cell: (r) => ago(r.at) },
     ],
   },
   detections: {
@@ -608,7 +608,7 @@ const TABLES = {
       { label: "Detection", title: (r) => r.type, cell: (r) => r.label || r.type },
       { label: "Severity", w: "14%", cell: (r) => badge(r.severity || "LOW", SEVERITY_TONE[r.severity] || "b-gray") },
       { label: "Action", w: "11%", cell: (r) => badge(r.action || "LOG", ACTION_TONE[r.action] || "b-gray") },
-      { label: "When", w: "12%", cls: "t-muted", cell: (r) => ago(r.at) },
+      { label: "When", w: "12%", cls: "t-time", cell: (r) => ago(r.at) },
     ],
   },
   logs: {
@@ -617,7 +617,7 @@ const TABLES = {
       { label: "Level", w: "17%", cell: (r) => badge(r.level || "INFO", LEVEL_TONE[r.level] || "b-gray") },
       { label: "Source", w: "13%", cls: "t-muted", cell: (r) => r.source },
       { label: "Message", title: (r) => r.message, cell: (r) => r.message },
-      { label: "When", w: "12%", cls: "t-muted", cell: (r) => ago(r.at) },
+      { label: "When", w: "12%", cls: "t-time", cell: (r) => ago(r.at) },
     ],
   },
 };
@@ -669,8 +669,8 @@ function renderServerView() {
     const counter = h("span", { class: "counter" }, "0 / 200");
     ta.addEventListener("input", () => { counter.textContent = ta.value.length + " / 200"; });
     cards.appendChild(h("div", { class: "card" },
-      h("h4", null, "Announcement"),
-      h("p", null, "Broadcast a banner to everyone online. It slides in from the top of their screen."),
+      h("h4", null, icon("megaphone"), "Announcement"),
+      h("p", null, "Broadcast to everyone online. It appears at the top centre of their screen."),
       ta,
       h("div", { class: "row-end" }, counter, h("button", { class: "btn primary", onclick: () => {
         const t = ta.value.trim(); if (!t) return;
@@ -693,7 +693,7 @@ function renderServerView() {
     });
     paint();
     cards.appendChild(h("div", { class: "card" },
-      h("h4", null, h("span", { class: "h4-ico" }, icon("bell")), "Detection alerts"),
+      h("h4", null, icon("bell"), "Detection alerts"),
       h("p", null, "A pop-up in your corner of the screen the moment the anti-cheat catches someone — with their ID, so you can spectate straight away. Saved on this PC."),
       seg
     ));
@@ -724,68 +724,56 @@ function renderServerView() {
     posVal.textContent = posText;
   };
   cards.appendChild(h("div", { class: "card" },
-    h("h4", null, "Tools"),
+    h("h4", null, icon("wrench"), "Tools"),
     h("p", null, "Player tags show the server ID, name and health above everyone near you (only on your screen)."),
     tools.length ? h("div", { class: "tool-row" }, tools) : null,
     h("div", { class: "idrow", style: "margin-top:12px" },
-      h("span", { class: "idk" }, "My position"), posVal,
+      h("span", { class: "idk" }, "Position"), posVal,
       h("button", { class: "btn sm", onclick: async () => { await refreshPos(); if (posText) copyText(posText); } }, icon("copy"), "Copy")
     )
   ));
   refreshPos();
 
   cards.appendChild(h("div", { class: "card" },
-    h("h4", null, "Your access"),
+    h("h4", null, icon("lock"), "Your access"),
     h("p", null, "Granted from the web panel (Server → Admins). The server re-checks every action."),
     h("div", { class: "chips" }, Object.keys(PERMS).sort().map((p) => badge(PERM_LABEL[p] || p, "b-blue")))
   ));
 
-  const line = (k, val) => h("div", { class: "idrow" }, h("span", { class: "idk", style: "width:auto;flex:1" }, k), h("span", { class: "idv" }, val));
+  const line = (k, val) => h("div", null, h("span", null, k), h("b", null, val));
   cards.appendChild(h("div", { class: "card" },
-    h("h4", null, "Session"),
+    h("h4", null, icon("server"), "Session"),
     h("p", null, "Live information from this server."),
-    h("div", { class: "ids" }, line("Players online", String(PLAYERS.length)), line("Your server ID", "#" + SELF), line("Spectating", SPEC.on ? (SPEC.target ? "#" + SPEC.target : "Yes") : "No"))
+    h("div", { class: "kv" }, line("Players online", String(PLAYERS.length)), line("Your server ID", "#" + SELF), line("Spectating", SPEC.on ? (SPEC.target ? "#" + SPEC.target : "yes") : "no"))
   ));
 
   v.appendChild(h("div", { class: "view-body" }, cards));
 }
 
-// ------------------------------------------------- announcement + DM overlays
-function progressBar(seconds) {
-  const bar = h("div", { class: "a-bar run" });
-  bar.style.animationDuration = seconds + "s";
-  return bar;
-}
-function showAnnounce(message, from) {
+// ----------------------------------------- notices (announce / message / warning)
+// One stack at the top centre of the screen, visible with or without the panel.
+const NOTICE = {
+  announce: { tag: "Announcement", icon: "megaphone", seconds: 9 },
+  dm: { tag: "Message from staff", icon: "message", seconds: 14 },
+  warn: { tag: "Warning", icon: "warn", seconds: 16 },
+};
+function showNotice(kind, message, from) {
   if (!message) return;
-  const box = $("banner");
-  const el = h("div", { class: "announce" },
-    h("div", { class: "a-ico" }, icon("megaphone")),
-    h("div", { class: "a-body" },
-      h("div", { class: "a-lbl" }, "Announcement"),
-      h("div", { class: "a-msg" }, message),
-      from ? h("div", { class: "a-from" }, "— " + from) : null
+  const cfg = NOTICE[kind] || NOTICE.announce;
+  const bar = h("div", { class: "n-bar run" });
+  bar.style.animationDuration = cfg.seconds + "s";
+  const el = h("div", { class: "notice " + kind },
+    h("div", { class: "n-side" }, icon(cfg.icon)),
+    h("div", { class: "n-body" },
+      h("div", { class: "n-top" }, h("span", { class: "n-tag" }, cfg.tag), from ? h("span", { class: "n-from" }, from) : null),
+      h("div", { class: "n-msg" }, message)
     ),
-    progressBar(8)
+    bar
   );
+  const box = $("notices");
   box.appendChild(el);
   while (box.children.length > 3) box.removeChild(box.firstChild);
-  setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 400); }, 8000);
-}
-function showDm(from, message) {
-  if (!message) return;
-  const box = $("dmStack");
-  const el = h("div", { class: "dm" },
-    h("div", { class: "dm-av" }, (String(from).trim()[0] || "A").toUpperCase()),
-    h("div", { class: "dm-body" },
-      h("div", { class: "dm-from" }, from, h("small", null, " · Admin")),
-      h("div", { class: "dm-msg" }, message)
-    ),
-    progressBar(14)
-  );
-  box.appendChild(el);
-  while (box.children.length > 4) box.removeChild(box.firstChild);
-  setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 300); }, 14000);
+  setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 320); }, cfg.seconds * 1000);
 }
 
 // Live anti-cheat alert (staff only — the server sends these to admins with
@@ -796,13 +784,9 @@ function showAlert(a) {
   const box = $("alertStack");
   const tone = ALERT_TONE[a.action] || ALERT_TONE.LOG;
   const el = h("div", { class: "ac-alert " + (a.action === "BAN" ? "ban" : a.action === "KICK" ? "kick" : "log") },
-    h("div", { class: "ac-ico" }, icon("shield")),
-    h("div", { class: "ac-body" },
-      h("div", { class: "ac-top" }, h("span", { class: "ac-lbl" }, "CoreAC"), badge(tone[0], tone[1])),
-      h("div", { class: "ac-msg" }, h("b", null, `#${a.id} `), short(a.name, 26)),
-      h("div", { class: "ac-type" }, short(a.label, 40))
-    ),
-    progressBar(9)
+    h("div", { class: "ac-top" }, h("span", { class: "ac-lbl" }, "CoreAC detection"), badge(tone[0], tone[1])),
+    h("div", { class: "ac-msg" }, h("b", null, `#${a.id}`), short(a.name, 26)),
+    h("div", { class: "ac-type" }, short(a.label, 44))
   );
   box.appendChild(el);
   while (box.children.length > 4) box.removeChild(box.firstChild);
@@ -829,7 +813,8 @@ window.addEventListener("message", (e) => {
       ALERT_MODE = d.alertMode || ALERT_MODE;
       TAGS = !!d.tags;
       for (const k of Object.keys(tabRows)) delete tabRows[k];
-      $("brand").textContent = d.brand || "CoreAC";
+      // A custom brand name replaces the wordmark; the default keeps its styling.
+      if (d.brand && d.brand !== "CoreAC") $("brand").textContent = d.brand;
       if (!visibleTabs().some((t) => t.id === TAB)) TAB = "players";
       renderTabs();
       updateOnline();
@@ -856,23 +841,35 @@ window.addEventListener("message", (e) => {
     }
     case "result": { if (d.action === "unban") { toast(d.ok ? "Ban lifted" : "Unban failed — it may already be lifted", d.ok ? "ok" : "err"); if (d.ok) fetchTab("bans"); } break; }
     case "spectate": { SPEC = { on: !!d.on, target: d.on ? d.target || null : null }; updateSpec(); break; }
-    case "announce": showAnnounce(d.message || "", d.from || ""); break;
-    case "dm": showDm(d.from || "Admin", d.message || ""); break;
+    case "announce": showNotice("announce", d.message || "", d.from || ""); break;
+    case "dm": showNotice("dm", d.message || "", d.from || "Admin"); break;
+    case "warn": showNotice("warn", d.message || "", d.from || ""); break;
     case "acAlert": showAlert(d.alert); break;
     case "close": hideMenu(); break;
   }
 });
 
-$("close").appendChild(icon("close"));
 $("close").addEventListener("click", closeMenu);
 $("specStop").addEventListener("click", () => { post("stopSpectate"); toast("Returning to your position…"); });
 $("modal").addEventListener("mousedown", (e) => { if (e.target === $("modal")) closeModal(); });
 
 document.addEventListener("keydown", (e) => {
+  if ($("root").classList.contains("hidden")) return;
   const typing = e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA");
   const menuKey = MENU_KEY && e.key && e.key.toUpperCase() === MENU_KEY.toUpperCase() && (!typing || MENU_KEY.length > 1);
   if (e.key === "Escape" || menuKey) {
     if (modalOpen()) { closeModal(); return; }
+    if (typing) { e.target.blur(); return; }
     closeMenu();
+    return;
+  }
+  if (typing || modalOpen()) return;
+  // 1–9 switch tab · "/" focuses the current view's search box
+  if (/^[1-9]$/.test(e.key)) {
+    const t = visibleTabs()[Number(e.key) - 1];
+    if (t) { e.preventDefault(); switchTab(t.id); }
+  } else if (e.key === "/") {
+    const inp = document.querySelector("#view .search input");
+    if (inp) { e.preventDefault(); inp.focus(); }
   }
 });

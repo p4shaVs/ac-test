@@ -3,409 +3,379 @@ import { getOwnedServer } from "@/lib/guards";
 import { db } from "@/lib/db";
 import { getUserOverview } from "@/lib/stats";
 import { Card } from "@/components/ui";
-import { AreaTrend, DonutChart } from "@/components/charts";
-import { DONUT_PALETTE } from "@/lib/palette";
+import { AreaTrend } from "@/components/charts";
 import { Icons, type IconName } from "@/components/icons";
-import { ServerInfoCards } from "./server-info-cards";
 import { detectionLabel } from "@/lib/detection-actions";
-import { cn, timeAgo, formatDateTime } from "@/lib/utils";
+import { evidenceLine } from "@/lib/evidence";
+import { readWebhookConfig } from "@/lib/discord";
+import { trollPropPreset } from "@/lib/troll-props";
+import { env } from "@/lib/env";
+import { cn, parseJson, timeAgo } from "@/lib/utils";
+import { CopyKey } from "./copy-key";
 
 export const dynamic = "force-dynamic";
 
-const ACCENTS: Record<string, { border: string; text: string }> = {
-  blue: { border: "#6366f1", text: "text-brand-300" },
-  purple: { border: "#a855f7", text: "text-purple-300" },
-  red: { border: "#ef4444", text: "text-rose-300" },
-  green: { border: "#10b981", text: "text-emerald-300" },
-};
-
-const SEV: Record<string, string> = {
-  CRITICAL: "text-rose-300 bg-rose-500/10 ring-rose-500/25",
-  HIGH: "text-amber-300 bg-amber-500/10 ring-amber-500/25",
-  MEDIUM: "text-brand-300 bg-brand-500/10 ring-brand-500/25",
-  LOW: "text-slate-400 bg-white/5 ring-white/10",
-};
-const SEV_DOT: Record<string, string> = {
-  CRITICAL: "bg-rose-400",
-  HIGH: "bg-amber-400",
-  MEDIUM: "bg-brand-400",
-  LOW: "bg-slate-500",
-};
 const ACT: Record<string, string> = {
-  BAN: "text-rose-300 bg-rose-500/10",
-  KICK: "text-amber-300 bg-amber-500/10",
-  LOG: "text-slate-400 bg-white/5",
+  BAN: "text-rose-300 ring-rose-500/30",
+  KICK: "text-amber-300 ring-amber-500/30",
+  LOG: "text-slate-400 ring-white/10",
 };
 
 export default async function ServerOverview({ params }: { params: { id: string } }) {
   const { server } = await getOwnedServer(params.id);
-  const overview = await getUserOverview([server.id]);
-  const since24 = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const now = Date.now();
+  const d24 = new Date(now - 86400e3);
+  const d48 = new Date(now - 2 * 86400e3);
+  const sid = server.id;
 
-  const [connections, recentDetections, recentBans, dets24] = await Promise.all([
-    db.player.count({ where: { serverId: server.id } }),
+  const [overview, feed, recentBans, dets24, detsPrev, bans24, bansPrev, kicks24, kicksPrev, objectRows] = await Promise.all([
+    getUserOverview([sid]),
     db.detection.findMany({
-      where: { serverId: server.id },
+      where: { serverId: sid },
       orderBy: { createdAt: "desc" },
-      take: 11,
-      select: { id: true, playerName: true, type: true, severity: true, action: true, details: true, createdAt: true },
+      take: 9,
+      select: { id: true, playerName: true, type: true, action: true, details: true, createdAt: true },
     }),
     db.ban.findMany({
-      where: { serverId: server.id, active: true },
+      where: { serverId: sid, active: true },
       orderBy: { createdAt: "desc" },
-      take: 6,
+      take: 5,
       select: { id: true, code: true, playerName: true, reason: true, bannedBy: true, permanent: true, expiresAt: true, createdAt: true },
     }),
-    db.detection.findMany({
-      where: { serverId: server.id, createdAt: { gte: since24 } },
-      select: { playerName: true },
-      take: 1000,
-    }),
+    db.detection.findMany({ where: { serverId: sid, createdAt: { gte: d24 } }, select: { playerName: true }, take: 3000 }),
+    db.detection.findMany({ where: { serverId: sid, createdAt: { gte: d48, lt: d24 } }, select: { playerName: true }, take: 3000 }),
+    db.ban.count({ where: { serverId: sid, createdAt: { gte: d24 } } }),
+    db.ban.count({ where: { serverId: sid, createdAt: { gte: d48, lt: d24 } } }),
+    db.punishAction.count({ where: { serverId: sid, type: "KICK", createdAt: { gte: d24 } } }),
+    db.punishAction.count({ where: { serverId: sid, type: "KICK", createdAt: { gte: d48, lt: d24 } } }),
+    db.blacklist.findMany({ where: { serverId: sid, kind: "object" }, select: { model: true } }),
   ]);
 
-  // Top flagged players (last 24h), computed in JS to avoid a groupBy.
-  const topMap = new Map<string, number>();
-  for (const d of dets24) topMap.set(d.playerName, (topMap.get(d.playerName) ?? 0) + 1);
-  const topDetected = [...topMap.entries()]
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
-  const topMax = topDetected[0]?.count ?? 1;
+  // ------------------------------------------------------------ derived
+  const flagged = new Map<string, number>();
+  for (const d of dets24) flagged.set(d.playerName, (flagged.get(d.playerName) ?? 0) + 1);
+  const flaggedPrev = new Set(detsPrev.map((d) => d.playerName)).size;
+  const topFlagged = [...flagged.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const topMax = topFlagged[0]?.[1] ?? 1;
 
-  // License expiry
-  const expiresAt = server.licenseKey?.expiresAt ? new Date(server.licenseKey.expiresAt) : null;
-  const days = expiresAt ? Math.max(0, Math.ceil((expiresAt.getTime() - Date.now()) / 86400000)) : null;
-  const expiryText = days === null ? "No expiry" : `${days} days`;
-  const expirySoon = days !== null && days <= 7;
-
-  // Analytics peak/avg
-  const peak = overview.series.reduce((m, p) => Math.max(m, p.detections), 0);
-  const avg = overview.series.length
-    ? Math.round(overview.series.reduce((s, p) => s + p.detections, 0) / overview.series.length)
-    : 0;
-
-  const base = `/dashboard/servers/${server.id}`;
-  const enforcement = overview.actions;
+  const config = parseJson<Record<string, any>>(server.config, {});
+  const logOnly = config.ac?.Settings?.LogOnly === true;
+  const staffBypass = config.ac?.Settings?.StaffBypass !== false;
   const online = server.status === "ONLINE";
+  const slotsPct = server.maxSlots ? Math.min(100, (overview.onlinePlayers / server.maxSlots) * 100) : 0;
+
+  const expiresAt = server.licenseKey?.expiresAt ? new Date(server.licenseKey.expiresAt) : null;
+  const days = expiresAt ? Math.max(0, Math.ceil((expiresAt.getTime() - now) / 86400e3)) : null;
+
+  const threat = overview.detectionsByType.slice(0, 6);
+  const threatMax = threat[0]?.value ?? 1;
+
+  // Setup checklist — what still makes the protection weaker.
+  const listed = new Set(objectRows.map((r) => r.model));
+  const preset = trollPropPreset();
+  const presetDone = preset.filter((m) => listed.has(String(m.hash))).length >= preset.length * 0.9;
+  const webhook = /^https:\/\/(discord|discordapp)\.com\/api\/webhooks\//.test(readWebhookConfig(server.config).url);
+  const publicUrl = /^https?:\/\//.test(env.APP_URL ?? "") && !/localhost|127\.0\.0\.1/.test(env.APP_URL ?? "");
+  const protectedEvents = Array.isArray(config.protectedEvents) ? config.protectedEvents.length : 0;
+  const base = `/dashboard/servers/${sid}`;
+  const checklist: { ok: boolean; label: string; hint: string; href: string }[] = [
+    { ok: !!server.lastSeenAt, label: "Anti-cheat connected", hint: "Install it from Download", href: "/dashboard/download" },
+    { ok: !logOnly, label: "Enforcement on", hint: "Log-only mode is on", href: `${base}/rules` },
+    { ok: presetDone, label: "Troll & giant props blocked", hint: "Add the recommended pack", href: `${base}/blacklist` },
+    { ok: webhook, label: "Discord logs", hint: "Add a webhook", href: `${base}/settings` },
+    { ok: publicUrl, label: "Public panel address", hint: "Needed for screenshots", href: "/docs" },
+    { ok: protectedEvents > 0, label: "Protected events", hint: "Trap cheat-menu events", href: `${base}/events` },
+  ];
+  const doneCount = checklist.filter((c) => c.ok).length;
+
+  const detSeries = overview.series.map((p) => p.detections);
+  const banSeries = overview.series.map((p) => p.bans);
 
   return (
     <div className="space-y-4">
-      {!server.lastSeenAt && (
-        <div className="flex items-start gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
-          <Icons.bolt size={18} className="mt-0.5 shrink-0 text-amber-300" />
-          <div className="text-sm">
-            <p className="font-medium text-amber-200">Server not connected yet</p>
-            <p className="text-amber-200/70">
-              Install the FiveM resource and set the API token in{" "}
-              <Link href={`${base}/settings`} className="underline">Settings</Link>{" "}
-              and this server comes online automatically.
-            </p>
+      {/* ---------------------------------------------------------- status band */}
+      <section className="grid overflow-hidden rounded-2xl border border-white/10 bg-base-900/60 lg:grid-cols-[1.35fr_1fr_1fr]">
+        <div className="border-b border-white/5 p-5 lg:border-b-0 lg:border-r">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+            <span className={cn("h-2 w-2 rounded-full", online ? "animate-pulse bg-emerald-400" : "bg-slate-600")} />
+            {online ? "Online" : server.lastSeenAt ? "Offline" : "Not connected yet"}
+          </div>
+          <h1 className="mt-2 truncate text-2xl font-bold tracking-tight text-white">{server.name}</h1>
+          <dl className="mt-3 grid grid-cols-[88px_1fr] gap-y-1.5 text-sm">
+            <dt className="text-slate-500">Address</dt>
+            <dd className="truncate font-mono text-xs leading-5 text-slate-300">{server.ip ? `${server.ip}:${server.port}` : "—"}</dd>
+            <dt className="text-slate-500">Anti-cheat</dt>
+            <dd className="text-xs leading-5 text-slate-300">
+              {server.acVersion ? `v${server.acVersion}` : "—"}
+              <span className="text-slate-500"> · last heartbeat {server.lastSeenAt ? timeAgo(server.lastSeenAt) : "never"}</span>
+            </dd>
+            <dt className="text-slate-500">Licence</dt>
+            <dd className="flex min-w-0 items-center gap-2">
+              <CopyKey value={(server.licenseKey as { key?: string } | null)?.key ?? null} />
+              <span className={cn("shrink-0 text-xs", days !== null && days <= 7 ? "text-amber-300" : "text-slate-500")}>
+                {days === null ? "lifetime" : `${days}d left`}
+              </span>
+            </dd>
+          </dl>
+        </div>
+
+        <div className="border-b border-white/5 p-5 lg:border-b-0 lg:border-r">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Players online</p>
+          <p className="mt-2 text-4xl font-bold tracking-tight text-white">
+            {overview.onlinePlayers}
+            <span className="text-lg font-medium text-slate-500"> / {server.maxSlots}</span>
+          </p>
+          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/5">
+            <div className="h-full rounded-full bg-emerald-400/80" style={{ width: `${slotsPct}%` }} />
+          </div>
+          <p className="mt-2 text-xs text-slate-500">{overview.totalPlayers.toLocaleString("en-US")} players seen in total</p>
+        </div>
+
+        <div className="p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Protection</p>
+          <p className={cn("mt-2 flex items-center gap-2 text-lg font-bold", logOnly ? "text-amber-300" : "text-emerald-300")}>
+            <Icons.shieldCheck size={20} /> {logOnly ? "Log-only mode" : "Enforcing"}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            {logOnly ? "Detections are recorded, nobody is kicked or banned." : "Kicks and bans follow your Actions settings."}
+            {" "}Staff {staffBypass ? "are never punished" : "are treated like players"}.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            <QuickLink href={`${base}/monitoring`} icon="eye" label="Live" />
+            <QuickLink href={`${base}/event-log`} icon="scan" label="Event Log" />
+            <QuickLink href={`${base}/rules`} icon="config" label="Configure" />
+            <QuickLink href={`${base}/console`} icon="terminal" label="Console" />
           </div>
         </div>
-      )}
+      </section>
 
-      {/* Row 1 — info cards */}
-      <ServerInfoCards
-        serverName={server.name}
-        online={online}
-        ip={server.ip}
-        licenseKey={(server.licenseKey as { key?: string } | null)?.key ?? null}
-        expiryText={expiryText}
-        expirySoon={expirySoon}
-        settingsHref={`${base}/settings`}
-      />
+      {/* ------------------------------------------------------------ KPI strip */}
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Kpi label="Detections" value={overview.detections24h} prev={detsPrev.length} series={detSeries} tone="#8b90ff" />
+        <Kpi label="Bans" value={bans24} prev={bansPrev} series={banSeries} tone="#f0605d" />
+        <Kpi label="Kicks" value={kicks24} prev={kicksPrev} tone="#f2b33d" />
+        <Kpi label="Flagged players" value={flagged.size} prev={flaggedPrev} tone="#5aa9f5" />
+      </section>
 
-      {/* Row 2 — colorful stat cards */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <AccentStat label="Connections" value={connections.toLocaleString("en-US")} icon="activity" accent="blue" />
-        <AccentStat label="Total Players" value={overview.totalPlayers.toLocaleString("en-US")} icon="users" accent="purple" />
-        <AccentStat label="Total Bans" value={overview.totalBans.toLocaleString("en-US")} icon="ban" accent="red" />
-        <AccentStat label="Online Now" value={`${overview.onlinePlayers}`} sub={`/${server.maxSlots} slots`} icon="server" accent="green" />
-      </div>
-
-      {/* Row 3 — analytics + two donuts */}
-      <div className="grid gap-4 xl:grid-cols-4">
+      {/* --------------------------------------------------- activity + threat */}
+      <section className="grid gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
-          <div className="mb-4 flex items-start justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-white">Detection activity</h3>
-              <p className="text-xs text-slate-500">Last 24 hours, per hour</p>
-            </div>
-            <div className="flex gap-5 text-right">
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-slate-500">Peak / h</p>
-                <p className="text-sm font-bold text-white">{peak}</p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-slate-500">Avg / h</p>
-                <p className="text-sm font-bold text-white">{avg}</p>
-              </div>
-            </div>
-          </div>
+          <SectionTitle icon="chart" title="Activity" sub="Detections and bans per hour, last 24 h" />
           <AreaTrend data={overview.series} />
           <div className="mt-2 flex items-center justify-center gap-5 text-xs text-slate-400">
             <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-brand-500" /> Detections</span>
             <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500" /> Bans</span>
           </div>
         </Card>
-
-        <DonutCard title="Drop Reasons" sub="Last 24 hours" data={overview.dropReasons} centerValue={overview.drops24h} centerLabel="drops" />
-        <DonutCard title="Detections" sub="Last 24 hours" data={overview.detectionsByType} centerValue={overview.detections24h} centerLabel="detections" />
-      </div>
-
-      {/* Row 4 — recent detections + side column */}
-      <div className="grid gap-4 xl:grid-cols-3">
-        <Card className="xl:col-span-2 flex flex-col">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
-              <Icons.shieldCheck size={15} className="text-brand-400" /> Recent Detections
-            </h3>
-            <Link href={`${base}/monitoring`} className="text-xs font-medium text-brand-300 hover:text-brand-200">
-              Live monitor →
-            </Link>
-          </div>
-          {recentDetections.length ? (
-            <ul className="-mx-2 divide-y divide-white/5">
-              {recentDetections.map((d) => (
-                <li key={d.id} className="flex items-center gap-3 rounded-lg px-2 py-2.5 transition hover:bg-white/[0.02]">
-                  <span className={cn("h-2 w-2 shrink-0 rounded-full", SEV_DOT[d.severity] ?? SEV_DOT.LOW)} />
-                  <span className="min-w-0 flex-1">
-                    <span className="truncate text-sm font-medium text-slate-200">{detectionLabel(d.type)}</span>
-                    <span className="block truncate text-xs text-slate-500">{d.playerName}</span>
-                  </span>
-                  {d.details?.includes('"bypass":"staff"') && (
-                    <span
-                      title="Server staff — logged only (Settings → Never punish server staff)"
-                      className="rounded-md bg-brand-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-300"
-                    >
-                      Staff
-                    </span>
-                  )}
-                  <span className={cn("rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", ACT[d.action ?? "LOG"] ?? ACT.LOG)}>
-                    {d.action ?? "LOG"}
-                  </span>
-                  <span className={cn("hidden rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase ring-1 ring-inset sm:inline", SEV[d.severity] ?? SEV.LOW)}>
-                    {d.severity}
-                  </span>
-                  <span className="w-16 shrink-0 text-right text-[11px] text-slate-500">{timeAgo(d.createdAt)}</span>
+        <Card>
+          <SectionTitle icon="shield" title="Threat mix" sub="What was caught, last 24 h" />
+          {threat.length ? (
+            <ul className="space-y-3">
+              {threat.map((t) => (
+                <li key={t.name}>
+                  <div className="mb-1 flex items-center justify-between text-xs">
+                    <span className="truncate text-slate-300">{t.name}</span>
+                    <span className="font-mono text-slate-400">{t.value}</span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-white/5">
+                    <div className="h-full rounded-full bg-brand-400/80" style={{ width: `${Math.max(4, (t.value / threatMax) * 100)}%` }} />
+                  </div>
                 </li>
               ))}
+            </ul>
+          ) : (
+            <Empty icon="shieldCheck" text="Nothing caught in the last 24 hours." />
+          )}
+        </Card>
+      </section>
+
+      {/* ------------------------------------------------- live feed + sidebar */}
+      <section className="grid gap-4 xl:grid-cols-3">
+        <Card className="xl:col-span-2">
+          <SectionTitle
+            icon="activity"
+            title="Latest detections"
+            action={<Link href={`${base}/logs?level=DETECTION`} className="text-xs font-medium text-brand-300 hover:text-brand-200">All detections →</Link>}
+          />
+          {feed.length ? (
+            <ul className="-mx-2 divide-y divide-white/5">
+              {feed.map((d) => {
+                const staff = d.details.includes('"bypass":"staff"');
+                const ev = evidenceLine(d.details);
+                return (
+                  <li key={d.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg px-2 py-2.5 hover:bg-white/[0.02]">
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-2 truncate text-sm">
+                        <span className="font-semibold text-slate-100">{detectionLabel(d.type)}</span>
+                        <span className="truncate text-slate-400">· {d.playerName}</span>
+                      </p>
+                      {ev && <p className="truncate font-mono text-[11px] text-slate-500">{ev}</p>}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {staff && <span className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-300 ring-1 ring-inset ring-brand-500/30">Staff</span>}
+                      <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ring-1 ring-inset", ACT[d.action ?? "LOG"] ?? ACT.LOG)}>
+                        {d.action ?? "LOG"}
+                      </span>
+                      <span className="w-14 text-right text-[11px] text-slate-500">{timeAgo(d.createdAt)}</span>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <Empty icon="shieldCheck" text="No detections yet — all quiet." />
           )}
         </Card>
 
-        <div className="grid gap-4">
-          {/* Enforcement 24h */}
+        <div className="grid content-start gap-4">
           <Card>
-            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
-              <Icons.bolt size={15} className="text-brand-400" /> Enforcement
-              <span className="text-xs font-normal text-slate-500">· 24h</span>
-            </h3>
-            <div className="grid grid-cols-3 gap-2">
-              <MiniStat label="Warns" value={enforcement.WARN} tone="text-amber-300" />
-              <MiniStat label="Kicks" value={enforcement.KICK} tone="text-brand-300" />
-              <MiniStat label="Bans" value={enforcement.BAN} tone="text-rose-300" />
+            <SectionTitle icon="check" title="Setup" sub={`${doneCount} of ${checklist.length} done`} />
+            <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-white/5">
+              <div className="h-full rounded-full bg-emerald-400/80" style={{ width: `${(doneCount / checklist.length) * 100}%` }} />
             </div>
+            <ul className="space-y-1.5">
+              {checklist.map((c) => (
+                <li key={c.label}>
+                  <Link href={c.href} className="flex items-center gap-2.5 rounded-lg px-1.5 py-1 text-sm transition hover:bg-white/[0.03]">
+                    <span className={cn("grid h-5 w-5 shrink-0 place-items-center rounded-md border", c.ok ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300" : "border-white/15 text-transparent")}>
+                      <Icons.check size={12} />
+                    </span>
+                    <span className={cn("flex-1 truncate", c.ok ? "text-slate-300" : "text-slate-200")}>{c.label}</span>
+                    {!c.ok && <span className="shrink-0 text-[11px] text-slate-500">{c.hint}</span>}
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </Card>
 
-          {/* Top flagged players */}
-          <Card className="flex-1">
-            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
-              <Icons.users size={15} className="text-brand-400" /> Top Flagged
-              <span className="text-xs font-normal text-slate-500">· 24h</span>
-            </h3>
-            {topDetected.length ? (
+          <Card>
+            <SectionTitle icon="users" title="Most flagged" sub="Last 24 h" />
+            {topFlagged.length ? (
               <ul className="space-y-2.5">
-                {topDetected.map((p, i) => (
-                  <li key={p.name}>
+                {topFlagged.map(([name, n]) => (
+                  <li key={name}>
                     <div className="mb-1 flex items-center justify-between text-xs">
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span className="grid h-4 w-4 shrink-0 place-items-center rounded text-[9px] font-bold text-slate-500">{i + 1}</span>
-                        <span className="truncate text-slate-300">{p.name}</span>
-                      </span>
-                      <span className="font-semibold text-slate-400">{p.count}</span>
+                      <span className="truncate text-slate-300">{name}</span>
+                      <span className="font-mono text-slate-400">{n}</span>
                     </div>
-                    <div className="ml-6 h-1.5 overflow-hidden rounded-full bg-white/5">
-                      <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-purple-500" style={{ width: `${Math.max(8, (p.count / topMax) * 100)}%` }} />
+                    <div className="h-1 overflow-hidden rounded-full bg-white/5">
+                      <div className="h-full rounded-full bg-amber-400/70" style={{ width: `${Math.max(6, (n / topMax) * 100)}%` }} />
                     </div>
                   </li>
                 ))}
               </ul>
             ) : (
-              <Empty icon="users" text="No flagged players in the last 24 hours." />
+              <Empty icon="users" text="Nobody flagged in the last 24 hours." />
             )}
           </Card>
         </div>
-      </div>
+      </section>
 
-      {/* Row 5 — recent bans + server health */}
-      <div className="grid gap-4 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
-              <Icons.ban size={15} className="text-rose-400" /> Recent Bans
-            </h3>
-            <Link href={`${base}/bans`} className="text-xs font-medium text-brand-300 hover:text-brand-200">
-              All bans →
-            </Link>
-          </div>
-          {recentBans.length ? (
-            <ul className="-mx-2 divide-y divide-white/5">
-              {recentBans.map((b) => (
-                <li key={b.id} className="flex items-center gap-3 rounded-lg px-2 py-2.5 transition hover:bg-white/[0.02]">
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-rose-500/10 text-rose-300">
-                    <Icons.ban size={15} />
+      {/* ---------------------------------------------------------- recent bans */}
+      <Card>
+        <SectionTitle
+          icon="ban"
+          title="Recent bans"
+          action={<Link href={`${base}/bans`} className="text-xs font-medium text-brand-300 hover:text-brand-200">All bans →</Link>}
+        />
+        {recentBans.length ? (
+          <ul className="-mx-2 divide-y divide-white/5">
+            {recentBans.map((b) => (
+              <li key={b.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg px-2 py-2.5 hover:bg-white/[0.02] sm:grid-cols-[1fr_120px_110px_auto]">
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium text-slate-200">{b.playerName}</span>
+                  <span className="block truncate text-xs text-slate-500">{b.reason}</span>
+                </span>
+                <code className="hidden font-mono text-[11px] text-brand-300 sm:block">{b.code}</code>
+                <span className="hidden truncate text-xs text-slate-500 sm:block">{b.bannedBy}</span>
+                <span className="flex items-center gap-2">
+                  <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ring-1 ring-inset", b.permanent || !b.expiresAt ? "text-rose-300 ring-rose-500/30" : "text-amber-300 ring-amber-500/30")}>
+                    {b.permanent || !b.expiresAt ? "Permanent" : "Temporary"}
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="truncate text-sm font-medium text-slate-200">{b.playerName}</span>
-                    <span className="block truncate text-xs text-slate-500">{b.reason}</span>
-                  </span>
-                  {b.code && <code className="hidden font-mono text-[11px] text-brand-300 sm:inline">{b.code}</code>}
-                  <span className={cn("rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase ring-1 ring-inset", b.permanent || !b.expiresAt ? "text-rose-300 bg-rose-500/10 ring-rose-500/25" : "text-amber-300 bg-amber-500/10 ring-amber-500/25")}>
-                    {b.permanent || !b.expiresAt ? "Perm" : "Temp"}
-                  </span>
-                  <span className="w-16 shrink-0 text-right text-[11px] text-slate-500">{timeAgo(b.createdAt)}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <Empty icon="ban" text="No active bans. A clean server." />
-          )}
-        </Card>
-
-        {/* Server health */}
-        <Card>
-          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
-            <Icons.server size={15} className="text-brand-400" /> Server Health
-          </h3>
-          <div className="space-y-2.5">
-            <HealthRow label="Status" >
-              <span className={cn("flex items-center gap-1.5 text-sm font-semibold", online ? "text-emerald-300" : "text-slate-400")}>
-                <span className={cn("h-2 w-2 rounded-full", online ? "bg-emerald-400" : "bg-slate-500")} />
-                {online ? "Online" : "Offline"}
-              </span>
-            </HealthRow>
-            <HealthRow label="Players">
-              <span className="text-sm font-semibold text-white">{overview.onlinePlayers}<span className="text-slate-500"> / {server.maxSlots}</span></span>
-            </HealthRow>
-            <HealthRow label="AC version">
-              <span className="font-mono text-xs text-slate-300">{server.acVersion ?? "—"}</span>
-            </HealthRow>
-            <HealthRow label="Last seen">
-              <span className="text-xs text-slate-300">{server.lastSeenAt ? timeAgo(server.lastSeenAt) : "never"}</span>
-            </HealthRow>
-            <HealthRow label="License">
-              <span className={cn("text-xs font-medium", expirySoon ? "text-amber-300" : "text-slate-300")}>{expiryText}</span>
-            </HealthRow>
-          </div>
-          <Link href={`${base}/rules`} className="mt-4 flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] py-2.5 text-xs font-semibold text-slate-300 transition hover:border-brand-500/40 hover:bg-brand-500/10 hover:text-white">
-            <Icons.config size={14} /> Configure protections
-          </Link>
-        </Card>
-      </div>
+                  <span className="w-14 text-right text-[11px] text-slate-500">{timeAgo(b.createdAt)}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <Empty icon="ban" text="No active bans. A clean server." />
+        )}
+      </Card>
     </div>
   );
 }
 
-function AccentStat({
-  label,
-  value,
-  sub,
-  icon,
-  accent,
-}: {
-  label: string;
-  value: React.ReactNode;
-  sub?: string;
-  icon: IconName;
-  accent: keyof typeof ACCENTS;
-}) {
+// ---------------------------------------------------------------- pieces
+function QuickLink({ href, icon, label }: { href: string; icon: IconName; label: string }) {
   const Icon = Icons[icon];
-  const a = ACCENTS[accent];
   return (
-    <div className="card relative overflow-hidden p-5" style={{ borderLeft: `3px solid ${a.border}` }}>
-      <div className="flex items-center justify-between">
-        <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-          <Icon size={14} className={a.text} /> {label}
-        </span>
+    <Link href={href} className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.02] px-2.5 py-1.5 text-xs font-medium text-slate-300 transition hover:border-brand-500/40 hover:text-white">
+      <Icon size={13} /> {label}
+    </Link>
+  );
+}
+
+function SectionTitle({ icon, title, sub, action }: { icon: IconName; title: string; sub?: string; action?: React.ReactNode }) {
+  const Icon = Icons[icon];
+  return (
+    <div className="mb-4 flex items-start justify-between gap-3">
+      <div>
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+          <Icon size={15} className="text-slate-400" /> {title}
+        </h3>
+        {sub && <p className="mt-0.5 text-xs text-slate-500">{sub}</p>}
       </div>
-      <p className={cn("mt-2 text-3xl font-bold tracking-tight", a.text)}>
-        {value}
-        {sub && <span className="ml-1 text-sm font-medium text-slate-500">{sub}</span>}
+      {action}
+    </div>
+  );
+}
+
+function Kpi({ label, value, prev, series, tone }: { label: string; value: number; prev: number; series?: number[]; tone: string }) {
+  const delta = value - prev;
+  const pct = prev > 0 ? Math.round((delta / prev) * 100) : value > 0 ? 100 : 0;
+  return (
+    <div className="card relative overflow-hidden p-5">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label} · 24h</p>
+      <div className="mt-2 flex items-end justify-between gap-3">
+        <p className="text-3xl font-bold tracking-tight text-white">{value.toLocaleString("en-US")}</p>
+        {series && <Sparkline values={series} color={tone} />}
+      </div>
+      <p className="mt-1 text-xs text-slate-500">
+        {delta === 0 ? (
+          "same as the day before"
+        ) : (
+          <>
+            <span className={delta > 0 ? "text-rose-300" : "text-emerald-300"}>
+              {delta > 0 ? "▲" : "▼"} {Math.abs(pct)}%
+            </span>{" "}
+            vs previous 24 h ({prev})
+          </>
+        )}
       </p>
+      <span className="absolute inset-x-0 top-0 h-px" style={{ background: tone, opacity: 0.6 }} />
     </div>
   );
 }
 
-function MiniStat({ label, value, tone }: { label: string; value: number; tone: string }) {
+function Sparkline({ values, color }: { values: number[]; color: string }) {
+  const w = 110;
+  const h = 34;
+  const max = Math.max(1, ...values);
+  const step = values.length > 1 ? w / (values.length - 1) : w;
+  const pts = values.map((v, i) => `${(i * step).toFixed(1)},${(h - 2 - (v / max) * (h - 4)).toFixed(1)}`).join(" ");
   return (
-    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3 text-center">
-      <p className={cn("text-2xl font-bold tracking-tight", tone)}>{value}</p>
-      <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{label}</p>
-    </div>
-  );
-}
-
-function HealthRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between border-b border-white/5 pb-2.5 last:border-0 last:pb-0">
-      <span className="text-xs text-slate-500">{label}</span>
-      {children}
-    </div>
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="shrink-0" aria-hidden>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" opacity="0.9" />
+    </svg>
   );
 }
 
 function Empty({ icon, text }: { icon: IconName; text: string }) {
   const Icon = Icons[icon];
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10 text-center">
-      <span className="grid h-10 w-10 place-items-center rounded-xl bg-white/5 text-slate-500 ring-1 ring-inset ring-white/10">
-        <Icon size={18} />
-      </span>
+    <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+      <Icon size={20} className="text-slate-600" />
       <p className="text-sm text-slate-500">{text}</p>
     </div>
-  );
-}
-
-function DonutCard({
-  title,
-  sub,
-  data,
-  centerValue,
-  centerLabel,
-}: {
-  title: string;
-  sub: string;
-  data: { name: string; value: number }[];
-  centerValue: number;
-  centerLabel: string;
-}) {
-  return (
-    <Card>
-      <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
-        <Icons.shieldCheck size={15} className="text-brand-400" /> {title}
-      </h3>
-      <p className="mb-2 text-xs text-slate-500">{sub}</p>
-      {data.length ? (
-        <>
-          <DonutChart data={data} centerValue={centerValue} centerLabel={centerLabel} />
-          <ul className="mt-3 space-y-1.5">
-            {data.map((d, i) => (
-              <li key={d.name} className="flex items-center justify-between text-xs">
-                <span className="flex items-center gap-2 text-slate-300">
-                  <span className="h-2 w-2 rounded-full" style={{ background: DONUT_PALETTE[i % DONUT_PALETTE.length] }} />
-                  {d.name}
-                </span>
-                <span className="font-medium text-slate-400">{d.value}</span>
-              </li>
-            ))}
-          </ul>
-        </>
-      ) : (
-        <div className="grid h-[200px] place-items-center text-sm text-slate-500">No data yet</div>
-      )}
-    </Card>
   );
 }

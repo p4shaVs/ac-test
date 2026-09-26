@@ -239,6 +239,8 @@ local function heartbeat()
       -- Aynı liste SUNUCU tarafında da tuzak: hile menüleri bu olayları çoğunlukla
       -- TriggerServerEvent ile yollar; client tuzağı bunları hiç görmez.
       if CAC.setProtectedServerEvents then CAC.setProtectedServerEvents(ServerConfig.protectedEvents or {}) end
+      -- Event Log'da izlenen script olayları (panel → Event Log → Watched events).
+      if CAC.setWatchedEvents then CAC.setWatchedEvents(ServerConfig.watchEvents or {}) end
       -- Tam CoreAC config (panel Configuration sayfası) — CoreAC.Config'e uygula.
       if ServerConfig.ac and CAC.applyAcConfig then
         CAC.applyAcConfig(ServerConfig.ac)
@@ -448,10 +450,8 @@ local function applyAction(a)
   local src = findByLicense(a.identifiers and a.identifiers.license or nil)
   if a.type == 'WARN' then
     if src then
-      TriggerClientEvent('chat:addMessage', src, {
-        color = { 255, 200, 0 },
-        args = { '[CoreAC]', ('Warning: %s'):format(a.reason or '') },
-      })
+      -- Panelden verilen uyarı: oyun içinde duyuru gibi üst ortada gösterilir.
+      TriggerClientEvent('coreac:warned', src, a.reason or '', a.issuedBy or 'Staff')
     end
   elseif a.type == 'KICK' then
     if src then DropPlayer(src, '[CoreAC] You have been kicked from this server.') end

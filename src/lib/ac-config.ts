@@ -63,10 +63,10 @@ export const AC_TABS: ACTab[] = [
           // (ExecutorFlag("1") / ExecutorFlag("EULEN") çağrılmıyor) — yani hiçbir
           // şey yapmıyorlardı. Ölü buton göstermemek için panelden çıkarıldı.
           // Kalanlar gerçekten tetiklenen bayraklardır.
-          T("Main", "E2", "Executor Overlay — Insert / PageDown", true),
-          T("Main", "E3", "Executor Overlay — PageUp", true),
-          T("Main", "E4", "Executor Overlay — idle cursor lock", true),
-          T("Main", "E6", "Executor Overlay — aggressive", true, "Also fires while the mouse is moving. Needs the same 3 confirmations, so it is safe to leave on."),
+          T("Main", "E2", "Cheat Menu (Overlay) — Insert / PageDown", true),
+          T("Main", "E3", "Cheat Menu (Overlay) — PageUp", true),
+          T("Main", "E4", "Cheat Menu (Overlay) — idle cursor lock", true),
+          T("Main", "E6", "Cheat Menu (Overlay) — aggressive", true, "Also fires while the mouse is moving. Needs the same 3 confirmations, so it is safe to leave on."),
         ],
       },
       {

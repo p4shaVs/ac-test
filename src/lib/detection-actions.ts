@@ -173,7 +173,7 @@ export const DETECTION_TYPES: DetectionTypeDef[] = [
   D("CHEAT_EVENT_HONEYPOT", "Cheat Menu Event (honeypot)", "integrity", "confirmed", "KICK"),
   D("CRASH_ATTEMPT", "Server Crash Attempt", "integrity", "confirmed", "BAN"),
   D("AC_TAMPER", "Anti-Cheat Disabled / Tampered", "integrity", "confirmed", "KICK"),
-  D("OVERLAY", "Executor Overlay", "integrity", "strong", "KICK"),
+  D("OVERLAY", "Cheat Menu Detected (Overlay)", "integrity", "strong", "KICK"),
   D("LUA_MENU", "Lua Cheat Menu", "integrity", "strong", "KICK"),
   D("RESOURCE_INJECT", "Resource Injection", "integrity", "strong", "KICK"),
   D("SPOOFER", "Identifier Spoofer", "integrity", "strong", "KICK"),

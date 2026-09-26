@@ -73,8 +73,9 @@ Config.AdminCommand = 'ac'
 -- Görsel (NUI) yönetici menüsü — komut ve klavye kısayolu.
 -- Menü yalnızca panelden yetki verilmiş adminlere açılır; her aksiyon sunucuda
 -- ayrıca izin doğrulaması geçer (client sadece arayüz).
-Config.AdminMenuCommand = 'acmenu'
-Config.AdminMenuKey     = convar('menu_key', 'F6')  -- boş bırakılırsa kısayol atanmaz
+Config.AdminMenuCommand = 'cac'                       -- oyun içi panel: /cac
+-- Varsayılan KISAYOL YOK (eskiden F6). İstersen server.cfg: set coreac_menu_key "F6"
+Config.AdminMenuKey     = convar('menu_key', '')
 
 -- ---------------------------------------------------------------------------
 -- Silah tespiti eşikleri (TİTİZ — yanlış pozitifi önlemek için yüksek tutuldu)

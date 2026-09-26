@@ -19,7 +19,7 @@ let byHash: Map<number, string> | null = null;
  * "adder"; this maps it back so the page can show the row as listed.
  */
 export function modelNameForHash(model: string): string {
-  if (!/^-?d+$/.test(model)) return model.toLowerCase();
+  if (!/^-?\d+$/.test(model)) return model.toLowerCase();
   if (!byHash) {
     byHash = new Map();
     for (const r of DATA.rows) byHash.set(r[3] >>> 0, r[0]);

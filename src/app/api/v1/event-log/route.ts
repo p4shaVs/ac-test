@@ -3,7 +3,7 @@ import { z } from "zod";
 import { handler, ok, ApiError } from "@/lib/api";
 import { authenticateServer } from "@/lib/server-auth";
 import { rateLimit } from "@/lib/ratelimit";
-import { pushEvents } from "@/lib/event-log-store";
+import { pushEvents, LIVE_EVENT_KINDS } from "@/lib/event-log-store";
 
 export const dynamic = "force-dynamic";
 
@@ -14,9 +14,11 @@ const schema = z.object({
     .array(
       z.object({
         t: z.number().optional(),
-        kind: z.enum(["spawn", "remove", "explosion", "damage", "particle", "kill", "other"]).default("other"),
+        kind: z.enum(LIVE_EVENT_KINDS).catch("other"),
         player: z.string().max(80).default("?"),
+        src: z.number().int().min(0).max(65535).default(0),
         detail: z.string().max(200).default(""),
+        count: z.number().int().min(1).max(100000).default(1),
       })
     )
     .max(200),
@@ -30,7 +32,7 @@ export const POST = handler(async (req: NextRequest) => {
   const { events } = schema.parse(await req.json());
   pushEvents(
     server.id,
-    events.map((e) => ({ t: e.t ?? Date.now(), kind: e.kind, player: e.player, detail: e.detail }))
+    events.map((e) => ({ t: e.t ?? Date.now(), kind: e.kind, player: e.player, src: e.src, detail: e.detail, count: e.count }))
   );
   return ok({ stored: events.length });
 });

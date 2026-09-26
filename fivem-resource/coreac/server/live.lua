@@ -16,14 +16,19 @@ local function refreshWhitelist()
   end)
 end
 
---- Oyuncunun herhangi bir kimliği bypass listesindeyse true.
+--- Oyuncunun herhangi bir kimliği TAM bypass kaydındaysa true.
+--- Kapsamlı kayıtlar (yalnızca seçili korumalar) burada sayılmaz: oyundaki
+--- kontroller çalışmaya devam eder, hangi tespitin cezasız kalacağına panel
+--- tespit tipine göre karar verir. (Eski panel "full" alanını göndermez → tam.)
 function CAC.isWhitelisted(src)
   local ids = CAC.getIdents(src)
   for _, w in ipairs(Whitelist) do
-    if (w.kind == 'license' and w.value == ids.license)
-      or (w.kind == 'discord' and w.value == ids.discord)
-      or (w.kind == 'steam' and w.value == ids.steam)
-      or (w.kind == 'ip' and w.value == ids.ip) then
+    if w.full ~= false and (
+        (w.kind == 'license' and w.value == ids.license)
+        or (w.kind == 'discord' and w.value == ids.discord)
+        or (w.kind == 'steam' and w.value == ids.steam)
+        or (w.kind == 'ip' and w.value == ids.ip)
+      ) then
       return true
     end
   end
@@ -430,7 +435,9 @@ RegisterNetEvent('coreac:adminAction', function(action, targetId, arg)
       type = 'WARN', reason = reason, by = adminName,
       license = CAC.getIdents(target).license, playerName = nameOf(target),
     }, nil)
-    TriggerClientEvent('coreac:notify', target, '~y~Warning: ' .. reason)
+    -- Ekranın üst ortasında duyuru gibi (NUI) — eskiden küçük GTA bildirimiydi.
+    TriggerClientEvent('coreac:warned', target, reason, adminName)
+    TriggerClientEvent('coreac:notify', src, '~y~Warned ' .. nameOf(target))
   elseif action == 'revive' and target then
     CAC.grantRevive(target)
     TriggerClientEvent('coreac:revive', target)

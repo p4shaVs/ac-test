@@ -84,28 +84,24 @@ h1, h2, h3, h4 {
     @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium;
   }
 
+  /* Sidebar items are closed tiles: a hairline frame around each row and a
+     framed square around its icon, so the list reads as distinct controls. */
   .nav-link {
-    @apply relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition
-           hover:bg-white/5 hover:text-slate-100;
+    @apply relative flex items-center gap-2.5 rounded-lg border border-white/[0.06] bg-white/[0.015] px-1.5 py-1.5
+           text-sm font-medium text-slate-400 transition hover:border-white/[0.14] hover:bg-white/[0.04] hover:text-slate-100;
+  }
+  .nav-ico {
+    @apply grid h-7 w-7 shrink-0 place-items-center rounded-md border border-white/[0.08] bg-base-950/60 text-slate-400 transition;
+  }
+  .nav-link:hover .nav-ico {
+    @apply border-white/[0.16] text-slate-200;
   }
   .nav-link-active {
-    @apply bg-gradient-to-r from-brand-500/[0.16] to-brand-500/[0.02] text-white ring-1 ring-inset ring-brand-500/25;
+    @apply border-brand-500/40 bg-brand-500/[0.09] text-white hover:border-brand-500/50 hover:bg-brand-500/[0.12];
   }
-  /* Accent bar on the sidebar edge (nav has 12px side padding). */
-  .nav-link-active::before {
-    content: "";
-    position: absolute;
-    left: -12px;
-    top: 50%;
-    height: 18px;
-    width: 3px;
-    transform: translateY(-50%);
-    border-radius: 0 3px 3px 0;
-    background: linear-gradient(#818cf8, #a855f7);
-    box-shadow: 0 0 12px rgba(99, 102, 241, 0.8);
-  }
-  .nav-link-active svg {
-    color: #a5b4fc;
+  .nav-link-active .nav-ico,
+  .nav-link-active:hover .nav-ico {
+    @apply border-brand-400/50 bg-brand-500/20 text-brand-200;
   }
 
   .section-title {

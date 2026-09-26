@@ -5,10 +5,17 @@
 export interface LiveEvent {
   id: string;
   t: number; // epoch ms
-  kind: "spawn" | "remove" | "explosion" | "damage" | "particle" | "kill" | "other";
+  kind: LiveEventKind;
   player: string;
+  /** Server id of the player (0 = server / unknown). */
+  src: number;
   detail: string;
+  /** Identical lines inside one 2 s batch are merged by the resource. */
+  count: number;
 }
+
+export const LIVE_EVENT_KINDS = ["spawn", "remove", "explosion", "damage", "particle", "kill", "event", "join", "leave", "other"] as const;
+export type LiveEventKind = (typeof LIVE_EVENT_KINDS)[number];
 
 const MAX = 400;
 const store = new Map<string, LiveEvent[]>();

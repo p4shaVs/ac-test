@@ -180,6 +180,9 @@ model Whitelist {
   kind       String   // license | discord | steam | ip
   value      String
   note       String?
+  // Hangi korumalardan muaf: JSON dizi. [] = HEPSİ (eski davranış).
+  // Öğeler: "cat:<kategori>" (movement, combat…) ya da tespit tipi ("NOCLIP").
+  scope      String   @default("[]")
   createdBy  String?
   createdAt  DateTime @default(now())
 

@@ -173,7 +173,7 @@ RegisterCommand(Config.AdminCommand or 'ac', function(_, args)
     for perm, help in pairs(PERM_HELP) do
       if has(perm) then lines[#lines + 1] = '~w~' .. help; any = true end
     end
-    if any then lines[#lines + 1] = '~w~/' .. (Config.AdminMenuCommand or 'acmenu') .. ' — full admin panel' end
+    if any then lines[#lines + 1] = '~w~/' .. (Config.AdminMenuCommand or 'cac') .. ' — full admin panel' end
     lines[#lines + 1] = '~w~/' .. (Config.AdminCommand or 'ac') .. ' id — show your identifiers'
     if not any then lines[#lines + 1] = '~r~You have no admin permissions. Use "/ac id" to get the identifier to add on the web panel.' end
     notify(table.concat(lines, '\n'))
@@ -411,6 +411,12 @@ end)
 -- sayfası bunları çizer.
 RegisterNetEvent('coreac:dm', function(from, message)
   SendNUIMessage({ type = 'dm', from = tostring(from or 'Admin'), message = tostring(message or '') })
+end)
+
+-- Uyarı: duyuru gibi ekranın üst ortasında (sarı), sesli.
+RegisterNetEvent('coreac:warned', function(reason, from)
+  SendNUIMessage({ type = 'warn', message = tostring(reason or ''), from = tostring(from or '') })
+  PlaySoundFrontend(-1, 'CHECKPOINT_MISSED', 'HUD_MINI_GAME_SOUNDSET', true)
 end)
 
 RegisterNetEvent('coreac:announceBanner', function(message, from)

@@ -207,7 +207,7 @@ export function PanelShell({
                 {section.title}
               </p>
             )}
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               {section.items.map((item) => {
                 const Icon = Icons[item.icon];
                 const active = isActive(item);
@@ -218,7 +218,7 @@ export function PanelShell({
                     onClick={() => setMobileOpen(false)}
                     className={cn("nav-link", active && "nav-link-active")}
                   >
-                    <Icon size={18} className="shrink-0" />
+                    <span className="nav-ico"><Icon size={15} /></span>
                     <span className="flex-1 truncate">{item.label}</span>
                     {item.badge && (
                       <span className="rounded-md bg-white/5 px-1.5 py-0.5 text-[10px] font-medium text-slate-400">{item.badge}</span>
