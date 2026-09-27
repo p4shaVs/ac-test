@@ -8,8 +8,10 @@ const LABELS: Record<string, string> = {
   type: "Type", detection: "Check", weapon: "Weapon", dmg: "Damage", damage: "Damage", cap: "Limit",
   hits: "Hits", model: "Model", event: "Event", volume: "Volume", voiceRange: "Voice range",
   immuneForMs: "Immune for", count: "Count", armor: "Armor", health: "Health", explosionName: "Explosion",
-  sound: "Sound", side: "Side", poolBefore: "HP before", poolAfter: "HP after", ammoInWeapon: "Ammo",
+  sound: "Sound", side: "Side", poolBefore: "HP+armor before", poolAfter: "HP+armor after", ammoInWeapon: "Ammo",
   lastAmmoInWeapon: "Previous ammo", ammoInClip: "Clip", lastAmmoInClip: "Previous clip",
+  normal: "Everyone else", players: "Compared with", kills: "Kills", oneTaps: "One-shot head kills",
+  medianDist: "Typical distance", offsetDeg: "Off aim", angleCos: "Aim match", dist: "Distance", multiplier: "Multiplier", impact: "Impact",
 };
 
 const SOURCES: Record<string, string> = {
@@ -20,13 +22,19 @@ const SOURCES: Record<string, string> = {
   damage_no_pool_drop: "server: hit without losing health",
   Flight: "client: flight without velocity",
   "Script Cam": "client: script camera far from player",
+  weapon_stats: "weapon stronger than every other player's copy",
+  server_one_shot: "server: full-armour players dropped by one body shot",
+  no_aim_telemetry: "server: hitting players while aim data is cut off",
+  aim_offset: "client: hits land off the crosshair",
 };
 
 const SKIP = new Set(["replay", "bypass", "hash", "inCombat", "custom", "blocked", "info"]);
 
 function unit(key: string, v: unknown): string {
   if (typeof v === "number") {
-    if (key === "distance" || key === "flight" || key === "voiceRange") return `${Math.round(v)} m`;
+    if (key === "distance" || key === "flight" || key === "voiceRange" || key === "dist" || key === "medianDist") return `${Math.round(v)} m`;
+    if (key === "offsetDeg") return `${v}°`;
+    if (key === "players") return `${v} players`;
     if (key === "seconds") return `${v} s`;
     if (key === "kmh" || key === "capKmh") return `${Math.round(v)} km/h`;
     if (key === "immuneForMs") return `${(v / 1000).toFixed(1)} s`;

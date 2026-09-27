@@ -21,7 +21,7 @@ const LEVELS: { id: string; label: string; desc: string }[] = [
 
 const ALL = [
   "anti_silent_aim", "anti_damage_multiplier", "anti_explosive_bullets", "anti_illegal_weapon",
-  "anti_rapid_fire", "anti_wallhack", "anti_melee_reach", "anti_vehicle_godmode", "anti_out_of_bounds",
+  "anti_rapid_fire", "anti_wallhack", "anti_melee_reach", "anti_headshot_rate", "anti_vehicle_godmode", "anti_out_of_bounds",
   "anti_explosion_spam", "anti_armor_regen", "anti_instant_repair", "anti_chat_flood", "anti_event_flood",
   "anti_reconnect_spam", "anti_resource_mismatch",
 ];
@@ -35,7 +35,7 @@ function compose(defaults: Record<string, boolean>, type: string, level: string)
   }
   // Type nudges
   if (type === "pvp") {
-    r.anti_rapid_fire = true; r.anti_wallhack = true; r.anti_explosive_bullets = true;
+    r.anti_rapid_fire = true; r.anti_wallhack = true; r.anti_explosive_bullets = true; r.anti_headshot_rate = true;
     r.anti_instant_repair = false; r.anti_armor_regen = false;
   }
   if (type === "rp") {

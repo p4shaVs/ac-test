@@ -82,6 +82,12 @@ export const DETECTION_TYPES: DetectionTypeDef[] = [
   D("EXPLOSIVE_BULLETS", "Explosive Bullets", "combat", "confirmed", "BAN"),
   D("SPOOFED_BULLETS", "Spoofed Bullets", "combat", "confirmed", "BAN"),
   D("KILL_EXPLOIT", "Kill Exploit", "combat", "confirmed", "BAN"),
+  // Server-measured: a full-health, armoured player (≥150 hp+armor) dropped by
+  // ONE body shot from a pistol/SMG/rifle/MG, three times in ten minutes, with
+  // a weapon nobody else on the server one-shots with. Head shots never count
+  // (FiveM kills on a head shot by default). Kicks by default; owners may raise
+  // it to BAN because the server's own health reading is the evidence.
+  D("ONE_SHOT_KILL", "One-Shot Body Kills (damage boost)", "combat", "strong", "KICK", "confirmed"),
   D("AIMBOT", "Aimbot", "combat", "strong", "KICK"),
   D("INFINITE_AMMO", "Infinite Ammo", "combat", "strong", "KICK"),
   D("AMMO_CHEAT", "Ammo Cheat", "combat", "strong", "KICK"),
@@ -98,6 +104,9 @@ export const DETECTION_TYPES: DetectionTypeDef[] = [
   D("NO_RELOAD", "No Reload", "combat", "heuristic", "LOG"),
   D("RAPID_FIRE", "Rapid Fire", "combat", "heuristic", "LOG"),
   D("WALLBANG", "Wallbang / ESP indicator", "combat", "heuristic", "LOG"),
+  // 9 of the last 10 kills were single head shots from range. Skilled players in
+  // a one-tap meta can get there too, so this is a review flag, never a penalty.
+  D("HEADSHOT_RATE", "Suspicious Headshot Rate", "combat", "heuristic", "LOG"),
   D("GIVE_WEAPON", "Weapon Given (event)", "combat", "heuristic", "LOG"),
   D("REMOVE_WEAPON", "Weapon Removed (event)", "combat", "heuristic", "LOG"),
 

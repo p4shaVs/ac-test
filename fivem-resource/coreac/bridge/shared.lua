@@ -67,6 +67,8 @@ CoreAC.Detections = {
     ANTI_WALLBANG             = 'WALLBANG',
     ANTI_NO_RECOIL            = 'NO_RECOIL',
     ANTI_GIVE_ALL_WEAPONS     = 'GIVE_ALL_WEAPONS',
+    ANTI_ONE_SHOT_KILL        = 'ONE_SHOT_KILL',     -- server/combat_guard.lua
+    ANTI_HEADSHOT_RATE        = 'HEADSHOT_RATE',     -- server/combat_guard.lua (yalnızca log)
 
     -- Can & Zırh
     ANTI_INVINCIBLE           = 'GODMODE',

@@ -412,11 +412,8 @@ AddEventHandler("weaponDamageEvent", LPH_JIT_MAX(function(sender, data)
             if targetOwner and (tonumber(sender) ~= targetOwner) then
                 if not CoreAC.DeadPlayersCache[tonumber(sender)] then CoreAC.DeadPlayersCache[tonumber(sender)] = {} end
                 CoreAC.DeadPlayersCache[tonumber(sender)][#CoreAC.DeadPlayersCache[tonumber(sender)]+ 1] = {timestamp = os.time(), killedId = targetOwner}
-
-                CoreAC.SendLog("KILL", sender, {
-                    target = ("[%s] %s"):format(targetOwner, GetPlayerName(targetOwner) or "Unknown"),
-                    weaponType = data.weaponType,
-                })
+                -- Kill logu server/combat_guard.lua'ya taşındı: silah adı, kafa/gövde,
+                -- mesafe ve kurbanın tek atışta indirilen can+zırhıyla birlikte yazılır.
             end
         end
     end

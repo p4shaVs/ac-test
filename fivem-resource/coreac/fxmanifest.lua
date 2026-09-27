@@ -44,6 +44,7 @@ server_scripts {
   -- 7. CAC tehdit motoru + canlı özellikler + korumalar
   -- 'server/threat_engine.lua',  -- KALDIRILDI: THREAT_SCORE / merkezi tehdit skoru devre dışı
   'server/live.lua',
+  'server/combat_guard.lua',  -- PvP: silah istatistiği mutabakatı, tek atış, kafa oranı, kill logu
   'server/protection.lua',
   'server/godmode_guard.lua',
   'server/vehicle_guard.lua',

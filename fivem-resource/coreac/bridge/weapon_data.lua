@@ -154,6 +154,36 @@ function CoreAC.GetWeaponClass(hash)
     return entry and entry.class or nil
 end
 
+-- ---------------------------------------------------------------------------
+-- EKLENTİ (addon) SİLAHLAR — sınıf, oyunun silah GRUBUNDAN çıkarılır.
+--
+-- GUN PVP sunucularındaki silahların çoğu eklentidir (weapon_browning,
+-- weapon_glock17…) ve yukarıdaki vanilla tabloda yoktur. Sınıfı "bilinmiyor"
+-- kalan silah; silent aim, hasar tavanı ve tek-atış kontrollerinin HEPSİNDEN
+-- muaf kalıyordu. Client GetWeapontypeGroup ile grubu okur; sunucu bu native'e
+-- sahip değildir, grubu oyuncuların bildirdiği silah istatistiklerinden
+-- (server/combat_guard.lua) öğrenir. Her iki taraf aynı eşlemeyi kullanır.
+-- ---------------------------------------------------------------------------
+local GROUP_CLASS = {}
+for group, class in pairs({
+    GROUP_PISTOL = 'pistol', GROUP_SMG = 'smg', GROUP_RIFLE = 'rifle', GROUP_MG = 'mg',
+    GROUP_SHOTGUN = 'shotgun', GROUP_SNIPER = 'sniper', GROUP_HEAVY = 'heavy',
+    GROUP_THROWN = 'thrown', GROUP_MELEE = 'melee', GROUP_UNARMED = 'melee',
+    GROUP_STUNGUN = 'equipment', GROUP_PETROLCAN = 'thrown', GROUP_FIREEXTINGUISHER = 'equipment',
+    GROUP_PARACHUTE = 'equipment',
+}) do
+    GROUP_CLASS[signedToUnsigned(GetHashKey(group))] = class
+end
+
+--- Silah grubu hash'i → sınıf (pistol/smg/rifle/mg/shotgun/sniper/…) veya nil.
+function CoreAC.WeaponClassFromGroup(group)
+    if not group or group == 0 then return nil end
+    return GROUP_CLASS[signedToUnsigned(group)]
+end
+
+--- Nişan yönü isabetle doğrudan ilişkili (tek mermili, anlık) ateşli sınıflar.
+CoreAC.HITSCAN_CLASSES = { pistol = true, smg = true, rifle = true, mg = true, sniper = true, shotgun = true }
+
 -- Yakın-dövüş silahı mı? (yumruk/bıçak/sopa vb.) — "reach" tespiti için.
 -- Yumruk (unarmed, weapon_data'da yok) da melee sayılır.
 local UNARMED_HASHES = { [GetHashKey('weapon_unarmed')] = true, [2725352035] = true }

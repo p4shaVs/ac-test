@@ -40,6 +40,9 @@ end
 local function weaponName(hash)
   local entry = CoreAC.WEAPON_DATA and (CoreAC.WEAPON_DATA[hash] or CoreAC.WEAPON_DATA[unsigned(hash)])
   if entry and entry.weaponName then return (entry.weaponName:gsub('^weapon_', '')) end
+  -- Eklenti silah: paneldeki "Add-On Weapons" listesinden ad (server/combat_guard.lua)
+  local label = CoreAC.WeaponLabel and CoreAC.WeaponLabel(hash)
+  if label and label:sub(1, 1) ~= '#' then return (label:gsub('^weapon_', '')) end
   return '#' .. unsigned(hash)   -- panel katalogdan çözer (addon silahsa hash kalır)
 end
 
@@ -76,10 +79,11 @@ AddEventHandler('weaponDamageEvent', function(sender, data)
     local owner = NetworkGetEntityOwner(ent)
     if owner and owner > 0 then victim = ' → ' .. nameOf(owner) end
   end
+  local zone = (data.hitComponent == 20 or data.hitComponent == 19) and ' · head' or ''
   if data.willKill then
-    push('kill', sender, weaponName(data.weaponType) .. victim)
+    push('kill', sender, weaponName(data.weaponType) .. zone .. victim)
   else
-    push('damage', sender, ('%s · %d dmg%s'):format(weaponName(data.weaponType), math.floor(data.weaponDamage or 0), victim))
+    push('damage', sender, ('%s · %d dmg%s%s'):format(weaponName(data.weaponType), math.floor(data.weaponDamage or 0), zone, victim))
   end
 end)
 

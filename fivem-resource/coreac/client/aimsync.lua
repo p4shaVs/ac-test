@@ -14,8 +14,22 @@
 -- pompalı). Patlayıcı, fırlatılan, yakın dövüş ve araç silahlarında nişan
 -- yönü isabetle ilişkili değildir → hiç örnek gönderilmez.
 
-local HITSCAN = { pistol = true, smg = true, rifle = true, mg = true, sniper = true, shotgun = true }
+local HITSCAN = CoreAC.HITSCAN_CLASSES
 local MIN_GAP = 80   -- ms — iki örnek arası en kısa süre (~12/sn tavan)
+
+-- Vanilla silah tablodan, eklenti silah (weapon_browning vb.) oyunun silah
+-- grubundan sınıflanır. Eskiden eklenti silahlarla HİÇ örnek gönderilmiyordu;
+-- GUN PVP sunucularında silent aim kontrolü bu yüzden tamamen körlemişti.
+-- Sunucu da aynı sınıflamayı kullanır (server/combat_guard.lua).
+local classCache = {}
+local function weaponClass(w)
+  local c = classCache[w]
+  if c == nil then
+    c = CoreAC.GetWeaponClass(w) or CoreAC.WeaponClassFromGroup(GetWeapontypeGroup(w)) or false
+    classCache[w] = c
+  end
+  return c or nil
+end
 
 local function camForward()
   local r = GetFinalRenderedCamRot(2)
@@ -28,7 +42,7 @@ CreateThread(function()
   local lastSent = 0
   while true do
     local ped = PlayerPedId()
-    local cls = CoreAC.GetWeaponClass and CoreAC.GetWeaponClass(GetSelectedPedWeapon(ped))
+    local cls = weaponClass(GetSelectedPedWeapon(ped))
     if cls and HITSCAN[cls] and not IsPedInAnyVehicle(ped, false) and CAC.rule('anti_silent_aim', true) then
       if IsPedShooting(ped) then
         local now = GetGameTimer()

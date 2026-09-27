@@ -132,14 +132,22 @@ end)
 -- YANLIŞ-BAN TASARIMI (bu tip BAN atabilir):
 --   * Yalnızca hitscan ateşli silahlar (patlayıcı/fırlatılan/melee/araç
 --     silahında nişan yönü isabetle ilişkili değildir — ör. yapışkan bomba
---     patlatılırken oyuncu başka yöne bakar).
+--     patlatılırken oyuncu başka yöne bakar). EKLENTİ silahlar da dahildir:
+--     sınıfları oyuncuların bildirdiği silah grubundan öğrenilir
+--     (server/combat_guard.lua). Eskiden eklenti silahlar hiç ölçülmüyordu.
 --   * Atıcı YAYA, kurban YAYA ve 8 m'den uzak (ağ gecikmesinin konumu
 --     kaydırmasının açıya etkisi küçük kalsın).
 --   * İsabet, zamanca EN YAKIN nişan örneğiyle eşlenir (±300 ms).
 --   * TEK isabet asla yetmez: 10 sn içinde 60°'den fazla sapan 3 isabet.
 -- ---------------------------------------------------------------------------
-local HITSCAN = { pistol = true, smg = true, rifle = true, mg = true, sniper = true, shotgun = true }
+local HITSCAN = CoreAC.HITSCAN_CLASSES
 local AIM_KEEP = 8
+
+--- Silah sınıfı: vanilla tablo, yoksa (eklenti) oyuncu bildirimlerinden.
+local function weaponClass(hash, src)
+  if CoreAC.ResolveWeaponClass then return CoreAC.ResolveWeaponClass(hash, src) end
+  return CoreAC.GetWeaponClass and CoreAC.GetWeaponClass(hash)
+end
 local aimData = {}   -- [src] = { {pos, fwd, t}, ... } (en yeni sonda)
 
 RegisterNetEvent('coreac:aim', function(px, py, pz, fx, fy, fz)
@@ -173,21 +181,30 @@ local silentHits = {}   -- [src] = { zaman damgaları }
 -- ---------------------------------------------------------------------------
 -- RAPID FIRE (fire-rate hilesi) — RAPOR-ONLY, yumuşak sinyal.
 -- Aynı silahtan ardışık isabetler arasındaki süre, hiçbir gerçek silahın
--- ulaşamayacağı kadar kısaysa (60ms = 1000 rpm üstü) işaretle. Ateş hızı
--- netcode/lag'e duyarlı olduğu için TİTİZ: çok sayıda ardışık ihlal ister,
--- asla ban atmaz — sadece panelde görünür, isterseniz manuel inceleyin.
+-- ulaşamayacağı kadar kısaysa (60ms = 1000 rpm üstü) işaretle. Asla ban
+-- atmaz — sadece panelde görünür, isterseniz manuel inceleyin.
+--
+-- YANLIŞ-POZİTİF DÜZELTMESİ: aralık eskiden SUNUCUYA VARIŞ zamanıyla
+-- ölçülüyordu. Ağ paketleri toplu gelir; normal hızda sıkılan mermiler
+-- sunucuya 1-5 ms arayla ulaşıp "rapid fire" sayılıyordu. Artık atıcının
+-- kendi saatindeki atış anı (damageTime) kullanılır. Aynı andaki isabetler
+-- (pompalı saçması, tek atışta birden fazla kurban) aynı damageTime'ı taşır
+-- ve sayılmaz. Minigun gibi ağır silahlar doğası gereği hızlıdır → hariç.
 -- ---------------------------------------------------------------------------
 local lastShot = {}      -- [src][weaponHash] = son isabet zamanı
 local rapidFireStrike = {}
 
-local function checkRapidFire(src, weaponHash)
+local function checkRapidFire(src, weaponHash, shotAt)
   if not ruleOn('anti_rapid_fire') then return end
+  shotAt = tonumber(shotAt)
+  if not shotAt then return end
+  if weaponClass(weaponHash, src) == 'heavy' then return end
   lastShot[src] = lastShot[src] or {}
-  local now = GetGameTimer()
   local last = lastShot[src][weaponHash]
-  lastShot[src][weaponHash] = now
+  if last == shotAt then return end                 -- aynı atış (saçma / çoklu kurban)
+  lastShot[src][weaponHash] = shotAt
   if not last then return end
-  local dt = now - last
+  local dt = shotAt - last
   if dt > 0 and dt < 60 then
     rapidFireStrike[src] = (rapidFireStrike[src] or 0) + 1
     if rapidFireStrike[src] >= 8 then
@@ -260,10 +277,40 @@ end
 AddEventHandler('playerDropped', function()
   local s = source
   silentHits[s] = nil; lastShot[s] = nil; rapidFireStrike[s] = nil; losStrike[s] = nil; reachStrike[s] = nil
+  noAimHits[s] = nil
 end)
 
+-- ---------------------------------------------------------------------------
+-- NİŞAN TELEMETRİSİ KESİLMESİ — client/aimsync.lua her hitscan atışında nişan
+-- örneği yollar. Silent aim hilesi AC'yi susturursa (thread'i öldürür ya da
+-- event'i engeller) açı kontrolü "örnek yok" diye sessizce atlanıyordu.
+-- Oyuncu 60 sn içinde başka oyunculara 10+ hitscan isabeti verip bu sürede
+-- TEK bir nişan örneği bile göndermediyse client tarafı devre dışıdır.
+-- (Gecikme/kayıp tek tük örnek düşürür, bir dakikalık tam sessizlik değil.)
+-- ---------------------------------------------------------------------------
+local NO_AIM_HITS = 10
+local NO_AIM_WINDOW = 60000
+local noAimHits = {}   -- [src] = { zamanlar }
+
+local function noteMissingAim(src)
+  local t = GetGameTimer()
+  local list = aimData[src]
+  local last = list and list[#list]
+  if last and t - last.t < NO_AIM_WINDOW then noAimHits[src] = nil; return end
+  local fresh = {}
+  for _, at in ipairs(noAimHits[src] or {}) do
+    if t - at < NO_AIM_WINDOW then fresh[#fresh + 1] = at end
+  end
+  fresh[#fresh + 1] = t
+  noAimHits[src] = fresh
+  if #fresh >= NO_AIM_HITS then
+    noAimHits[src] = nil
+    TriggerEvent('coreac:serverReport', src, 'AC_TAMPER', 'HIGH', { source = 'no_aim_telemetry', hits = #fresh })
+  end
+end
+
 local function checkSilentAim(src, data)
-  local cls = CoreAC.GetWeaponClass and CoreAC.GetWeaponClass(data.weaponType)
+  local cls = weaponClass(data.weaponType, src)
   if not (cls and HITSCAN[cls]) then return end
   local shooterPed = GetPlayerPed(src)
   if not shooterPed or shooterPed == 0 or GetVehiclePedIsIn(shooterPed, false) ~= 0 then return end
@@ -284,7 +331,7 @@ local function checkSilentAim(src, data)
   SetTimeout(250, function()
     if not GetPlayerName(src) then return end
     local s = aimSampleNear(src, hitAt)
-    if not s then return end
+    if not s then noteMissingAim(src); return end
     for _, vpos in ipairs(victims) do
       local dir = vpos - s.pos
       local dist = #dir
@@ -330,7 +377,7 @@ AddEventHandler('weaponDamageEvent', function(sender, data)
   -- hedeflerine bakar, whitelist'li atıcılar hariç tutulur.
   if data and (data.hitGlobalIds or data.hitGlobalId)
       and not (CAC.isWhitelisted and CAC.isWhitelisted(src)) then
-    if data.weaponType then checkRapidFire(src, data.weaponType) end
+    if data.weaponType then checkRapidFire(src, data.weaponType, data.damageTime) end
     local shooterPed = GetPlayerPed(src)
     local ids2 = data.hitGlobalIds or { data.hitGlobalId }
     for _, nid in ipairs(ids2) do
@@ -356,9 +403,11 @@ AddEventHandler('weaponDamageEvent', function(sender, data)
     -- Çevresel hasar (patlama, ateş, araç çarpması, düşme…) ve ağır/fırlatılan
     -- silahlar bu eşiği meşru olarak aşabilir → bunlar sayılmaz.
     local wt = signedToUnsigned(data.weaponType)
-    local cls = CoreAC.GetWeaponClass and CoreAC.GetWeaponClass(data.weaponType)
+    local cls = weaponClass(data.weaponType, src)
     if not ENVIRONMENT_DAMAGE[wt] and cls ~= 'heavy' and cls ~= 'thrown' then
-      TriggerEvent('coreac:serverReport', src, 'ILLEGAL_WEAPON', 'HIGH', { dmg = data.weaponDamage })
+      TriggerEvent('coreac:serverReport', src, 'ILLEGAL_WEAPON', 'HIGH', {
+        dmg = data.weaponDamage, weapon = CoreAC.WeaponLabel and CoreAC.WeaponLabel(data.weaponType) or wt,
+      })
     end
   end
 
@@ -375,13 +424,29 @@ AddEventHandler('weaponDamageEvent', function(sender, data)
   -- düşüyordu. RP sunucularındaki EKLENTİ (addon) silahlar (yüksek hasarlı
   -- özel keskin nişancılar vb.), patlama/araç-silahı/ezilme hasar olayları
   -- bu tavanı meşru olarak aşabiliyor ve iki isabette BAN'a dönüşüyordu.
-  -- Artık yalnızca sınıfı ve tavanı bilinen VANİLLA ateşli silahlar ölçülür.
+  -- Genel 400 tavanı artık kullanılmaz; sınıfı bilinmeyen silah ölçülmez.
+  --
+  -- EKLENTİ SİLAHLAR: tavan, o silahın diğer oyuncularda ölçülen etkin
+  -- hasarından türetilir (server/combat_guard.lua mutabakatı, en az 2 oyuncu).
+  -- Mermi saçılımı/menzil düşüşü hasarı yalnızca AZALTIR; 3 katı + 60 payı
+  -- bileşen ve özel mermi farklarını fazlasıyla karşılar. Kafa/boyun
+  -- isabetleri ve pompalı/ağır silahlar (tek olayda çoklu saçma) sayılmaz.
   if ruleOn('anti_damage_multiplier') and data and data.weaponDamage
       and data.weaponDamage <= 2000 then
     local cap = CoreAC.GetWeaponMaxDamage and CoreAC.GetWeaponMaxDamage(data.weaponType)
+    if not cap and CoreAC.WeaponConsensus and data.hitComponent ~= 19 and data.hitComponent ~= 20 then
+      local c = CoreAC.WeaponConsensus(data.weaponType, src)
+      local cls = c and c.group and CoreAC.WeaponClassFromGroup(c.group)
+      if c and c.ref and c.ref > 0 and cls and HITSCAN[cls] and cls ~= 'shotgun' then
+        cap = math.floor(math.max(c.ref * 3.0, c.ref + 60))
+      end
+    end
     if cap and data.weaponDamage > cap
         and tooFast('dmgmul:' .. src, (Config.DamageConfirmHits or 2) - 1, 6000) then
-      TriggerEvent('coreac:serverReport', src, 'DAMAGE_MULTIPLIER', 'CRITICAL', { dmg = math.floor(data.weaponDamage), cap = cap })
+      TriggerEvent('coreac:serverReport', src, 'DAMAGE_MULTIPLIER', 'CRITICAL', {
+        dmg = math.floor(data.weaponDamage), cap = cap,
+        weapon = CoreAC.WeaponLabel and CoreAC.WeaponLabel(data.weaponType) or data.weaponType,
+      })
     end
   end
 end)

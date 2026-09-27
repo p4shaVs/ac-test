@@ -17,17 +17,28 @@ end)
 -- ================= TRUE SILENT AIM DETECTION SYSTEM ==================== --
 -- =========================================================================== --
 
+-- YANLIŞ-POZİTİF TASARIMI (bu kontrol, getClosestPed çökmesi yüzünden bugüne
+-- kadar hiç çalışmamıştı; açılırken eşikler baştan güvenli kuruldu):
+--   * Ölçü AÇI: atış anındaki kamera yönü ile kameradan isabet noktasına
+--     giden yön arasındaki sapma. Metre/piksel eşiği mesafeyle büyüyen mermi
+--     saçılmasını hile sanıyordu (100 m'de 2° saçılma = 3.5 m).
+--   * Yalnızca NİŞAN ALIRKEN (sağ tık / ADS) yapılan atışlar ölçülür; kalçadan
+--     ateşte oyunun kendi saçılması büyüktür.
+--   * TEK atış asla yetmez: 20 sn içinde oyuncuya isabet eden 4 atış, nişandan
+--     6°'den fazla sapmış olmalı. Silent aim hedefe kilitlendiği için her
+--     isabette sapar; meşru oyuncu nişan aldığı yere vurur.
+--   * Rapor client kaynaklıdır → panelde en fazla KICK. Kesin karar (BAN)
+--     sunucunun kendi açı ölçümüne aittir (server/protection.lua).
 local silentAimConfig = {
-    maxTrajectoryDeviation = 2.0,     -- Max meters between expected hit and actual hit
-    maxScreenDeviation = 70,         -- Max pixels between crosshair and hit point (increased)
-    
-    minDetectionDistance = 4.0,       -- Minimum distance to perform checks
-    maxDetectionDistance = 250.0,     -- Maximum distance to check
-    
-    shotValidityWindow = 50,         -- ms after shot to consider impact valid
-    
-    minShotsForPattern = 3,           -- Minimum shots to detect patterns
-    
+    minDetectionDistance = 4.0,       -- bundan yakın isabetler ölçülmez
+    maxDetectionDistance = 250.0,     -- bundan uzak isabetler ölçülmez
+
+    shotValidityWindow = 50,          -- ms: atıştan sonra isabetin geçerli sayıldığı süre
+
+    maxAimOffset = 6.0,               -- derece: nişan ile isabet arası izin verilen sapma
+    offsetHitsNeeded = 4,             -- pencere içinde bu kadar sapmış isabet
+    offsetWindow = 20000,             -- ms
+
     excludedWeaponGroups = {
         [GetHashKey("GROUP_SHOTGUN")] = true,
         [GetHashKey("GROUP_SNIPER")] = true,
@@ -40,15 +51,13 @@ local silentAimConfig = {
 local silentAimData = {
     lastShotTime = 0,
     shotFired = false,
-    shotData = nil, -- Store camera data when shot is fired
-    screenCenter = { x = 0, y = 0 },
-    
+    shotData = nil, -- atış anındaki kamera verisi
+
     lastCameraRotation = nil,
     lastMovementTime = 0,
     mouseVelocity = 0,
 
-    recentHits = {},
-    totalSuspiciousShots = 0,
+    offsetHits = {},   -- nişandan sapmış isabetlerin zamanları
 }
 
 local function detectRapidMouseMovement(currentRotation)
@@ -56,224 +65,107 @@ local function detectRapidMouseMovement(currentRotation)
     silentAimData.mouseVelocity = 0
     if silentAimData.lastCameraRotation then
         local timeDelta = currentTime - silentAimData.lastMovementTime
-        if timeDelta > 0 and timeDelta < 500 then -- Within 500ms
+        if timeDelta > 0 and timeDelta < 500 then
             local rotationDelta = #(currentRotation - silentAimData.lastCameraRotation)
-            silentAimData.mouseVelocity = rotationDelta / (timeDelta / 1000) -- degrees per second
+            silentAimData.mouseVelocity = rotationDelta / (timeDelta / 1000) -- derece/sn
         end
     end
-    
+
     silentAimData.lastCameraRotation = currentRotation
     silentAimData.lastMovementTime = currentTime
-    
+
     return silentAimData.mouseVelocity
 end
 
-
-local calculateExpectedHitPoint = LPH_NO_VIRTUALIZE(function(shotData, impactDistance)
-    if not shotData or not shotData.cameraCoords or not shotData.cameraDirection then 
-        return nil 
-    end
-    
-    return vector3(
-        shotData.cameraCoords.x + (shotData.cameraDirection.x * impactDistance),
-        shotData.cameraCoords.y + (shotData.cameraDirection.y * impactDistance),
-        shotData.cameraCoords.z + (shotData.cameraDirection.z * impactDistance)
-    )
+--- Atış anındaki nişan yönü ile kameradan isabet noktasına giden yön
+--- arasındaki açı (derece).
+local aimOffsetDegrees = LPH_NO_VIRTUALIZE(function(impactCoords, shotData)
+    local toImpact = impactCoords - shotData.cameraCoords
+    local len = #toImpact
+    if len < 0.001 then return 0.0 end
+    local d = shotData.cameraDirection
+    local dot = (d.x * toImpact.x + d.y * toImpact.y + d.z * toImpact.z) / len
+    if dot > 1.0 then dot = 1.0 elseif dot < -1.0 then dot = -1.0 end
+    return math.deg(math.acos(dot))
 end)
 
--- Main trajectory deviation detection (core of silent aim detection)
-local analyzeTrajectoryDeviation = LPH_NO_VIRTUALIZE(function(impactCoords, shotData)
-    -- Calculate where bullet should have gone based on camera direction
-    local impactDistance = #(shotData.cameraCoords - impactCoords)
-    local expectedHitPoint = calculateExpectedHitPoint(shotData, impactDistance)
-    
-    if not expectedHitPoint then return false, 0 end
-    
-    -- Calculate 3D deviation between expected hit and actual victim location
-    local trajectoryDeviation = #(expectedHitPoint - impactCoords)
-    
-    -- Use distance-based thresholds
-    local threshold = silentAimConfig.maxTrajectoryDeviation
-    
-    local isSuspicious = trajectoryDeviation > threshold
-
-    return isSuspicious, trajectoryDeviation
-end)
-
--- Screen space analysis - where was crosshair vs where target is
-local analyzeScreenDeviation = LPH_NO_VIRTUALIZE(function(impactCoords, shotData)
-    if not shotData or not impactCoords then return false, 0 end
-    
-    -- Use exact impact coordinates for maximum precision
-    local onScreen, screenX, screenY = GetScreenCoordFromWorldCoord(impactCoords.x, impactCoords.y, impactCoords.z)
-    
-    if not onScreen then return false, 0 end
-    
-    local screenWidth, screenHeight = GetActiveScreenResolution()
-    local impactScreenX = screenX * screenWidth
-    local impactScreenY = screenY * screenHeight
-    silentAimData.screenCenter.x = screenWidth / 2
-    silentAimData.screenCenter.y = screenHeight / 2
-
-    -- Calculate distance from crosshair center to exact impact point
-    local deltaX = impactScreenX - silentAimData.screenCenter.x
-    local deltaY = impactScreenY - silentAimData.screenCenter.y
-    local screenDeviation = math.sqrt(deltaX * deltaX + deltaY * deltaY)
-    
-    -- Use distance-based thresholds
-    local distanceToImpact = #(shotData.cameraCoords - impactCoords)
-    
-    local threshold = silentAimConfig.maxScreenDeviation
-    
-    local isSuspicious = screenDeviation > threshold
-    return isSuspicious, screenDeviation
-end)
-
--- Pattern detection for multiple suspicious shots
-local updateSuspiciousPatterns = LPH_NO_VIRTUALIZE(function(isSuspicious)
-    local currentTime = CoreAC.Native.GetGameTimer()
-    
-    -- Clean old entries (keep last 30 seconds)
-    for i = #silentAimData.recentHits, 1, -1 do
-        if currentTime - silentAimData.recentHits[i].time > 30000 then
-            table.remove(silentAimData.recentHits, i)
-        end
+--- Sapmış isabeti kaydeder, pencere içindeki sayıyı döndürür.
+local function recordOffsetHit(now)
+    local fresh = {}
+    for _, t in CoreAC.Lua.ipairs(silentAimData.offsetHits) do
+        if now - t < silentAimConfig.offsetWindow then fresh[#fresh + 1] = t end
     end
-    
-    -- Add current shot
-    table.insert(silentAimData.recentHits, {
-        time = currentTime,
-        suspicious = isSuspicious
-    })
-    
-    if isSuspicious then
-        silentAimData.totalSuspiciousShots = silentAimData.totalSuspiciousShots + 1
-    end
-    
-    -- Check if we have enough suspicious shots in recent history
-    local recentSuspicious = 0
-    for _, hit in CoreAC.Lua.ipairs(silentAimData.recentHits) do
-        if hit.suspicious then
-            recentSuspicious = recentSuspicious + 1
-        end
-    end
-    
-    -- If 3+ suspicious shots in recent history, trigger detection
-    return recentSuspicious >= silentAimConfig.minShotsForPattern
-end)
+    fresh[#fresh + 1] = now
+    silentAimData.offsetHits = fresh
+    return #fresh
+end
 
 local shouldMonitorWeapon = LPH_NO_VIRTUALIZE(function(weaponHash)
     if not weaponHash or weaponHash == CoreAC.Native.GetHashKey("WEAPON_UNARMED") then
         return false
     end
-    
+
     local weaponGroup = GetWeapontypeGroup(weaponHash)
     if silentAimConfig.excludedWeaponGroups[weaponGroup] then
         return false
     end
-    
+
     local damageType = GetWeaponDamageType(weaponHash)
-    return damageType == 3 -- Bullet damage only
+    return damageType == 3 -- yalnızca mermi hasarı
 end)
 
--- Core silent aim detection based on trajectory deviation
+-- İsabetin meşru olup olmadığı. false dönerse ikinci değer rapor ayrıntısıdır.
 local validateShotLegitimacy = LPH_JIT_MAX(function(victim, impactCoords, weaponHash)
-    local shooterCoords = GetEntityCoords(CoreAC.playerPed)
-    local victimCoords = GetEntityCoords(victim)
-    local distanceToVictim = #(shooterCoords - victimCoords)
-    
-    -- Distance checks
-    if distanceToVictim < silentAimConfig.minDetectionDistance then
-        return true, "too_close"
-    end
-    
-    if distanceToVictim > silentAimConfig.maxDetectionDistance then
-        return true, "too_far"
-    end
-    
-    -- Weapon legitimacy check
-    if not shouldMonitorWeapon(weaponHash) then
-        return true, "excluded_weapon"
-    end
+    local shotData = silentAimData.shotData
+    if not shotData then return true, "no_shot_data" end
 
-    -- Check for rapid mouse movement (high-sens / flick shots)
-    local mouseVelocity = silentAimData.shotData and silentAimData.shotData.mouseVelocity or 0
-    
-    -- EXCLUDE rapid movements from detection entirely
-    if mouseVelocity > 100 then
-        return true, "rapid_movement_excluded", {
-            mouseVelocity = mouseVelocity,
-            reason = "Shot excluded due to rapid mouse movement"
-        }
-    end
-    
-    local suspiciousTrajectory, trajectoryDeviation = analyzeTrajectoryDeviation(impactCoords, silentAimData.shotData)
-    
-    -- SECONDARY CHECK: Screen space analysis (precise impact point)
-    local suspiciousScreen, screenDeviation = analyzeScreenDeviation(impactCoords, silentAimData.shotData)
-    
-    -- Determine if this shot is suspicious based on both methods
-    local isSuspicious = suspiciousTrajectory or suspiciousScreen
-    
-    -- Update pattern tracking
-    local hasPattern = updateSuspiciousPatterns(isSuspicious)
-    
-    -- INSTANT DETECTION for clear violations (normal thresholds)
-    if suspiciousTrajectory and trajectoryDeviation > (silentAimConfig.maxTrajectoryDeviation * 1.5) then
-        -- Very obvious trajectory deviation = instant detection
+    local distanceToVictim = #(GetEntityCoords(CoreAC.playerPed) - GetEntityCoords(victim))
+    if distanceToVictim < silentAimConfig.minDetectionDistance then return true, "too_close" end
+    if distanceToVictim > silentAimConfig.maxDetectionDistance then return true, "too_far" end
+    if not shouldMonitorWeapon(weaponHash) then return true, "excluded_weapon" end
+
+    -- Kalçadan ateş: oyunun kendi saçılması büyük, ölçülmez.
+    if not shotData.aiming then return true, "hip_fire" end
+
+    -- Hızlı fare hareketi (flick): kamera verisi atıştan hemen önceki kareye ait.
+    if (shotData.mouseVelocity or 0) > 100 then return true, "rapid_movement_excluded" end
+
+    local offset = aimOffsetDegrees(impactCoords, shotData)
+    if offset <= silentAimConfig.maxAimOffset then return true, "legitimate_shot" end
+
+    local hits = recordOffsetHit(CoreAC.Native.GetGameTimer())
+    if hits >= silentAimConfig.offsetHitsNeeded then
+        silentAimData.offsetHits = {}
         return false, {
-            reason = "instant_trajectory_violation",
-            trajectoryDeviation = trajectoryDeviation,
-            threshold = silentAimConfig.maxTrajectoryDeviation * 1.5,
-            distance = distanceToVictim,
-            screenDeviation = screenDeviation,
-            mouseVelocity = mouseVelocity,
+            reason = "aim_offset",
+            offsetDeg = math.floor(offset * 10) / 10,
+            hits = hits,
+            distance = math.floor(distanceToVictim),
         }
     end
-    
-    if suspiciousScreen and screenDeviation > (silentAimConfig.maxScreenDeviation * 3.0) then
-        -- Very obvious screen deviation = instant detection (adjusted for movement)
-        return false, {
-            reason = "instant_screen_violation",
-            screenDeviation = screenDeviation,
-            threshold = silentAimConfig.maxScreenDeviation * 3.0,
-            distance = distanceToVictim,
-            trajectoryDeviation = trajectoryDeviation,
-            mouseVelocity = mouseVelocity,
-        }
-    end
-    
-    -- PATTERN DETECTION for legit configs (multiple suspicious shots)
-    if hasPattern then
-        return false, {
-            reason = "pattern_detection",
-            suspiciousShots = silentAimData.totalSuspiciousShots,
-            recentSuspicious = #silentAimData.recentHits,
-            trajectoryDeviation = trajectoryDeviation,
-            screenDeviation = screenDeviation,
-            distance = distanceToVictim,
-            mouseVelocity = mouseVelocity,
-        }
-    end
-    
-    -- COMBINED ANALYSIS for borderline cases
-    if isSuspicious and distanceToVictim > 30 then
-        -- For distant shots, any deviation is more suspicious
-        if (trajectoryDeviation and trajectoryDeviation > silentAimConfig.maxTrajectoryDeviation * 0.7) and
-           (screenDeviation and screenDeviation > silentAimConfig.maxScreenDeviation * 0.7) then
-            return false, {
-                reason = "distance_based_violation",
-                trajectoryDeviation = trajectoryDeviation,
-                screenDeviation = screenDeviation,
-                distance = distanceToVictim,
-                mouseVelocity = mouseVelocity,
-            }
+    return true, "offset_pending"
+end)
+
+-- İsabet noktasına en yakın (canlı, başka) oyuncu ped'i.
+-- HATA DÜZELTİLDİ: bu dosya client/entities.lua'daki LOCAL getClosestPed'i
+-- çağırıyordu; burada o isim nil olduğundan her mermi çarpmasında handler
+-- "attempt to call a nil value" ile çöküyor, client silent aim kontrolü
+-- hiç çalışmıyordu.
+local function getClosestPed(coords, maxDistance)
+    local peds = CoreAC.Native.GetGamePool('CPed')
+    local closestPed, closestDistance = nil, maxDistance or 999.0
+    for i = 1, #peds do
+        local ped = peds[i]
+        if ped ~= CoreAC.playerPed and IsPedAPlayer(ped) and not CoreAC.Native.IsEntityDead(ped) then
+            local distance = #(coords - GetEntityCoords(ped))
+            if distance < closestDistance then
+                closestDistance = distance
+                closestPed = ped
+            end
         end
     end
-    
-    -- Shot appears legitimate
-    return true, "legitimate_shot"
-end)
+    return closestPed, closestDistance
+end
 
 local function isPedAWitness(witnesses, ped)
     if not witnesses then return false end
@@ -337,11 +229,20 @@ AddEventHandler("CEventGunShot", LPH_JIT_MAX(function(witnesses, shooter)
         cameraCoords = cameraCoords,
         cameraRotation = cameraRotation,
         cameraDirection = RotationToDirection(cameraRotation),
-        mouseVelocity = silentAimData.mouseVelocity
+        mouseVelocity = silentAimData.mouseVelocity,
+        -- Nişan alarak mı (sağ tık / ADS) ateş etti? Kalçadan ateş ölçülmez.
+        aiming = CoreAC.Native.IsAimCamActive() or IsPlayerFreeAiming(CoreAC.playerId),
     }
 end))
 
--- Enhanced bullet impact handler with instant detection
+local impactStrike = CoreAC.StrikesSystem.createStrikeSystem("SilentAimImpact", 5, function(kind)
+    CoreAC.DetectPlayer(CoreAC.Detections.ANTI_SILENT_AIM, {
+        reason = "Bullet Impact Manipulation",
+        impact = kind,
+    })
+end, 30000)
+
+-- Mermi çarpması: isabet, atış anındaki nişanla uyuşuyor mu?
 AddEventHandler("CEventGunShotBulletImpact", LPH_JIT_MAX(function(witnesses, shooter)
     if not CoreAC.Config.Beta.AntiSilentAim then return end
     if shooter ~= CoreAC.playerPed then return end
@@ -367,17 +268,12 @@ AddEventHandler("CEventGunShotBulletImpact", LPH_JIT_MAX(function(witnesses, sho
         return
     end
 
+    -- Çarpma olayı gelmiş ama merminin çarpma noktası yok/sıfır: mermi
+    -- yönlendirmesinin izi olabilir, ama olay sırası da tutmayabilir. Tek
+    -- okumaya güvenilmez — 30 sn içinde 5 kez olmalı (impactStrike).
     local success, impactCoords = GetPedLastWeaponImpactCoord(shooter)
-    if not success then
-        CoreAC.DetectPlayer(CoreAC.Detections.ANTI_SILENT_AIM, {
-            reason = "Bullet Impact Manipulation",
-        })
-        silentAimData.shotFired = false
-        return
-    elseif success and impactCoords == vector3(0.0, 0.0, 0.0) then
-        CoreAC.DetectPlayer(CoreAC.Detections.ANTI_SILENT_AIM, {
-            reason = "Bullet Impact Manipulation #2",
-        })
+    if not success or impactCoords == vector3(0.0, 0.0, 0.0) then
+        impactStrike(success and "zero" or "missing")
         silentAimData.shotFired = false
         return
     end
@@ -415,13 +311,6 @@ AddEventHandler("CEventGunShotBulletImpact", LPH_JIT_MAX(function(witnesses, sho
     local isLegitimate, detectionData = validateShotLegitimacy(victim, impactCoords, weaponHash)
 
     if not isLegitimate then
-        -- INSTANT DETECTION - Enhanced detection for all types of silent aim
-        local shooterCoords = GetEntityCoords(shooter)
-        local victimCoords = GetEntityCoords(victim)
-        local distanceToVictim = #(shooterCoords - victimCoords)
-        
-        detectionData.distance = distanceToVictim
-        
         CoreAC.DetectPlayer(CoreAC.Detections.ANTI_SILENT_AIM, detectionData)
     end
 

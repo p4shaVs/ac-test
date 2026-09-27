@@ -139,12 +139,32 @@ local checkWeaponDamages = LPH_JIT_MAX(function()
         end
     end
 
+    local weapon = CoreAC.currentWeapon
+    local holdingFirearm = weapon and weapon ~= 0 and weapon ~= -1569615261 and GetWeaponDamageType(weapon) == 3
+
+    -- SİLAH İSTATİSTİĞİ → SUNUCU (server/combat_guard.lua). Aynı silahın hasarı
+    -- meşru oyuncuların hepsinde AYNIDIR (silah dosyaları sunucudan iner;
+    -- sunucunun kendi SetWeaponDamageModifier ayarı da herkese uygulanır).
+    -- Sunucu değerleri oyuncular arasında karşılaştırır: herkesten yüksek olan
+    -- oyuncu = hasar hilesi (bellekten silah verisi yazan harici hileler dahil).
+    -- Eklenti silahların SINIFI da buradan öğrenilir (grup), bu yüzden bu
+    -- bildirim kuraldan bağımsız hep gönderilir.
+    if holdingFirearm then
+        TriggerServerEvent('coreac:wstat', signedToUnsigned(weapon), 3,
+            signedToUnsigned(GetWeapontypeGroup(weapon)),
+            math.floor(GetWeaponDamage(weapon, 0) * 100 + 0.5) / 100,
+            math.floor(GetWeaponDamageModifier(weapon) * 1000 + 0.5) / 1000,
+            math.floor(GetPlayerWeaponDamageModifier(CoreAC.playerId) * 1000 + 0.5) / 1000)
+    end
+
     if CoreAC.Config.Weapons.AntiWeaponDamagesModifier then
         if CoreAC.currentWeapon ~= -1569615261 then
             local weapDamages = math.floor(GetWeaponDamage(CoreAC.currentWeapon, false))
             local weapDamagesModifier = GetWeaponDamageModifier(CoreAC.currentWeapon)
+            local playerModifier = GetPlayerWeaponDamageModifier(CoreAC.playerId)
             local weapData = CoreAC.WEAPON_DATA[CoreAC.currentWeapon]
 
+            -- Sunucu script'i beklenen hasarı exports.setNewDamage ile bildirdiyse.
             if weapData and weapData.weaponDamages > 0 and (weapDamages > weapData.weaponDamages + 1) then
                 CoreAC.DetectPlayer(CoreAC.Detections.ANTI_WEAPON_DAMAGES_MODIFIER, {
                     weapon = weapData.weaponName or CoreAC.currentWeapon,
@@ -154,21 +174,22 @@ local checkWeaponDamages = LPH_JIT_MAX(function()
                 return
             end
 
-            if weapDamagesModifier > 1.1 then
+            -- YANLIŞ-POZİTİF DÜZELTMESİ: eskiden çarpan 1.1'i (oyuncu çarpanı
+            -- 1.0'ı) geçince tespit atılıyordu. GUN PVP / RP sunucuları silah
+            -- dengesini tam da bu native'lerle ayarlar (ör. tabanca 1.5x) →
+            -- herkes kick yiyordu. Küçük/orta farkı artık sunucu, oyuncular
+            -- arası karşılaştırmayla yakalar; burada yalnızca hiçbir sunucunun
+            -- vermeyeceği uç değer (10x+) yerelde işaretlenir.
+            local combined = weapDamagesModifier * playerModifier
+            if combined >= 10.0 then
                 CoreAC.DetectPlayer(CoreAC.Detections.ANTI_WEAPON_DAMAGES_MODIFIER, {
                     weapon = weapData and weapData.weaponName or CoreAC.currentWeapon,
-                    multiplier = weapDamagesModifier,
+                    multiplier = math.floor(combined * 100) / 100,
                 })
                 return
             end
 
-            if GetPlayerWeaponDamageModifier(CoreAC.playerId) > 1.0 then
-                CoreAC.DetectPlayer(CoreAC.Detections.ANTI_WEAPON_DAMAGES_MODIFIER, {
-                    type = "Weapon Damages",
-                    multiplier = GetPlayerWeaponDamageModifier(CoreAC.playerId),
-                })
-                return
-            elseif GetPlayerWeaponDefenseModifier(CoreAC.playerId) > 1.0 then
+            if GetPlayerWeaponDefenseModifier(CoreAC.playerId) > 1.0 then
                 CoreAC.DetectPlayer(CoreAC.Detections.ANTI_WEAPON_DAMAGES_MODIFIER, {
                     type = "Weapon Defense",
                     multiplier = GetPlayerWeaponDefenseModifier(CoreAC.playerId),

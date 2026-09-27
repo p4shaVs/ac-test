@@ -31,8 +31,9 @@ export const RULE_GROUPS: RuleGroup[] = [
     icon: "bolt",
     description: "Server-side weapon and damage checks",
     rules: [
-      { key: "anti_silent_aim", label: "Anti Silent Aim", description: "Compares where the shooter was aiming at the moment of the shot with where the victim really was. Firearms on foot only; needs three hits more than 60° off target within 10 seconds, so a flick shot or a sticky bomb can never trigger it.", default: true },
-      { key: "anti_damage_multiplier", label: "Anti Damage Multiplier", description: "Flags single hits above a sane weapon-damage ceiling.", default: true },
+      { key: "anti_silent_aim", label: "Anti Silent Aim", description: "Compares where the shooter was aiming at the moment of the shot with where the victim really was. Firearms on foot only, add-on guns included; needs three hits more than 60° off target within 10 seconds, so a flick shot or a sticky bomb can never trigger it. A player who keeps hitting others while their game stops sending aim data is flagged as anti-cheat tampering.", default: true },
+      { key: "anti_damage_multiplier", label: "Anti Damage Multiplier", description: "Catches damage boosts three ways: single hits above the weapon's ceiling, a player whose weapon deals more than every other player's copy of the same gun (add-on guns included, so your own weapon tuning never counts), and repeated one-shot BODY kills on fully armoured players. Head shots are never counted.", default: true },
+      { key: "anti_headshot_rate", label: "Headshot Rate Review", description: "Report-only. Flags a player whose last 10 kills include 9 single head shots from 15 m or more, for staff to review. Never kicks or bans — good players in a one-tap meta can get there too.", default: true },
       { key: "anti_explosive_bullets", label: "Anti Explosive Bullets", description: "Detects bullet-type explosions fired in quick succession.", default: true },
       { key: "anti_illegal_weapon", label: "Anti Illegal Weapon Damage", description: "Flags weapon damage far beyond any real weapon.", default: true },
       { key: "anti_rapid_fire", label: "Anti Rapid Fire", description: "Report-only. Notes fire rates no real weapon can reach; never bans on its own.", default: true },
