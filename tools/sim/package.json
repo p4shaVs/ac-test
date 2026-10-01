@@ -1,0 +1,12 @@
+{
+  "name": "coreac-sim",
+  "private": true,
+  "description": "CoreAC Lua 5.4 simulation harness + Lua syntax check (dev only)",
+  "scripts": {
+    "luacheck": "node luacheck.cjs ../../fivem-resource/coreac"
+  },
+  "dependencies": {
+    "wasmoon": "^1.16.0",
+    "luaparse": "^0.3.1"
+  }
+}

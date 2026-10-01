@@ -263,16 +263,38 @@ end)
 -- Oyuncu senkronizasyonu — license / steam / discord / ip / isim
 -- ---------------------------------------------------------------------------
 
+-- ---------------------------------------------------------------------------
+-- CİHAZ İZİ (ban kaçırma engeli)
+--   * FiveM donanım token'ları: GetPlayerToken — bağlanma anında okunur,
+--     hileci hesabını değiştirse de bilgisayarı aynı kaldıkça aynıdır.
+--   * Cihaz işareti: client/device.lua oyuncunun bilgisayarına rastgele bir
+--     kimlik yazar (KVP) ve her girişte bildirir.
+-- ---------------------------------------------------------------------------
+local function getTokens(src)
+  local out = {}
+  local n = tonumber(GetNumPlayerTokens(src)) or 0
+  for i = 0, math.min(n, 16) - 1 do
+    local t = GetPlayerToken(src, i)
+    if t and t ~= '' then out[#out + 1] = t end
+  end
+  return out
+end
+
+local deviceBySrc = {}   -- [src] = 32 hex cihaz işareti
+
 local function syncPlayers()
   local players = {}
   for _, src in ipairs(GetPlayers()) do
     local ids = getIdents(src)
+    local tokens = getTokens(src)
     players[#players + 1] = {
       name = GetPlayerName(src) or ('Player#' .. src),
       license = ids.license,
       steam = ids.steam,
       discord = ids.discord,
       ip = ids.ip,
+      tokens = #tokens > 0 and tokens or nil,
+      deviceId = deviceBySrc[tonumber(src)],
     }
   end
   CAC.request('/players/sync', 'POST', { players = players }, nil)
@@ -282,10 +304,18 @@ end
 -- Ban listesi — cache + girişte kontrol
 -- ---------------------------------------------------------------------------
 
+local banByToken, banByDevice = {}, {}
+
 local function refreshBans()
   CAC.request('/bans', 'GET', nil, function(ok, data)
     if ok and data and data.bans then
       BanList = data.bans
+      local byToken, byDevice = {}, {}
+      for _, b in ipairs(BanList) do
+        for _, t in ipairs(type(b.tokens) == 'table' and b.tokens or {}) do byToken[t] = byToken[t] or b end
+        if type(b.deviceId) == 'string' and b.deviceId ~= '' then byDevice[b.deviceId] = byDevice[b.deviceId] or b end
+      end
+      banByToken, banByDevice = byToken, byDevice
     end
   end)
 end
@@ -304,6 +334,43 @@ local function matchBan(ids)
     end
   end
   return nil
+end
+
+local function evasionOn()
+  return CAC.getRules()['anti_ban_evasion'] == true
+end
+
+--- Banın kimliklerinden biri bu oyuncununkiyle aynı mı? (O zaman kaçırma
+--- değil, düz bandır — matchBan zaten yakalar.)
+local function sameIdentity(b, ids)
+  return (b.license and b.license == ids.license) or (b.steam and b.steam == ids.steam)
+      or (b.discord and b.discord == ids.discord)
+end
+
+--- Donanım token'larıyla ban kaçırma: aynı bana ait en az 2 token (oyuncunun
+--- tek token'ı varsa 1) eşleşmeli. Tek bir ortak token internet kafe / sanal
+--- makine gibi durumlarda tesadüf olabilir.
+local function matchEvasionByTokens(ids, tokens)
+  if #tokens == 0 then return nil end
+  local hits = {}
+  for _, t in ipairs(tokens) do
+    local b = banByToken[t]
+    if b and not sameIdentity(b, ids) then
+      hits[b] = (hits[b] or 0) + 1
+      if hits[b] >= math.min(2, #tokens) then return b end
+    end
+  end
+  return nil
+end
+
+--- Kaçırılan banı yeni hesaba bağlar (panel yeni hesabı da aynı süreyle banlar).
+local function reportEvasion(ban, name, ids, tokens, deviceId, via)
+  CAC.log('WARN', 'connect', ('Ban evasion: %s matches Ban ID %s (%s)'):format(name, ban.code or '-', via))
+  CAC.request('/bans/evasion', 'POST', {
+    banId = ban.id, playerName = name, license = ids.license, steam = ids.steam,
+    discord = ids.discord, ip = ids.ip, tokens = #tokens > 0 and tokens or nil,
+    deviceId = deviceId, via = via,
+  }, function() refreshBans() end)
 end
 
 --- Bir oyuncu (kaynak id) ban listesinde mi? bridge/server.lua'daki
@@ -401,6 +468,17 @@ AddEventHandler('playerConnecting', function(name, setKickReason, deferrals)
     return
   end
 
+  -- Ban kaçırma: kimlikler temiz ama bilgisayar banlı bir oyuncununki.
+  if evasionOn() and not (CAC.isWhitelisted and CAC.isWhitelisted(src)) then
+    local tokens = getTokens(src)
+    local evaded = matchEvasionByTokens(ids, tokens)
+    if evaded then
+      deferrals.presentCard(brandCard('You are banned from this server.', 'ban', evaded.code))
+      reportEvasion(evaded, name, ids, tokens, nil, 'token')
+      return
+    end
+  end
+
   -- Ağ itibarı (global ban ağı): yerel ban yoksa panele sor. Kararı (LOG/KICK)
   -- panel, bu sunucunun kendi politikasından üretir; burada sadece uygularız.
   -- HATAYA-DAYANIKLI: panel yavaş/erişilemez ise engelleme YAPILMAZ (fail-open),
@@ -432,8 +510,27 @@ AddEventHandler('playerConnecting', function(name, setKickReason, deferrals)
   end)
 end)
 
+-- Cihaz işareti (client/device.lua). Banlı bir bilgisayardan yeni hesapla
+-- girilmişse oyuncu atılır ve yeni hesap asıl bana bağlanır.
+RegisterNetEvent('coreac:device', function(deviceId)
+  local src = tonumber(source)
+  if CAC.eventLimited(src, 'device', 3, 60000) then return end
+  if type(deviceId) ~= 'string' or not deviceId:match('^[a-f0-9]+$') or #deviceId ~= 32 then return end
+  deviceBySrc[src] = deviceId
+  if not evasionOn() then return end
+  if CAC.isWhitelisted and CAC.isWhitelisted(src) then return end
+  if CAC.staffBypass and CAC.staffBypass(src) then return end
+  local ban = banByDevice[deviceId]
+  local ids = getIdents(src)
+  if not ban or sameIdentity(ban, ids) then return end
+  local name = GetPlayerName(src) or ('Player#' .. src)
+  reportEvasion(ban, name, ids, getTokens(src), deviceId, 'device')
+  DropPlayer(src, ('[CoreAC] You are banned from this server. | Ban ID: %s'):format(ban.code or '—'))
+end)
+
 AddEventHandler('playerDropped', function(reason)
   local src = source
+  deviceBySrc[tonumber(src) or -1] = nil
   CAC.log('INFO', 'disconnect', ('%s left (%s)'):format(GetPlayerName(src) or src, reason or ''))
   -- Ayrılınca listeyi hemen güncelle (panelden düşsün)
   CreateThread(function()

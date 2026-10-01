@@ -63,6 +63,7 @@ export const RULE_GROUPS: RuleGroup[] = [
     rules: [
       { key: "anti_chat_flood", label: "Anti Chat Flood", description: "Blocks chat spam (only if a resource fires the chatMessage event).", default: true },
       { key: "anti_event_flood", label: "Anti Event Flood", description: "Flags a player spamming the anti-cheat's own control events far past any legitimate rate (crash / exploit tools). Ignores per-shot, position and join events, so normal play never trips it; kicks at most, never bans.", default: true },
+      { key: "anti_ban_evasion", label: "Ban Evasion Block", description: "Remembers the computer of every banned player (FiveM hardware tokens plus a hidden marker saved on their PC). A banned player who comes back on a new Steam/Discord/Rockstar account is blocked at connect and the new account is banned too, linked to the original Ban ID. Two players sharing one PC count as the same computer — add the innocent one to the Trust Whitelist.", default: true },
       { key: "anti_reconnect_spam", label: "Anti Reconnect Spam", description: "Report-only. Flags the same identifier reconnecting many times in two minutes.", default: true },
       { key: "anti_resource_mismatch", label: "Anti Resource Mismatch", description: "Warns when a resource outside your allowlist starts. Requires Config.AllowedResources to be set in config.lua, otherwise it does nothing.", default: false },
     ],

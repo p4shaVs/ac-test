@@ -25,6 +25,14 @@ export const POST = handler(
         where: { id: ban.id },
         data: { active: false, unbannedAt: new Date(), unbannedBy: user.username },
       });
+      // Bu bana bağlanmış "ban kaçırma" banları da kalkar (ban yanlışsa
+      // aynı bilgisayardaki diğer hesaplar da cezasız kalmalı).
+      if (ban.code) {
+        await tx.ban.updateMany({
+          where: { serverId: server.id, active: true, evasionOf: ban.code },
+          data: { active: false, unbannedAt: new Date(), unbannedBy: user.username },
+        });
+      }
       // FiveM'e iletilecek UNBAN aksiyonu
       await tx.punishAction.create({
         data: {

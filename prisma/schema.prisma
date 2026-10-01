@@ -281,6 +281,11 @@ model Player {
   name        String
   online      Boolean  @default(false)
 
+  // Cihaz izi (ban kaçırma engeli): FiveM donanım token'ları (JSON dizi) ve
+  // oyuncunun bilgisayarına bırakılan kalıcı işaret (KVP, 32 hex).
+  tokens      String   @default("[]")
+  deviceId    String?
+
   firstSeenAt DateTime @default(now())
   lastSeenAt  DateTime @default(now())
   playtimeSec Int      @default(0)
@@ -321,6 +326,13 @@ model Ban {
   discord     String?
   ip          String?
   playerName  String
+
+  // Cihaz izi anlık görüntüsü (bağlı oyuncunun kaydına ek olarak). Hesap
+  // değiştirip gelen banlı oyuncu bu token'lar / işaretle tanınır.
+  tokens      String   @default("[]")
+  deviceId    String?
+  // Ban kaçırma banı ise: kaçırılan asıl banın kodu (ör. "AC-3F9K2Q").
+  evasionOf   String?
 
   reason      String
   bannedBy    String   // admin adı / "AntiCheat"

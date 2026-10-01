@@ -128,6 +128,7 @@ client_scripts {
   -- 6. CAC client ana betik ve admin menü
   'client/main.lua',
   'client/aimsync.lua',   -- sunucu taraflı Silent Aim için atış-anı nişan örneği
+  'client/device.lua',    -- cihaz işareti (ban kaçırma engeli)
   'client/admin.lua',
 
   -- 7. CoreAC client modülleri (modules/ klasöründen — değiştirilmeden)

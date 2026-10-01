@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { handler, ok, ApiError } from "@/lib/api";
 import { authenticateServer } from "@/lib/server-auth";
 import { rateLimit } from "@/lib/ratelimit";
+import { parseJson } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -36,9 +37,20 @@ export const GET = handler(async (req: NextRequest) => {
       reason: true,
       permanent: true,
       expiresAt: true,
+      tokens: true,
+      deviceId: true,
+      player: { select: { tokens: true, deviceId: true } },
     },
     take: 5000,
   });
 
-  return ok({ bans });
+  // Cihaz izi: banın kendi anlık görüntüsü + bağlı oyuncunun son bilinen
+  // token'ları ve işareti (ban verildikten sonra senkronlananlar da dahil).
+  return ok({
+    bans: bans.map(({ player, tokens, deviceId, ...b }) => ({
+      ...b,
+      tokens: [...new Set([...parseJson<string[]>(tokens, []), ...parseJson<string[]>(player?.tokens ?? "[]", [])])],
+      deviceId: deviceId ?? player?.deviceId ?? null,
+    })),
+  });
 });

@@ -40,3 +40,6 @@ yarn-error.log*
 # Runtime screenshots (player screens / ban evidence — never commit)
 /public/shots/
 /storage/
+
+# dev-only simulation harness deps
+/tools/sim/node_modules

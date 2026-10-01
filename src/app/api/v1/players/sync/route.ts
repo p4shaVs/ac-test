@@ -14,6 +14,9 @@ const playerSchema = z.object({
   steam: z.string().max(120).optional(),
   discord: z.string().max(120).optional(),
   ip: z.string().max(64).optional(),
+  // Cihaz izi (ban kaçırma engeli)
+  tokens: z.array(z.string().max(128)).max(16).optional(),
+  deviceId: z.string().regex(/^[a-f0-9]{32}$/).optional(),
 });
 const schema = z.object({
   players: z.array(playerSchema).max(2048),
@@ -43,6 +46,8 @@ export const POST = handler(async (req: NextRequest) => {
         steam: p.steam,
         discord: p.discord,
         ip: p.ip,
+        tokens: JSON.stringify(p.tokens ?? []),
+        deviceId: p.deviceId,
         online: true,
         firstSeenAt: now,
         lastSeenAt: now,
@@ -52,6 +57,8 @@ export const POST = handler(async (req: NextRequest) => {
         steam: p.steam ?? undefined,
         discord: p.discord ?? undefined,
         ip: p.ip ?? undefined,
+        tokens: p.tokens?.length ? JSON.stringify(p.tokens) : undefined,
+        deviceId: p.deviceId ?? undefined,
         online: true,
         lastSeenAt: now,
       },

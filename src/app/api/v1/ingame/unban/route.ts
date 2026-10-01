@@ -39,6 +39,11 @@ export const POST = handler(async (req: NextRequest) => {
       where: { id: ban.id },
       data: { active: false, unbannedAt: new Date(), unbannedBy: by },
     }),
+    // Bu bana bağlanmış "ban kaçırma" banları da kalkar.
+    db.ban.updateMany({
+      where: { serverId: server.id, active: true, evasionOf: ban.code ?? "__none__" },
+      data: { active: false, unbannedAt: new Date(), unbannedBy: by },
+    }),
     // The resource refreshes its ban list itself right after this call, so the
     // queue entry is recorded as already delivered.
     db.punishAction.create({
