@@ -36,7 +36,7 @@ export const POST = handler(async (req: NextRequest) => {
     throw new ApiError(409, "This key is already on your account");
   }
   if (license.ownerId) {
-    throw new ApiError(409, "This key is already tied to another account");
+    throw new ApiError(409, "This key is already linked to another account. If it was meant for you, ask the seller to release it.");
   }
 
   // ATOMİK sahiplenme: yalnızca hâlâ sahipsizse güncelle. findUnique ile update
@@ -47,7 +47,7 @@ export const POST = handler(async (req: NextRequest) => {
     data: { ownerId: user.id },
   });
   if (claimed.count !== 1) {
-    throw new ApiError(409, "This key is already tied to another account");
+    throw new ApiError(409, "This key is already linked to another account. If it was meant for you, ask the seller to release it.");
   }
 
   await audit({

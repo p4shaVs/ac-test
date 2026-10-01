@@ -27,7 +27,7 @@ export const POST = handler(async (req: NextRequest) => {
   if (license.status === "EXPIRED" || (license.expiresAt && license.expiresAt < new Date())) {
     throw new ApiError(410, "The licence has expired");
   }
-  if (license.ownerId && license.ownerId !== user.id) throw new ApiError(409, "This licence is tied to another account");
+  if (license.ownerId && license.ownerId !== user.id) throw new ApiError(409, "This licence is already linked to another account. If it was meant for you, ask the seller to release it.");
 
   const { token, hash } = generateServerToken();
 
@@ -67,7 +67,7 @@ export const POST = handler(async (req: NextRequest) => {
       },
     });
     if (claimed.count !== 1) {
-      throw new ApiError(409, "This licence is tied to another account");
+      throw new ApiError(409, "This licence is already linked to another account. If it was meant for you, ask the seller to release it.");
     }
 
     await tx.serverLog.create({

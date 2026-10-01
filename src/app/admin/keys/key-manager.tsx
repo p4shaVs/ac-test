@@ -59,7 +59,9 @@ export function KeyManager({ keys, products }: { keys: KeyRow[]; products: Produ
   // Üretim formu state
   const [productId, setProductId] = useState("");
   const [owner, setOwner] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  // A key with no features switches nothing on (and without auto_ban every ban turns into a kick),
+  // so the form starts with everything selected; pick a product or untick what you want to withhold.
+  const [selected, setSelected] = useState<Set<string>>(new Set(FEATURES.map((f) => f.key)));
   const [quantity, setQuantity] = useState("1");
   const [maxServers, setMaxServers] = useState("1");
   const [lifetime, setLifetime] = useState(true);
@@ -114,7 +116,7 @@ export function KeyManager({ keys, products }: { keys: KeyRow[]; products: Produ
 
   function resetForm() {
     setGenerated(null);
-    setSelected(new Set());
+    setSelected(new Set(FEATURES.map((f) => f.key)));
     setProductId("");
     setOwner("");
     setQuantity("1");
@@ -234,7 +236,12 @@ export function KeyManager({ keys, products }: { keys: KeyRow[]; products: Produ
                     </p>
                   )}
                 </td>
-                <td className="px-4 py-3"><StatusBadge status={k.status} /></td>
+                <td className="px-4 py-3">
+                  <StatusBadge status={k.status} />
+                  {k.status === "UNUSED" && k.ownerEmail && (
+                    <p className="mt-1 text-[10px] text-amber-400/80" title="Opening a key on an account claims it. Manage → Unassign hands it out again.">Claimed, no server yet</p>
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   {k.ownerEmail ? (
                     <div>
@@ -334,7 +341,13 @@ export function KeyManager({ keys, products }: { keys: KeyRow[]; products: Produ
             </div>
 
             <div>
-              <label className="label">Features ({selected.size} selected)</label>
+              <div className="flex items-center justify-between">
+                <label className="label">Features ({selected.size} selected)</label>
+                <div className="flex gap-2 text-[11px]">
+                  <button type="button" className="text-brand-300 hover:underline" onClick={() => setSelected(new Set(FEATURES.map((f) => f.key)))}>Select all</button>
+                  <button type="button" className="text-slate-400 hover:underline" onClick={() => setSelected(new Set())}>Clear</button>
+                </div>
+              </div>
               <div className="space-y-3">
                 {CATEGORIES.map((cat) => (
                   <div key={cat}>

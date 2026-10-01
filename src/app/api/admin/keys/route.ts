@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { handler, ok, requireAdmin, ApiError } from "@/lib/api";
 import { generateKeySchema } from "@/lib/validation";
 import { generateLicenseKey } from "@/lib/keys";
-import { sanitizeFeatures } from "@/lib/features";
+import { sanitizeFeatures, FEATURES } from "@/lib/features";
 import { audit } from "@/lib/audit";
 import { clientIp } from "@/lib/session";
 import { findUserByRef } from "@/lib/users";
@@ -30,6 +30,9 @@ export const POST = handler(async (req: NextRequest) => {
       finalFeatures = sanitizeFeatures(JSON.parse(product.features || "[]"));
     }
   }
+  // A key with no features switches nothing on, and without auto_ban every automatic ban
+  // silently becomes a kick. No product and no selection therefore means every feature.
+  if (finalFeatures.length === 0) finalFeatures = FEATURES.map((f) => f.key);
 
   // Sahip verildiyse (e-posta ya da kullanıcı adı) kullanıcıyı bul.
   let ownerId: string | null = null;
