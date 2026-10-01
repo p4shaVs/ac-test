@@ -57,10 +57,12 @@ CoreAC.Detections = {
     -- Combat
     ANTI_AIMBOT               = 'AIMBOT',
     ANTI_SILENT_AIM           = 'SILENT_AIM',
+    ANTI_SILENT_AIM_SUBTLE    = 'SILENT_AIM_SUBTLE',   -- server/protection.lua (istatistiksel kademe)
     ANTI_INFINITE_AMMO        = 'INFINITE_AMMO',
     ANTI_NO_RELOAD            = 'NO_RELOAD',
     ANTI_ILLEGAL_WEAPON       = 'ILLEGAL_WEAPON',
     ANTI_DAMAGE_MULTIPLIER    = 'DAMAGE_MULTIPLIER',
+    ANTI_DAMAGE_PEER_MISMATCH = 'DAMAGE_PEER_MISMATCH', -- server/protection.lua (diğer oyuncularla kıyas)
     ANTI_EXPLOSIVE_BULLETS    = 'EXPLOSIVE_BULLETS',
     ANTI_EXPLOSION            = 'EXPLOSION',
     ANTI_RAPID_FIRE           = 'RAPID_FIRE',

@@ -96,7 +96,7 @@ function channelsFor(event: WebhookEvent, f: LogFields): WebhookChannel[] {
       if (f.action === "BAN") return ["ban"];
       if (f.action === "KICK") return ["kick"];
       // A detection that was only recorded is a "warn"; silent aim has its own channel.
-      return [f.detectionType === "SILENT_AIM" ? "silentaim" : "warn"];
+      return [f.detectionType === "SILENT_AIM" || f.detectionType === "SILENT_AIM_SUBTLE" ? "silentaim" : "warn"];
   }
 }
 
@@ -166,7 +166,7 @@ export interface LogFields {
   extra?: Record<string, string>;
   /** Detection extras */
   action?: "LOG" | "KICK" | "BAN";
-  /** Registry type of the detection (routes SILENT_AIM warns to their own channel). */
+  /** Registry type of the detection (routes silent-aim warns to their own channel). */
   detectionType?: string;
   detectionLabel?: string;
   origin?: "server" | "client";

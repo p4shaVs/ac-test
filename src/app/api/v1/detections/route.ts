@@ -8,9 +8,21 @@ import { generateBanCode } from "@/lib/keys";
 import { parseJson } from "@/lib/utils";
 import { isWhitelisted } from "@/lib/bypass";
 import { sendWebhook, webhookEnabled } from "@/lib/discord";
-import { sanitizeActions, resolveAction, capByConfidence, severityForType, detectionLabel, detectionConfidence } from "@/lib/detection-actions";
+import { sanitizeActions, sanitizeExplicit, resolveAction, capByConfidence, severityForType, detectionLabel, detectionConfidence } from "@/lib/detection-actions";
 import { readAcSettings, punishmentsOn } from "@/lib/ac-settings";
 import { recordNetworkBan } from "@/lib/network-bans";
+
+// One panel log line an hour per server when a chosen Ban had to be applied as a Kick, so the
+// owner can see why a Ban they picked did not ban.
+const downgradeNoted = new Map<string, number>();
+async function noteDowngrade(serverId: string, why: string): Promise<void> {
+  const now = Date.now();
+  if (now - (downgradeNoted.get(serverId) ?? 0) < 3_600_000) return;
+  downgradeNoted.set(serverId, now);
+  await db.serverLog
+    .create({ data: { serverId, level: "WARN", source: "panel", message: `A Ban was applied as a Kick: ${why}` } })
+    .catch(() => {});
+}
 
 // Kaynak, bir hile tespitini raporlar. Aksiyon (LOG/KICK/BAN) müşterinin
 // Yapılandırma → Aksiyonlar sayfasında tespit tipi bazında seçtiği değerdir.
@@ -20,6 +32,16 @@ const schema = z.object({
   severity: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM"),
   playerName: z.string().max(80),
   license: z.string().max(120).optional(),
+  // The identifiers the resource saw for this player. Used to create the player record when the
+  // report beats the first player sync (a cheater who trips a check seconds after joining).
+  ids: z
+    .object({
+      license: z.string().max(120).optional(),
+      steam: z.string().max(120).optional(),
+      discord: z.string().max(120).optional(),
+      ip: z.string().max(64).optional(),
+    })
+    .optional(),
   details: z.record(z.any()).optional(),
   // Where the detection was produced. Client-origin reports can never ban —
   // the cheat client owns that process. Older resource builds omit it; treat
@@ -47,11 +69,29 @@ export const POST = handler(async (req: NextRequest) => {
   // otorite src/lib/detection-actions.ts.
   const severity = severityForType(body.type, body.severity);
 
-  const player = body.license
+  let player = body.license
     ? await db.player.findUnique({
         where: { serverId_license: { serverId: server.id, license: body.license } },
       })
     : null;
+  // No player record yet (the report arrived before the first player sync): without one the
+  // detection could only ever be logged, so a cheater acting in their first seconds on the
+  // server would dodge the Kick / Ban the owner picked. Create the record from the ids.
+  if (!player && body.license && body.ids?.license === body.license) {
+    player = await db.player.upsert({
+      where: { serverId_license: { serverId: server.id, license: body.license } },
+      create: {
+        serverId: server.id,
+        name: body.playerName,
+        license: body.license,
+        steam: body.ids.steam,
+        discord: body.ids.discord,
+        ip: body.ids.ip,
+        online: true,
+      },
+      update: { lastSeenAt: new Date() },
+    });
+  }
 
   // Replay tamponu (varsa) ayrı sakla; details'te tekrar etmesin.
   const rawDetails = { ...(body.details ?? {}) } as Record<string, unknown>;
@@ -105,7 +145,11 @@ export const POST = handler(async (req: NextRequest) => {
   // ---------------------------------------------------------------------
   const config = parseJson<Record<string, unknown>>(server.config, {});
   const actions = sanitizeActions(config.actions);
-  let action = resolveAction(actions, body.type, body.origin);
+  // What the owner picked is applied exactly (see resolveAction); only types they never touched
+  // keep the confidence cap of the shipped defaults.
+  const explicitTypes = new Set(sanitizeExplicit(config.actionsExplicit));
+  let action = resolveAction(actions, body.type, body.origin, explicitTypes);
+  const chosenAction = action;
 
   // Kara liste: model başına Blacklist sayfasında seçilen aksiyon geçerlidir
   // (tipin varsayılanı değil). Eskiden "Remove" seçilen model bile tipin
@@ -118,7 +162,10 @@ export const POST = handler(async (req: NextRequest) => {
   // BAN, lisansın "auto_ban" özelliğine bağlıdır (paket/monetizasyon); yoksa
   // KICK'e düşer (LOG kararıysa LOG kalır).
   const features = parseJson<string[]>((server as any).licenseKey?.features ?? "[]", []);
-  if (action === "BAN" && !features.includes("auto_ban")) action = "KICK";
+  if (action === "BAN" && !features.includes("auto_ban")) {
+    action = "KICK";
+    void noteDowngrade(server.id, "this licence has no Auto Ban feature");
+  }
   if (whitelisted || !player) action = "LOG";
   // Yetkili muafiyeti (Settings → Staff Bypass): tespit kayıtlı, ceza yok.
   if (body.bypass === "staff") action = "LOG";
@@ -312,7 +359,7 @@ export const POST = handler(async (req: NextRequest) => {
   // coreac:screenshot'ı tetikleyip gerçek ekran görüntüsü serisini yakalamalı.
   // label → oyun içi yönetici uyarısında okunur ad ("NoClip", "Silent Aim"…).
   return ok({
-    recorded: true, action, banned, kicked, banCode, whitelisted, screenshotRequestIds,
+    recorded: true, action, chosen: chosenAction, banned, kicked, banCode, whitelisted, screenshotRequestIds,
     label: detectionLabel(body.type),
     // Shown on the ban screen ("Expires …"); null = permanent.
     banExpiresAt: banned && banExpiresAt ? banExpiresAt.toISOString() : null,

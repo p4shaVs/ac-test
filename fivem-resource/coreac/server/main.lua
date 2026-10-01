@@ -940,6 +940,7 @@ RegisterNetEvent('coreac:report', function(dtype, severity, details)
     severity = tostring(severity or 'MEDIUM'),
     playerName = pname,
     license = ids.license,
+    ids = { license = ids.license, steam = ids.steam, discord = ids.discord, ip = ids.ip },
     origin = 'client',
     -- Yetkili (sunucunun doğruladığı admin): tespit loglanır, ceza verilmez.
     bypass = (CAC.staffBypass and CAC.staffBypass(src)) and 'staff' or nil,
@@ -988,6 +989,7 @@ AddEventHandler('coreac:serverReport', function(src, dtype, severity, details)
     severity = tostring(severity or 'MEDIUM'),
     playerName = pname,
     license = ids.license,
+    ids = { license = ids.license, steam = ids.steam, discord = ids.discord, ip = ids.ip },
     origin = origin,
     requestedAction = requested,
     bypass = (CAC.staffBypass and CAC.staffBypass(src)) and 'staff' or nil,

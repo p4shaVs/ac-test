@@ -15,6 +15,15 @@ import {
 } from "../../src/lib/ac-config";
 import { readAcSettings, punishmentsOn } from "../../src/lib/ac-settings";
 import { webhookTargets, sendWebhook } from "../../src/lib/discord";
+import {
+  DETECTION_TYPES,
+  capByConfidence,
+  isExplicitChoice,
+  resolveAction,
+  sanitizeActions,
+  sanitizeExplicit,
+  type DetectionAction,
+} from "../../src/lib/detection-actions";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -127,6 +136,56 @@ check("legacy webhook does not get events it has off", t(legacy, "warn").length 
 check("a dedicated channel wins over the legacy webhook", t(JSON.stringify({ discordWebhook: HOOK3, webhookEvents: { ban: true }, ac: { Settings: { BanWebhook: HOOK } } }), "ban").join() === HOOK);
 check("legacy webhook never receives Admin Logs", t(JSON.stringify({ discordWebhook: HOOK3, webhookEvents: { admin: true } }), "admin").length === 0);
 check("same URL on two channels is posted once", t(cfg({ BanWebhook: HOOK, AdminLogsWebhook: HOOK }), "unban").length === 1);
+
+console.log("\n== punishments: the action you pick is the action that runs ==");
+{
+  const ACTIONS: DetectionAction[] = ["LOG", "KICK", "BAN"];
+  const ORIGINS = ["server", "client"] as const;
+  let wrong = 0;
+  let cases = 0;
+  for (const d of DETECTION_TYPES) {
+    for (const a of ACTIONS) {
+      for (const origin of ORIGINS) {
+        // 1. clicked in the editor (recorded in actionsExplicit): exactly what was picked
+        cases++;
+        if (resolveAction({ [d.type]: a }, d.type, origin, new Set([d.type])) !== a) wrong++;
+        // 2. a value that differs from the shipped default is a choice even without the marker (older saves)
+        if (a !== d.defaultAction) {
+          cases++;
+          if (resolveAction({ [d.type]: a }, d.type, origin) !== a) wrong++;
+        }
+      }
+    }
+  }
+  check(`every detection x every action x both origins is applied exactly as picked (${cases} cases)`, wrong === 0, wrong);
+
+  // Untouched defaults keep the safe behaviour of a fresh install.
+  let drift = 0;
+  for (const d of DETECTION_TYPES) {
+    for (const origin of ORIGINS) {
+      if (resolveAction({}, d.type, origin) !== capByConfidence(d.defaultAction, d.type, origin)) drift++;
+      if (resolveAction({ [d.type]: d.defaultAction }, d.type, origin) !== capByConfidence(d.defaultAction, d.type, origin)) drift++;
+    }
+  }
+  check("untouched defaults still go through the confidence cap (fresh installs stay safe)", drift === 0, drift);
+  check("default Silent Aim: seen by the server -> Ban, reported by the player's own game -> Kick",
+    resolveAction({}, "SILENT_AIM", "server") === "BAN" && resolveAction({}, "SILENT_AIM", "client") === "KICK");
+  check("owner clicks Ban on Silent Aim -> Ban for the client-reported one too",
+    resolveAction({ SILENT_AIM: "BAN" }, "SILENT_AIM", "client", new Set(["SILENT_AIM"])) === "BAN");
+  check("a heuristic check set to Ban by the owner really bans (no hidden cap)",
+    resolveAction({ RAPID_FIRE: "BAN" }, "RAPID_FIRE", "server", new Set(["RAPID_FIRE"])) === "BAN");
+  check("a heuristic check set to Kick by the owner really kicks", resolveAction({ WALLBANG: "KICK" }, "WALLBANG", "client") === "KICK");
+  check("unknown detection types can still only be logged", resolveAction({ NOT_A_TYPE: "BAN" }, "NOT_A_TYPE", "server", new Set(["NOT_A_TYPE"])) === "LOG");
+  check("isExplicitChoice: the default value without a click is not a choice", !isExplicitChoice({ SILENT_AIM: "BAN" }, "SILENT_AIM"));
+  check("isExplicitChoice: the default value WITH a click is a choice", isExplicitChoice({ SILENT_AIM: "BAN" }, "SILENT_AIM", new Set(["SILENT_AIM"])));
+  check("isExplicitChoice: a changed value is a choice", isExplicitChoice({ SILENT_AIM: "LOG" }, "SILENT_AIM"));
+  check("sanitizeExplicit keeps known types only", JSON.stringify(sanitizeExplicit(["SILENT_AIM", "NOPE", 5, "SILENT_AIM", null])) === JSON.stringify(["SILENT_AIM"]));
+  check("sanitizeExplicit tolerates garbage", sanitizeExplicit("x").length === 0 && sanitizeExplicit(undefined).length === 0);
+  check("sanitizeActions still drops unknown types and invalid actions", (() => {
+    const m = sanitizeActions({ SILENT_AIM: "NUKE", NOPE: "BAN", GODMODE: "KICK" });
+    return m.SILENT_AIM === "BAN" && m.GODMODE === "KICK" && !("NOPE" in m);
+  })());
+}
 
 (async () => {
   console.log("\n== Discord posts (what an unban line says, and which routes post it) ==");

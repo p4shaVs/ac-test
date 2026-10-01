@@ -8,7 +8,7 @@
 //   * Lua 5.4 compile         every resource file loads under the real compiler (luaparse is lenient)
 //   * consistency             panel ↔ Lua keys, defaults, typed reader, secrets never leave the panel
 //   * scenario_*              the real resource scripts running in a Lua 5.4 VM with a FiveM stub:
-//                             connection gates, bans & evidence, Safe Guard, config/logs/framework, HTTP API, client side
+//                             connection gates, bans & evidence, Safe Guard, config/logs/framework, HTTP API, silent aim + damage boost, client side
 //   * panel-checks            input validation (SSRF / injection), what the game server may receive, Discord routing
 const { spawnSync } = require("child_process");
 const path = require("path");
@@ -26,12 +26,20 @@ const suites = [
   { name: "scenario: Safe Guard", cmd: process.execPath, args: ["run.cjs", "scenario_safeguard.lua"], cwd: here },
   { name: "scenario: config, logs, framework, prefix", cmd: process.execPath, args: ["run.cjs", "scenario_config.lua"], cwd: here },
   { name: "scenario: game server HTTP API", cmd: process.execPath, args: ["run.cjs", "scenario_httpapi.lua"], cwd: here },
+  { name: "scenario: silent aim (2 tiers) + damage boost", cmd: process.execPath, args: ["run.cjs", "scenario_aim_damage.lua"], cwd: here },
   {
     name: "scenario: client side (prefix, NUI video, screenshots)",
     cmd: process.execPath,
     args: ["run.cjs", "scenario_client_settings.lua"],
     cwd: here,
     env: { CLIENT: "1", CLIENT_FILES: "client/admin.lua,client/main.lua" },
+  },
+  {
+    name: "scenario: client aim samples (gamepad / cover flags)",
+    cmd: process.execPath,
+    args: ["run.cjs", "scenario_client_aim.lua"],
+    cwd: here,
+    env: { CLIENT: "1", CLIENT_FILES: "client/aimsync.lua" },
   },
   { name: "panel checks (validation, secrets, Discord routing)", cmd: isWin ? "npx.cmd" : "npx", args: ["tsx", "tools/sim/panel-checks.ts"], cwd: root, shell: isWin },
 ];

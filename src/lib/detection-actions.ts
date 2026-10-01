@@ -10,9 +10,13 @@
 //   confirmed  — server-authoritative or physically impossible. May BAN.
 //   strong     — a specific, low-noise client signal. May KICK at most.
 //   heuristic  — soft//noisy signal, useful for review. LOG only, never punishes.
-// The customer picks LOG/KICK/BAN per type in Configuration → Actions, but the
-// choice is capped by confidence. Setting "BAN" on a heuristic type therefore
-// cannot produce a false ban — it stays a log line.
+// The customer picks LOG/KICK/BAN per type in Configuration → Punishments. What
+// the customer picks IS what happens: a type the owner has touched is never
+// capped (see resolveAction). Confidence only drives
+//   * the shipped defaults, and
+//   * the "recommended up to" hint next to each row,
+// and it still caps a type the owner has NOT touched, so a fresh install keeps
+// its safe behaviour (a client-reported "confirmed" check starts at Kick).
 // =============================================================================
 
 export type DetectionAction = "LOG" | "KICK" | "BAN";
@@ -78,7 +82,15 @@ export const DETECTION_TYPES: DetectionTypeDef[] = [
 
   // --------------------------------------------------------------- Combat
   D("SILENT_AIM", "Silent Aim / Magic Bullet", "combat", "confirmed", "BAN"),
+  // The subtle tier of silent aim: the server measures, hit after hit, how far the shooter's
+  // crosshair ray misses the player who got hit (body size and lag already allowed for) and
+  // reports when most recent hits land well off the crosshair. A statistical call, so it kicks
+  // by default; raise it to Ban when you are happy with how it behaves on your server.
+  D("SILENT_AIM_SUBTLE", "Silent Aim (subtle pattern)", "combat", "strong", "KICK"),
   D("DAMAGE_MULTIPLIER", "Damage Multiplier", "combat", "confirmed", "BAN"),
+  // Damage boost seen by the server: hits stronger than the same weapon does for every other
+  // player (1.5x and up, repeatedly). Works for add-on weapons and for servers that tune damage.
+  D("DAMAGE_PEER_MISMATCH", "Damage Boost (vs other players)", "combat", "strong", "KICK"),
   D("EXPLOSIVE_BULLETS", "Explosive Bullets", "combat", "confirmed", "BAN"),
   D("SPOOFED_BULLETS", "Spoofed Bullets", "combat", "confirmed", "BAN"),
   D("KILL_EXPLOIT", "Kill Exploit", "combat", "confirmed", "BAN"),
@@ -298,12 +310,50 @@ export function capByConfidence(
   return "LOG";
 }
 
-/** Final action for a detection: customer setting → type default → confidence cap. */
+/** Only known detection types can be marked as explicitly chosen. */
+export function sanitizeExplicit(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  return Array.from(new Set(input.filter((t): t is string => typeof t === "string" && ALL_TYPES.has(t))));
+}
+
+/**
+ * Did the owner choose this action, or is it just what ships? A value that differs
+ * from the shipped default is always a choice (older configs saved the whole map);
+ * a value equal to the default counts only if the owner clicked it (the editor
+ * records those in config.actionsExplicit).
+ */
+export function isExplicitChoice(
+  actions: Record<string, DetectionAction>,
+  type: string,
+  explicit?: ReadonlySet<string>
+): boolean {
+  const def = BY_TYPE.get(type);
+  const chosen = actions[type];
+  if (!def || chosen === undefined) return false;
+  return chosen !== def.defaultAction || (explicit?.has(type) ?? false);
+}
+
+/**
+ * Final action for a detection.
+ *   * unknown type            → LOG (nothing the panel does not know can punish)
+ *   * owner chose the action  → exactly that, for every origin
+ *   * shipped default         → default, capped by confidence/origin as before
+ */
 export function resolveAction(
   actions: Record<string, DetectionAction>,
   type: string,
-  origin: DetectionOrigin = "server"
+  origin: DetectionOrigin = "server",
+  explicit?: ReadonlySet<string>
 ): DetectionAction {
-  const chosen = actions[type] ?? BY_TYPE.get(type)?.defaultAction ?? "LOG";
+  const def = BY_TYPE.get(type);
+  if (!def) return "LOG";
+  const chosen = actions[type] ?? def.defaultAction;
+  if (isExplicitChoice(actions, type, explicit)) return chosen;
   return capByConfidence(chosen, type, origin);
+}
+
+/** Highest action that is safe to leave on for this type (the "recommended" hint). */
+export function recommendedMax(def: DetectionTypeDef): DetectionAction {
+  const c = bestConfidence(def);
+  return c === "confirmed" ? "BAN" : c === "strong" ? "KICK" : "LOG";
 }

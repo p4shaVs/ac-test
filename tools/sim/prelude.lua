@@ -108,7 +108,7 @@ function GetPlayerMaxArmour() return 100 end
 function GetPlayerIdentifiers(src) local p = SIM.players[tonumber(src)]; return p and p.ids or {} end
 function GetPlayerEndpoint(src) local p = SIM.players[tonumber(src)]; return p and p.ip or '127.0.0.1' end
 function GetPlayerLastMsg(src) local p = SIM.players[tonumber(src)]; return p and p.lastMsg or 0 end
-function GetPlayerPing() return 30 end
+function GetPlayerPing(src) local p = SIM.players[tonumber(src)]; return p and p.ping or 30 end
 function IsPlayerAceAllowed(src, obj) local p = SIM.players[tonumber(src)]; return p ~= nil and p.ace == true and obj == 'command' end
 function GetResourceState(n) return SIM.resources[n] or 'missing' end
 SIM.drops = {}

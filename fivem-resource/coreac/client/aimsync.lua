@@ -13,6 +13,12 @@
 -- Yalnızca: yayayken + hitscan ateşli silah (tabanca/SMG/tüfek/MG/keskin/
 -- pompalı). Patlayıcı, fırlatılan, yakın dövüş ve araç silahlarında nişan
 -- yönü isabetle ilişkili değildir → hiç örnek gönderilmez.
+--
+-- Örnekle birlikte iki bayrak gider (sunucu hafif silent-aim kademesinde kullanır):
+--   bit 0  gamepad kullanılıyor (yardımlı nişan isabeti ışının biraz dışına çeker)
+--   bit 1  siperde (körlemesine ateşte mermi kamera yönüne gitmez)
+-- Bayraklar yalnızca eşiği gevşetir ya da bir isabeti dışarıda bırakır; sunucu
+-- aşikâr silent aim (35°+) için bunlara bakmaz.
 
 local HITSCAN = CoreAC.HITSCAN_CLASSES
 local MIN_GAP = 80   -- ms — iki örnek arası en kısa süre (~12/sn tavan)
@@ -29,6 +35,12 @@ local function weaponClass(w)
     classCache[w] = c
   end
   return c or nil
+end
+
+--- Gamepad mi? (IsUsingKeyboardAndMouse yoksa fare+klavye varsayılır.)
+local function usingPad()
+  if IsUsingKeyboardAndMouse then return not IsUsingKeyboardAndMouse(0) end
+  return false
 end
 
 local function camForward()
@@ -50,7 +62,8 @@ CreateThread(function()
           lastSent = now
           local cam = GetFinalRenderedCamCoord()
           local fx, fy, fz = camForward()
-          TriggerServerEvent('coreac:aim', cam.x, cam.y, cam.z, fx, fy, fz)
+          local flags = (usingPad() and 1 or 0) + (IsPedInCover(ped, false) and 2 or 0)
+          TriggerServerEvent('coreac:aim', cam.x, cam.y, cam.z, fx, fy, fz, flags)
         end
       end
       Wait(0)

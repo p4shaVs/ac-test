@@ -11,7 +11,7 @@ const LABELS: Record<string, string> = {
   sound: "Sound", side: "Side", poolBefore: "HP+armor before", poolAfter: "HP+armor after", ammoInWeapon: "Ammo",
   lastAmmoInWeapon: "Previous ammo", ammoInClip: "Clip", lastAmmoInClip: "Previous clip",
   normal: "Everyone else", players: "Compared with", kills: "Kills", oneTaps: "One-shot head kills",
-  medianDist: "Typical distance", offsetDeg: "Off aim", angleCos: "Aim match", dist: "Distance", multiplier: "Multiplier", impact: "Impact",
+  medianDist: "Typical distance", offsetDeg: "Off aim", offTarget: "Hits off the crosshair", medianOffDeg: "Typical miss", maxOffDeg: "Worst miss", angleCos: "Aim match", dist: "Distance", multiplier: "Multiplier", impact: "Impact",
 };
 
 const SOURCES: Record<string, string> = {
@@ -26,6 +26,8 @@ const SOURCES: Record<string, string> = {
   server_one_shot: "server: full-armour players dropped by one body shot",
   no_aim_telemetry: "server: hitting players while aim data is cut off",
   aim_offset: "client: hits land off the crosshair",
+  aim_offset_stats: "server: most recent hits land well off the crosshair",
+  peer_damage: "server: hits stronger than every other player's with this weapon",
 };
 
 const SKIP = new Set(["replay", "bypass", "hash", "inCombat", "custom", "blocked", "info"]);
@@ -33,7 +35,7 @@ const SKIP = new Set(["replay", "bypass", "hash", "inCombat", "custom", "blocked
 function unit(key: string, v: unknown): string {
   if (typeof v === "number") {
     if (key === "distance" || key === "flight" || key === "voiceRange" || key === "dist" || key === "medianDist") return `${Math.round(v)} m`;
-    if (key === "offsetDeg") return `${v}°`;
+    if (key === "offsetDeg" || key === "medianOffDeg" || key === "maxOffDeg") return `${v}°`;
     if (key === "players") return `${v} players`;
     if (key === "seconds") return `${v} s`;
     if (key === "kmh" || key === "capKmh") return `${Math.round(v)} km/h`;

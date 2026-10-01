@@ -38,16 +38,16 @@ FiveM sunucusu (resource: coreac, gizli klasör adıyla)          Web panel (Nex
 
 ## Tespit felsefesi — yanlış ban olmadan koruma
 
-Her tespit tipinin bir güven seviyesi vardır ve aksiyon bu seviyeyle sınırlanır:
+Her tespit tipinin bir güven seviyesi vardır. Seviye, **kutudan çıkan varsayılanı** ve panelde her satırın yanındaki "recommended up to" önerisini belirler:
 
-| Seviye | En fazla | Ne demek |
+| Seviye | Önerilen en fazla | Ne demek |
 |---|---|---|
 | **confirmed** | BAN | Sunucunun kendi ölçtüğü, kandırılamayan kanıt (vurulduğu hâlde canı düşmeyen oyuncu, fizik hızının açıklamadığı NoClip uçuşu, kara listedeki model, imkânsız isabet açısı…). |
 | **strong** | KICK | Belirgin ama oyuncunun kendi bilgisayarından gelen sinyal. Hile istemcisi bu süreci kontrol ettiği için kesin kanıt sayılmaz. |
 | **heuristic** | LOG | Zayıf sinyal; yalnızca incelemek için. |
 
-- Oyuncunun kendi oyunundan gelen "confirmed" rapor otomatik olarak **strong**'a düşer.
-- Bazı tipler (ör. NoClip) sunucu kanıtıyla BAN'a, oyuncu raporuyla en fazla KICK'e kadar gider (`serverConfidence`).
+- **Seçtiğin aksiyon aynen uygulanır** (Configuration → Punishments). Her tespit için Log / Kick / Ban seçilebilir; önerinin üstüne çıkarsan satır uyarı gösterir (meşru bir oyuncu o kontrole takılırsa cezalanır). Dokunmadığın tiplerde varsayılan güvenli davranış sürer: oyuncunun kendi oyunundan gelen "confirmed" rapor **strong**'a düşer (KICK), bazı tipler (ör. NoClip) sunucu kanıtıyla BAN'a, oyuncu raporuyla KICK'e gider (`serverConfidence`). Satırda Ban'a kendin tıklarsan sınır kalkar: o tipin her raporu banlar.
+- Seçimi yine de geçersiz kılanlar: Trust whitelist'teki oyuncu, sunucu yetkilileri (*Never punish server staff*), Log-Only Mode / Enable Bans kapalıyken ve lisansında **Auto Ban** özelliği yoksa (BAN → KICK; Punishments sayfası bunu yazar).
 - **Önce koru, sonra kanıtla cezalandır:** fırlatılan araç anında silinir, yasaklı obje hiç oluşmaz, patlama seli iptal edilir. Ceza ise ancak failin kim olduğu kesinse verilir.
 - Meşru durumlar otomatik tanınır: ekran karartılarak yapılan script ışınlamaları, framework ölü/yaralı durumu, txAdmin ve qb-adminmenu araçları. Sunucunun doğruladığı yetkililer (Settings → *Never punish server staff*) cezalandırılmaz, tespitleri "Staff" etiketiyle loglanır.
 
@@ -57,7 +57,8 @@ Her tespit tipinin bir güven seviyesi vardır ve aksiyon bu seviyeyle sınırla
 |---|---|
 | NoClip / Teleport | Client: fizik hızı ile yer değiştirme karşılaştırması. Sunucu: 4 sn açıklanamayan hareket → NOCLIP (BAN), tek sıçrama → TELEPORT (varsayılan LOG). |
 | Godmode | Sunucu: vurulup canı düşmeyen oyuncu (BAN). Client: çatışma sırasında süren dokunulmazlık (KICK). |
-| Silent aim / hasar | Sunucu: atış anındaki nişan açısı, silah sınıfı hasar tavanı, patlayıcı mermi. |
+| Silent aim | Sunucu, her isabette atıcının o anki nişan ışınını kurbanın gerçek yeriyle karşılaştırır (gövde boyu, ağ gecikmesi ve kurban hızı payı düşülür). İki kademe, her birinin kendi Log/Kick/Ban ayarı var: **Silent Aim** (ışın 35°+ dışında, 12 sn'de 3 isabet) ve **Silent Aim (subtle)** — son 16 isabetin çoğu ışının 4°+ dışına (payın ötesine) düşüyorsa, yani "küçük FOV'lu sihirli mermi". Her isabet ±200 ms'deki tüm nişan örnekleriyle denenir (flick'ler suçlanmaz); gamepad için eşik 9°, siperden ateş ve pompalı saçması subtle kademede ölçülmez; atıcıdan 15 m'den uzak "kamera" örneği uydurma sayılır. |
+| Hasar hilesi | Dört yol: sınıf tavanı; oyuncuların bildirdiği silah istatistiği (başkalarından yüksekse); **diğer oyuncuların aynı silahla gerçek isabet hasarıyla kıyas** (`Damage Boost`: son 8 isabetin 5'i 1.5 katı ya da 3 katı iki isabet; referans, en az 2 başka oyuncunun en yüksek hasarlarının alt ortancası — tek hileci referansı kaldıramaz, eklenti silahlarda ve sunucunun kendi hasar ayarında yanlış alarm vermez); dolu zırhlı oyuncuya tekrarlanan gövde tek atışı. Kafa vuruşu ve pompalı saçması sayılmaz. |
 | FreeCam | Oyuncudan 80 m+ uzakta tutulan script kamerası (KICK); eski geometrik kontroller yalnızca log. |
 | Sınırsız mermi | Atış başına mermi düşmüyor, 10 sn'de iki doğrulama (KICK). |
 | Araç fırlatma / araç yağmuru | Sunucu: 250 km/h üstünde uçan sürücüsüz araç silinir; tekrar eden sahibi cezalandırılır. Dakikalık araç spawn sınırı. |

@@ -386,8 +386,8 @@ function HowItWorks() {
     },
     {
       icon: "activity" as const,
-      title: "Confidence decides the punishment",
-      text: "Each detection is graded. Only server-confirmed ones can ban; noisy checks are recorded for review and can never punish, no matter how they're configured.",
+      title: "Confidence sets the default, you set the punishment",
+      text: "Each detection is graded: only server-confirmed ones start at a ban, noisy checks start as a log line. Then every detection is yours to set to Log, Kick or Ban, and the one you pick is the one that runs.",
     },
     {
       icon: "logs" as const,

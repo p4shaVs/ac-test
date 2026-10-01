@@ -214,9 +214,17 @@ ac reload                           pull the configuration from the panel now`}<
 
             <Section id="punish" title="How punishments work">
               <p>
-                Every detection type has a confidence level. Only checks the server confirms itself can ban; signals that come
-                from the player&apos;s own game can kick at most; noisy signals are only logged. You choose Log / Kick / Ban per type
-                in <b className="text-slate-300">Configuration → Actions</b>, but the choice is capped by that confidence.
+                Every detection type has a confidence level. It sets what a fresh install does — only checks the server confirms
+                itself can ban, signals that come from the player&apos;s own game kick at most, noisy signals are only logged — and
+                the &ldquo;recommended up to&rdquo; hint next to each type. You choose Log / Kick / Ban per type in{" "}
+                <b className="text-slate-300">Configuration → Punishments</b>, and <b className="text-slate-300">the action you pick is
+                the one that runs</b>, for every report of that type. Picking above the recommendation is allowed and marked, because
+                it means a legitimate player who trips the check gets punished.
+              </p>
+              <p>
+                Three things still override a choice: a player on the Trust Whitelist, server staff (Never punish server staff), and
+                Log-Only Mode / Enable Bans off. A Ban on a licence without the Auto Ban feature is applied as a Kick, and the
+                Punishments page says so.
               </p>
               <p>
                 Rolling out a new protection? Turn on <b className="text-slate-300">Log-Only Mode</b> under Configuration → Settings:

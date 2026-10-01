@@ -25,11 +25,17 @@ export function ConfigSections({
   ac,
   rules,
   actions,
+  explicit,
+  pause,
+  autoBanLicensed,
 }: {
   serverId: string;
   ac: ACConfig;
   rules: Record<string, boolean>;
   actions: Record<string, DetectionAction>;
+  explicit: string[];
+  pause: "log_only" | "bans_off" | null;
+  autoBanLicensed: boolean;
 }) {
   const [section, setSection] = useState(SECTIONS[0].id);
 
@@ -71,7 +77,7 @@ export function ConfigSections({
 
       {section === "protections" && <ConfigTabs serverId={serverId} initialAc={ac} />}
       {section === "detections" && <RulesEditor serverId={serverId} initialRules={rules} />}
-      {section === "actions" && <ActionsEditor serverId={serverId} initialActions={actions} />}
+      {section === "actions" && <ActionsEditor serverId={serverId} initialActions={actions} initialExplicit={explicit} pause={pause} autoBanLicensed={autoBanLicensed} />}
     </div>
   );
 }
