@@ -7,5 +7,5 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-node scriptspanel.mjs update %*
+node scripts\panel.mjs update %*
 pause

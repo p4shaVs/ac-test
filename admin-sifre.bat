@@ -7,5 +7,5 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-node scriptspanel.mjs reset-admin
+node scripts\panel.mjs reset-admin
 pause
