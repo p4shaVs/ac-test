@@ -40,6 +40,18 @@ html, body {
 input, textarea { -webkit-user-select: text; user-select: text; font-family: inherit; }
 button { font-family: inherit; cursor: pointer; color: inherit; background: none; border: 0; }
 .hidden { display: none !important; }
+
+/* Ban video: solid black, no backdrop-filter (renders black/wrong in CEF). */
+.ban-video {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ban-video video { width: 100%; height: 100%; object-fit: contain; background: #000; }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 0; }
 ::-webkit-scrollbar-thumb:hover { background: #3a404a; }

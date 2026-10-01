@@ -310,7 +310,18 @@ CoreAC.lastActorLoopTime  = GetGameTimer()
 --   * Kapı açıldıktan sonra SETTLE_MS daha beklenir (spawn noktasına ışınlama,
 --     metadata'dan can/zırh yükleme, kıyafet yükleme).
 -- ---------------------------------------------------------------------------
-local FRAMEWORKS  = { 'qb-core', 'qbx_core', 'es_extended', 'ox_core', 'ND_Core' }
+-- Framework resource adları panelden değişebilir (Settings → Framework & API): sunucu
+-- 'coreac:frameworks' ile bildirir; gelene kadar varsayılanlar geçerli.
+CAC = CAC or {}
+CAC.fwNames = CAC.fwNames or { qb = 'qb-core', qbx = 'qbx_core', esx = 'es_extended' }
+RegisterNetEvent('coreac:frameworks', function(names)
+    if type(names) ~= 'table' then return end
+    for k in pairs(CAC.fwNames) do
+        local v = names[k]
+        if type(v) == 'string' and #v <= 64 and v:match('^[%w_][%w_.%-]*$') then CAC.fwNames[k] = v end
+    end
+end)
+
 local SETTLE_MS   = 10000
 local STABLE_MS   = 20000
 local FALLBACK_MS = 180000
@@ -330,7 +341,7 @@ for _, ev in ipairs({ 'QBCore:Client:OnPlayerUnload', 'esx:onPlayerLogout', 'ox:
 end
 
 local function detectFramework()
-    for _, r in ipairs(FRAMEWORKS) do
+    for _, r in ipairs({ CAC.fwNames.qb, CAC.fwNames.qbx, CAC.fwNames.esx, 'ox_core', 'ND_Core' }) do
         if GetResourceState(r) == 'started' then return r end
     end
     return nil
@@ -339,9 +350,9 @@ end
 --- AC oyun sırasında restart edildiyse "yüklendi" olayı bir daha gelmez.
 local function alreadyLoaded(fw)
     if LocalPlayer.state.isLoggedIn == true then return true end   -- qb-core / qbx_core
-    if fw == 'es_extended' then
+    if fw == CAC.fwNames.esx then
         local ok, loaded = pcall(function()
-            return exports['es_extended']:getSharedObject().IsPlayerLoaded()
+            return exports[CAC.fwNames.esx]:getSharedObject().IsPlayerLoaded()
         end)
         return ok and loaded == true
     end

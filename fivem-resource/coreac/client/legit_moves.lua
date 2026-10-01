@@ -136,17 +136,17 @@ local DOWNED_BAG_KEYS = { 'isDead', 'dead', 'isdead', 'isDowned', 'downed', 'inL
 local qbCore = nil
 
 local function playerMetadata()
-  if GetResourceState('qb-core') == 'started' then
+  if GetResourceState(CAC.fwNames.qb) == 'started' then
     if qbCore == nil then
-      local ok, obj = pcall(function() return exports['qb-core']:GetCoreObject() end)
+      local ok, obj = pcall(function() return exports[CAC.fwNames.qb]:GetCoreObject() end)
       qbCore = ok and obj or false
     end
     if qbCore then
       local ok, pd = pcall(qbCore.Functions.GetPlayerData)
       if ok and type(pd) == 'table' then return pd.metadata end
     end
-  elseif GetResourceState('qbx_core') == 'started' then
-    local ok, pd = pcall(function() return exports.qbx_core:GetPlayerData() end)
+  elseif GetResourceState(CAC.fwNames.qbx) == 'started' then
+    local ok, pd = pcall(function() return exports[CAC.fwNames.qbx]:GetPlayerData() end)
     if ok and type(pd) == 'table' then return pd.metadata end
   end
   return nil

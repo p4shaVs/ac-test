@@ -80,7 +80,9 @@ local function screenshotProvider()
   return nil
 end
 
-RegisterNetEvent('coreac:screenshot', function(uploadUrl, reqId, adminId)
+-- quality (isteğe bağlı, 0.1-1): panel → Settings → Optimize Record Mode açıkken kanıt
+-- karelerini daha hafif JPEG olarak ister. Sağlayıcı seçeneği tanımıyorsa yok sayılır.
+RegisterNetEvent('coreac:screenshot', function(uploadUrl, reqId, adminId, quality)
   local provider = screenshotProvider()
   if not provider then
     -- SESSİZCE değil: bu en sık kırık olan nokta, F8/konsolda görünür olsun.
@@ -111,7 +113,9 @@ RegisterNetEvent('coreac:screenshot', function(uploadUrl, reqId, adminId)
   local ok, err = pcall(function()
     local field = Config.ScreenshotField or 'files[]'
     if provider == 'screencapture' then
-      exports['screencapture']:requestScreenshotUpload(uploadUrl, field, { encoding = 'jpg' }, onUploaded)
+      local opts = { encoding = 'jpg' }
+      if type(quality) == 'number' and quality >= 0.1 and quality <= 1 then opts.quality = quality end
+      exports['screencapture']:requestScreenshotUpload(uploadUrl, field, opts, onUploaded)
     else
       exports['screenshot-basic']:requestScreenshotUpload(uploadUrl, field, onUploaded)
     end

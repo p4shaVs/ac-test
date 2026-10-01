@@ -793,6 +793,49 @@ function showAlert(a) {
   setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 300); }, 9000);
 }
 
+// An https:// URL with no whitespace, quotes or angle brackets.
+function isSafeHttpsUrl(u) {
+  if (typeof u !== "string" || u.length > 400 || u.indexOf("https://") !== 0) return false;
+  for (let i = 0; i < u.length; i++) {
+    const c = u.charCodeAt(i);
+    if (c <= 32 || c === 127) return false;                    // whitespace / control
+    if (c === 34 || c === 39 || c === 60 || c === 62 || c === 96) return false; // " ' < > `
+  }
+  return true;
+}
+
+// Ban video: full-screen for up to `ms` right before the server drops a banned player.
+// The URL is the server owner's setting (https only — checked again here) and is set as a
+// property, never as markup. The video can never hold the player: the server drops them on
+// its own clock; "done" only shortens the wait.
+function playBanVideo(url, ms) {
+  const box = $("banVideo");
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    if (box) { box.classList.add("hidden"); box.textContent = ""; }
+    post("banVideoDone");
+  };
+  if (!box || !isSafeHttpsUrl(url)) { finish(); return; }
+  box.textContent = "";
+  const v = document.createElement("video");
+  v.src = url;
+  v.autoplay = true;
+  v.playsInline = true;
+  v.controls = false;
+  v.addEventListener("ended", finish);
+  v.addEventListener("error", finish);
+  box.appendChild(v);
+  box.classList.remove("hidden");
+  const started = v.play();
+  if (started && started.catch) {
+    // Autoplay with sound can be refused — retry muted rather than show a black screen.
+    started.catch(() => { v.muted = true; const again = v.play(); if (again && again.catch) again.catch(finish); });
+  }
+  setTimeout(finish, Math.max(3000, Math.min(20000, Number(ms) || 15000)));
+}
+
 // ------------------------------------------------------------- lifecycle
 function startAutoRefresh() { stopAutoRefresh(); refreshTimer = setInterval(() => post("refresh"), 5000); }
 function stopAutoRefresh() { if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; } }
@@ -826,6 +869,7 @@ window.addEventListener("message", (e) => {
       startAutoRefresh();
       break;
     }
+    case "banVideo": playBanVideo(d.url, d.ms); break;
     case "players": {
       PLAYERS = arr(d.players);
       updateOnline();

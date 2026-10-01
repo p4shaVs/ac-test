@@ -8,6 +8,7 @@ import { Icons, type IconName } from "@/components/icons";
 import { detectionLabel } from "@/lib/detection-actions";
 import { evidenceLine } from "@/lib/evidence";
 import { readWebhookConfig } from "@/lib/discord";
+import { readAcSettings } from "@/lib/ac-settings";
 import { trollPropPreset } from "@/lib/troll-props";
 import { env } from "@/lib/env";
 import { cn, parseJson, timeAgo } from "@/lib/utils";
@@ -59,7 +60,12 @@ export default async function ServerOverview({ params }: { params: { id: string 
   const topMax = topFlagged[0]?.[1] ?? 1;
 
   const config = parseJson<Record<string, any>>(server.config, {});
-  const logOnly = config.ac?.Settings?.LogOnly === true;
+  // Two switches stop detections from punishing: Log-Only mode (temporary rollout)
+  // and Enable Bans (standing policy). The overview treats either as "not enforcing".
+  const acSettings = readAcSettings(server.config);
+  const logOnly = acSettings.LogOnly === true;
+  const bansOff = acSettings.EnableBans === false;
+  const notEnforcing = logOnly || bansOff;
   const staffBypass = config.ac?.Settings?.StaffBypass !== false;
   const online = server.status === "ONLINE";
   const slotsPct = server.maxSlots ? Math.min(100, (overview.onlinePlayers / server.maxSlots) * 100) : 0;
@@ -80,7 +86,7 @@ export default async function ServerOverview({ params }: { params: { id: string 
   const base = `/dashboard/servers/${sid}`;
   const checklist: { ok: boolean; label: string; hint: string; href: string }[] = [
     { ok: !!server.lastSeenAt, label: "Anti-cheat connected", hint: "Install it from Download", href: "/dashboard/download" },
-    { ok: !logOnly, label: "Enforcement on", hint: "Log-only mode is on", href: `${base}/rules` },
+    { ok: !notEnforcing, label: "Enforcement on", hint: logOnly ? "Log-only mode is on" : "Enable Bans is off", href: `${base}/rules` },
     { ok: presetDone, label: "Troll & giant props blocked", hint: "Add the recommended pack", href: `${base}/blacklist` },
     { ok: webhook, label: "Discord logs", hint: "Add a webhook", href: `${base}/settings` },
     { ok: publicUrl, label: "Public panel address", hint: "Needed for screenshots", href: "/docs" },
@@ -133,11 +139,11 @@ export default async function ServerOverview({ params }: { params: { id: string 
 
         <div className="p-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Protection</p>
-          <p className={cn("mt-2 flex items-center gap-2 text-lg font-bold", logOnly ? "text-amber-300" : "text-emerald-300")}>
-            <Icons.shieldCheck size={20} /> {logOnly ? "Log-only mode" : "Enforcing"}
+          <p className={cn("mt-2 flex items-center gap-2 text-lg font-bold", notEnforcing ? "text-amber-300" : "text-emerald-300")}>
+            <Icons.shieldCheck size={20} /> {logOnly ? "Log-only mode" : bansOff ? "Bans disabled" : "Enforcing"}
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            {logOnly ? "Detections are recorded, nobody is kicked or banned." : "Kicks and bans follow your Actions settings."}
+            {notEnforcing ? "Detections are recorded, nobody is kicked or banned." : "Kicks and bans follow your Actions settings."}
             {" "}Staff {staffBypass ? "are never punished" : "are treated like players"}.
           </p>
           <div className="mt-3 flex flex-wrap gap-1.5">

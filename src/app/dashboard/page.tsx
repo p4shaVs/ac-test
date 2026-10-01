@@ -7,6 +7,7 @@ import { AreaTrend, DonutChart } from "@/components/charts";
 import { DONUT_PALETTE } from "@/lib/palette";
 import { Icons, type IconName } from "@/components/icons";
 import { timeAgo, parseJson, cn } from "@/lib/utils";
+import { readAcSettings } from "@/lib/ac-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -83,9 +84,11 @@ export default async function DashboardHome() {
     } else if (s.status !== "ONLINE" && now - s.lastSeenAt.getTime() > 10 * 60 * 1000) {
       health.push({ tone: "amber", icon: "server", title: `${s.name} is offline`, text: `Last heartbeat ${timeAgo(s.lastSeenAt)}. If the server is running, check coreac_api and coreac_token.`, href: `${base}/settings`, cta: "Check" });
     }
-    const cfg = parseJson<{ ac?: { Settings?: { LogOnly?: boolean } } }>(s.config, {});
-    if (cfg.ac?.Settings?.LogOnly === true) {
+    const acSettings = readAcSettings(s.config);
+    if (acSettings.LogOnly === true) {
       health.push({ tone: "blue", icon: "shield", title: `${s.name}: Log-Only mode is on`, text: "Detections are recorded but nobody is kicked or banned.", href: `${base}/rules`, cta: "Review" });
+    } else if (acSettings.EnableBans === false) {
+      health.push({ tone: "blue", icon: "shield", title: `${s.name}: Enable Bans is off`, text: "Detections are recorded but nobody is kicked or banned automatically.", href: `${base}/rules`, cta: "Review" });
     }
   }
   const order = { red: 0, amber: 1, blue: 2 };

@@ -233,7 +233,7 @@ local function ownedByInstalledResource(ev)
   if resourceExists(prefix) then return true end
   -- ESX'in olay önekleri resource adıyla aynı değildir (esx:..., esx_x:...)
   if prefix == 'esx' or prefix:sub(1, 4) == 'esx_' then
-    return resourceExists('es_extended') or resourceExists(prefix)
+    return resourceExists(CAC.fw('esx')) or resourceExists(prefix)
   end
   if prefix:lower():sub(1, 3) == 'vrp' then return resourceExists('vrp') end
   return false
@@ -242,6 +242,8 @@ end
 local BLOCKED_PREFIX = { 'coreac:', 'aeigs:', '__cfx', 'txsv:', 'txcl:', 'txAdmin:', 'onResource', 'player' }
 local function safeToBait(ev)
   if type(ev) ~= 'string' or #ev < 3 or #ev > 100 then return false end
+  -- Panel → Safe Guard → Safe Events: bu olay asla tuzak kurulmaz.
+  if CAC.isSafeEvent and CAC.isSafeEvent(ev) then return false end
   for _, p in ipairs(BLOCKED_PREFIX) do
     if ev:sub(1, #p) == p then return false end
   end
@@ -253,6 +255,8 @@ local baitActive, baitRegistered = {}, {}
 local function onBait(ev, custom)
   local src = tonumber(source)
   if not src or src <= 0 or not baitActive[ev] then return end
+  -- Olay sonradan Safe Events'e eklenmiş olabilir (tuzak daha önce kurulmuştu).
+  if CAC.isSafeEvent and CAC.isSafeEvent(ev) then return end
   -- Tetiklendiği anda da kontrol: sonradan kurulan bir resource bu olayı sahiplenmiş olabilir.
   if ownedByInstalledResource(ev) then return end
   if CAC.eventLimited(src, 'bait', 5, 10000) then return end

@@ -83,7 +83,7 @@ function SIM.net(name, src, ...)
   if not SIM.netSafe[name] then SIM.out('blocked (not net-safe): ' .. name) return end
   return SIM.dispatch(name, src, ...)
 end
-function TriggerClientEvent(name, target, ...) SIM.clientEvents[#SIM.clientEvents + 1] = { name = name, target = target } end
+function TriggerClientEvent(name, target, ...) SIM.clientEvents[#SIM.clientEvents + 1] = { name = name, target = target, args = table.pack(...) } end
 function CancelEvent() SIM.canceled = true end
 function WasEventCanceled() return SIM.canceled end
 
@@ -106,11 +106,16 @@ function GetPedArmour() return 0 end
 function GetEntityHealth() return 200 end
 function GetPlayerMaxArmour() return 100 end
 function GetPlayerIdentifiers(src) local p = SIM.players[tonumber(src)]; return p and p.ids or {} end
-function GetPlayerEndpoint() return '127.0.0.1' end
+function GetPlayerEndpoint(src) local p = SIM.players[tonumber(src)]; return p and p.ip or '127.0.0.1' end
+function GetPlayerLastMsg(src) local p = SIM.players[tonumber(src)]; return p and p.lastMsg or 0 end
 function GetPlayerPing() return 30 end
 function IsPlayerAceAllowed(src, obj) local p = SIM.players[tonumber(src)]; return p ~= nil and p.ace == true and obj == 'command' end
 function GetResourceState(n) return SIM.resources[n] or 'missing' end
-function DropPlayer(src, reason) SIM.out(('DropPlayer(%s): %s'):format(GetPlayerName(src) or tostring(src), reason)) end
+SIM.drops = {}
+function DropPlayer(src, reason)
+  SIM.drops[#SIM.drops + 1] = { src = tonumber(src), reason = reason, at = SIM.now }
+  SIM.out(('DropPlayer(%s): %s'):format(GetPlayerName(src) or tostring(src), reason))
+end
 function GetConvar(k, d) if k == 'coreac_token' then return 'coreac_srv_test' end if k == 'coreac_api' then return 'http://panel/api/v1' end return d end
 function GetConvarInt(_, d) return d end
 function GetCurrentResourceName() return 'coreac' end
@@ -123,7 +128,20 @@ function NetworkGetEntityOwner(e) local x = SIM.entities[e]; return x and x.owne
 function NetworkGetFirstEntityOwner(e) local x = SIM.entities[e]; if x and x.first then return x.first end return NetworkGetEntityOwner(e) end
 function GetEntityPopulationType(e) local x = SIM.entities[e]; return x and x.pop or 7 end
 function IsPedAPlayer() return false end
-function GetInvokingResource() return nil end
+SIM.invoker = nil
+function GetInvokingResource() return SIM.invoker end
+function GetEntityScript(e) local x = SIM.entities[e]; return x and x.script or nil end
+
+-- Commands, outbound HTTP and the resource HTTP handler.
+SIM.commands, SIM.httpLog = {}, {}
+function RegisterCommand(name, fn) SIM.commands[name] = fn end
+function SetHttpHandler(fn) SIM.httpHandler = fn end
+--- SIM.http(url, method, data, headers) -> { status = 200, body = '...' } | nil (-> failure)
+function PerformHttpRequest(url, cb, method, data, headers)
+  SIM.httpLog[#SIM.httpLog + 1] = { url = url, method = method, data = data, headers = headers }
+  local r = SIM.http and SIM.http(url, method, data, headers)
+  if r then cb(r.status or 200, r.body or '', {}) else cb(0, nil, {}) end
+end
 
 function GetHashKey(s)
   s = tostring(s):lower()

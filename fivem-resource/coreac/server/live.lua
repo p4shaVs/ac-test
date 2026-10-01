@@ -233,7 +233,14 @@ end
 --- Bir oyuncunun yönetici kaydını döndürür (prefix/case-toleranslı eşleşme).
 function CAC.adminOf(src)
   local ids = CAC.getIdents(src)
-  local cands = { ids.discord, ids.license, ids.steam }
+  -- Yalnızca VAR olan kimlikler adaydır. ({ ids.discord, ids.license, ids.steam } gibi
+  -- boşluklu bir tabloda ipairs ilk nil'de durur: Discord'u bağlı olmayan bir yönetici —
+  -- panelde lisansla eklenmiş olsa bile — hiç tanınmıyor, admin menüsü ve "Never punish
+  -- server staff" muafiyeti ona çalışmıyordu.)
+  local cands = {}
+  if ids.discord then cands[#cands + 1] = ids.discord end
+  if ids.license then cands[#cands + 1] = ids.license end
+  if ids.steam then cands[#cands + 1] = ids.steam end
   -- 1) Tam (normalize) eşleşme
   for _, v in ipairs(cands) do
     local n = normId(v)
@@ -418,6 +425,7 @@ RegisterNetEvent('coreac:adminAction', function(action, targetId, arg)
       type = 'KICK', reason = argReason(arg), by = adminName,
       license = CAC.getIdents(target).license, playerName = nameOf(target),
     }, nil)
+    if CAC.logPunishment then CAC.logPunishment('KICK', nameOf(target), CAC.getIdents(target), 'by ' .. adminName) end
     DropPlayer(target, '[CoreAC] You have been kicked from this server.')
   elseif action == 'ban' and target then
     local tids = CAC.getIdents(target)
@@ -427,7 +435,11 @@ RegisterNetEvent('coreac:adminAction', function(action, targetId, arg)
       durationHours = argHours(arg),   -- nil → kalıcı ban
     }, function(ok, data)
       if CAC.refreshBans then CAC.refreshBans() end
-      DropPlayer(target, ('[CoreAC] You are banned from this server. | Ban ID: %s'):format((data and data.banCode) or '—'))
+      if CAC.logPunishment then
+        CAC.logPunishment('BAN', nameOf(target), tids, ('Ban ID %s (by %s)'):format((data and data.banCode) or '-', adminName))
+      end
+      -- Ban Message / Ban Video URL / bitiş tarihi (server/main.lua CAC.dropBanned).
+      CAC.dropBanned(target, data and data.banCode, data and data.expiresAt)
     end)
   elseif action == 'warn' and target then
     local reason = argReason(arg)
@@ -435,6 +447,7 @@ RegisterNetEvent('coreac:adminAction', function(action, targetId, arg)
       type = 'WARN', reason = reason, by = adminName,
       license = CAC.getIdents(target).license, playerName = nameOf(target),
     }, nil)
+    if CAC.logPunishment then CAC.logPunishment('WARN', nameOf(target), CAC.getIdents(target), ('%s (by %s)'):format(reason, adminName)) end
     -- Ekranın üst ortasında duyuru gibi (NUI) — eskiden küçük GTA bildirimiydi.
     TriggerClientEvent('coreac:warned', target, reason, adminName)
     TriggerClientEvent('coreac:notify', src, '~y~Warned ' .. nameOf(target))
@@ -486,17 +499,12 @@ RegisterNetEvent('coreac:adminAction', function(action, targetId, arg)
     -- "yapılandırılmamış"). Artık panelde gerçek bir istek açılır, görüntü
     -- panelin kendi yükleme ucuna gider ve oyuncunun Monitoring/Map kartında
     -- görünür. Yöneticiye sonuç bildirimi sunucu tarafında tutulur.
-    local tids = CAC.getIdents(target)
-    CAC.request('/screenshot/request', 'POST', {
-      license = tids.license, playerName = nameOf(target), requestedBy = adminName,
-    }, function(ok, data)
-      if not (ok and data and data.id) or not GetPlayerName(target) then
+    CAC.requestScreenshot(target, adminName, src, function(ok)
+      if ok then
+        TriggerClientEvent('coreac:notify', src, '~b~Screenshot requested — it will appear in the panel.')
+      else
         TriggerClientEvent('coreac:notify', src, '~r~Could not request a screenshot for that player.')
-        return
       end
-      CAC.issueShot(data.id, target, src)
-      TriggerClientEvent('coreac:screenshot', target, CAC.screenshotUploadBase() .. '?rid=' .. data.id, data.id, nil)
-      TriggerClientEvent('coreac:notify', src, '~b~Screenshot requested — it will appear in the panel.')
     end)
   elseif action == 'repair' and target then
     CAC.grantRevive(target)   -- anlık-onarım kaydından (INSTANT_REPAIR) muaf
@@ -528,7 +536,17 @@ RegisterNetEvent('coreac:adminAction', function(action, targetId, arg)
     TriggerClientEvent('coreac:notify', src, '~r~No online player with that id.')
     return
   end
-  CAC.log('INFO', 'admin', ('%s -> %s%s'):format(adminName, action, target and (' #' .. target) or ''))
+  -- Yapılandırılmış olay: panel Admin Logs webhook'una gönderir. kick/ban/warn zaten
+  -- /ingame-action üzerinden panele (ve oradan Discord'a) gitti — çift gönderme.
+  local meta = nil
+  if action ~= 'kick' and action ~= 'ban' and action ~= 'warn' then
+    meta = {
+      event = 'admin', admin = adminName:sub(1, 80), action = tostring(action):sub(1, 40),
+      player = target and nameOf(target):sub(1, 80) or nil,
+      reason = ('used the admin menu (%s)'):format(tostring(action):sub(1, 40)),
+    }
+  end
+  CAC.log('INFO', 'admin', ('%s -> %s%s'):format(adminName, action, target and (' #' .. target) or ''), meta)
 end)
 
 -- ---------------------------------------------------------------------------
@@ -701,6 +719,29 @@ function CAC.issueShot(reqId, target, adminSrc)
   issuedShots[tostring(reqId)] = { target = tonumber(target), admin = tonumber(adminSrc), at = GetGameTimer() }
 end
 
+--- Panelde gerçek bir ekran görüntüsü isteği açar ve hedef oyuncuya tetikler (admin menüsü
+--- ve HTTP API ortak kullanır). adminSrc (isteğe bağlı): sonucu bildirilecek yönetici.
+--- cb(ok, requestId) — isteğe bağlı.
+function CAC.requestScreenshot(target, requestedBy, adminSrc, cb)
+  target = tonumber(target)
+  if not target or not GetPlayerName(target) then
+    if cb then cb(false) end
+    return
+  end
+  local tids = CAC.getIdents(target)
+  CAC.request('/screenshot/request', 'POST', {
+    license = tids.license, playerName = GetPlayerName(target), requestedBy = requestedBy,
+  }, function(ok, data)
+    if not (ok and data and data.id) or not GetPlayerName(target) then
+      if cb then cb(false) end
+      return
+    end
+    CAC.issueShot(data.id, target, adminSrc)
+    TriggerClientEvent('coreac:screenshot', target, CAC.screenshotUploadBase() .. '?rid=' .. data.id, data.id, nil)
+    if cb then cb(true, data.id) end
+  end)
+end
+
 function CAC.isShotIssued(reqId)
   return reqId ~= nil and issuedShots[tostring(reqId)] ~= nil
 end
@@ -778,8 +819,8 @@ end
 -- Sunucu taraflı revive muafiyeti (vehicle_guard.lua'nın armor-regen kontrolü
 -- kullanır — gerçek reviveyi armor artışıyla karıştırmasın diye).
 local reviveGrace = {}
-function CAC.grantRevive(src)
-  reviveGrace[tonumber(src)] = GetGameTimer() + 8000
+function CAC.grantRevive(src, ms)
+  reviveGrace[tonumber(src)] = GetGameTimer() + (tonumber(ms) or 8000)
 end
 function CAC.hasReviveGrace(src)
   local until_ = reviveGrace[tonumber(src)]

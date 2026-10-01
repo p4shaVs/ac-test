@@ -163,7 +163,11 @@ end)
 -- ---------------------------------------------------------------------------
 -- /ac komutları (metin tabanlı — NUI'siz yedek)
 -- ---------------------------------------------------------------------------
-RegisterCommand(Config.AdminCommand or 'ac', function(_, args)
+-- Komut öneki panelden değişebilir (Settings → Command Prefix): sunucu 'coreac:prefix'
+-- ile bildirir. FiveM'de komut kaydı silinemez; eski önek artık hiçbir şey yapmaz.
+local adminPrefix = Config.AdminCommand or 'ac'
+
+local function adminCommand(_, args)
   TriggerServerEvent('coreac:requestPerms')
   Wait(150)
   local cmd = args[1]
@@ -174,8 +178,8 @@ RegisterCommand(Config.AdminCommand or 'ac', function(_, args)
       if has(perm) then lines[#lines + 1] = '~w~' .. help; any = true end
     end
     if any then lines[#lines + 1] = '~w~/' .. (Config.AdminMenuCommand or 'cac') .. ' — full admin panel' end
-    lines[#lines + 1] = '~w~/' .. (Config.AdminCommand or 'ac') .. ' id — show your identifiers'
-    if not any then lines[#lines + 1] = '~r~You have no admin permissions. Use "/ac id" to get the identifier to add on the web panel.' end
+    lines[#lines + 1] = '~w~/' .. adminPrefix .. ' id — show your identifiers'
+    if not any then lines[#lines + 1] = '~r~You have no admin permissions. Use "/' .. adminPrefix .. ' id" to get the identifier to add on the web panel.' end
     notify(table.concat(lines, '\n'))
     return
   end
@@ -220,7 +224,36 @@ RegisterCommand(Config.AdminCommand or 'ac', function(_, args)
   else
     notify('~r~Unknown command, or you lack permission.')
   end
-end, false)
+end
+
+local registeredPrefixes = {}
+local function registerAdminPrefix(name)
+  if type(name) ~= 'string' or not name:match('^[a-z][a-z0-9_]*$') then return end
+  adminPrefix = name
+  if registeredPrefixes[name] then return end
+  registeredPrefixes[name] = true
+  RegisterCommand(name, function(src, args)
+    if name ~= adminPrefix then return end   -- eski önek: artık devre dışı
+    adminCommand(src, args)
+  end, false)
+end
+registerAdminPrefix(adminPrefix)
+RegisterNetEvent('coreac:prefix', registerAdminPrefix)
+
+-- ---------------------------------------------------------------------------
+-- Ban videosu (panel → Settings → Bans & Evidence → Ban Video URL). Sunucu, banlı
+-- oyuncuyu düşürmeden hemen önce URL'i yollar; NUI tam ekran oynatır. Süreyi sunucu
+-- sınırlar — bu olay oyuncuyu tutmaz, NUI bitince/hata olunca sunucuya haber verir.
+-- ---------------------------------------------------------------------------
+RegisterNetEvent('coreac:banVideo', function(url, ms)
+  if type(url) ~= 'string' then return end
+  SendNUIMessage({ type = 'banVideo', url = url, ms = tonumber(ms) or 15000 })
+end)
+
+RegisterNUICallback('banVideoDone', function(_, cb)
+  TriggerServerEvent('coreac:banVideoDone')
+  cb({})
+end)
 
 -- İzinler değişince menüyü baştan iste
 CreateThread(function()

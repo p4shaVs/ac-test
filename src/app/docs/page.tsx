@@ -18,7 +18,19 @@ const TOC = [
   { id: "console", label: "Console commands" },
   { id: "convars", label: "Convars" },
   { id: "punish", label: "How punishments work" },
+  { id: "settings", label: "Configuration → Settings" },
+  { id: "http-api", label: "Game server HTTP API" },
   { id: "api", label: "API reference" },
+];
+
+// The resource's own HTTP API (server/http_api.lua), served on the game server's port.
+const httpApi = [
+  { method: "GET", path: "/status", desc: "Server version, player count and whether the panel is reachable." },
+  { method: "GET", path: "/players", desc: "Online players and their identifiers (IP addresses only when writing is enabled)." },
+  { method: "GET", path: "/bans", desc: "Active bans (IP addresses only when writing is enabled)." },
+  { method: "POST", path: "/unban", desc: 'Lifts a ban: {"code":"AC-7K3QP9"}. Needs write access.' },
+  { method: "POST", path: "/screenshot", desc: 'Captures a player\'s screen: {"id":12}. Needs write access.' },
+  { method: "POST", path: "/reload", desc: "Pulls the configuration from the panel right now. Needs write access." },
 ];
 
 const endpoints = [
@@ -210,6 +222,76 @@ ac reload                           pull the configuration from the panel now`}<
                 Rolling out a new protection? Turn on <b className="text-slate-300">Log-Only Mode</b> under Configuration → Settings:
                 everything is recorded, nobody is kicked or banned.
               </p>
+            </Section>
+
+            <Section id="settings" title="Configuration → Settings">
+              <p>
+                The Settings tab holds the rules <i>around</i> the anti-cheat rather than single detections. What you type there
+                stays in the panel or on your game server; none of it is sent to your players&apos; game clients.
+              </p>
+              <ul className="list-disc space-y-2 pl-5">
+                <li>
+                  <b className="text-slate-300">Safe Guard</b> — keeps your own scripts from being flagged. <i>Safe Events</i> are
+                  never used as cheat-menu traps; <i>Safe Scripts</i> are trusted (what they spawn skips the spawn checks, and a
+                  teleport or revive they hand to CoreAC gets a longer grace); <i>Ignored Scripts</i> are left completely alone; the{" "}
+                  <i>Anti Resource Injection Safe List</i> names resources the injection check never flags.
+                </li>
+                <li>
+                  <b className="text-slate-300">Connection &amp; Identity</b> — who may join, checked on the connection card before
+                  the player loads in: name rules, required Steam / Discord, duplicate sessions, VPN / proxy (looked up at
+                  proxycheck.io and cached for 24 hours), a network-reputation gate and a threat score built from recent automatic
+                  kicks. Staff and Trust-whitelisted players skip these checks; bans always apply. If the panel or the VPN lookup
+                  cannot be reached the player is let in, unless <i>Block Joins When Verification Fails</i> is on.
+                </li>
+                <li>
+                  <b className="text-slate-300">Bans &amp; Evidence</b> — <i>Enable Bans</i> is the master switch (off = detections are
+                  only recorded). <i>Ban Duration</i> sets how long automatic bans last, <i>Ban Message</i> and <i>Ban Video URL</i>{" "}
+                  decide what a banned player sees, and Screen Shots / Gameplay Record keep proof — the record is a short sequence
+                  of screenshots, not a video. <i>Ban Ip Address</i> also blocks the banned player&apos;s IP; leave it off on servers
+                  where players share networks.
+                </li>
+                <li>
+                  <b className="text-slate-300">Logs &amp; Webhooks</b> — one Discord channel per kind of event (bans, warns, kicks,
+                  joins, leaves, silent-aim warns, staff actions) plus switches for the console output. Webhook URLs live in the
+                  panel only: the panel posts to Discord itself, so your game server never holds them.
+                </li>
+                <li>
+                  <b className="text-slate-300">Framework &amp; API</b> — the resource names of your ESX / QBCore / Qbox core, the
+                  txAdmin data folder (admins listed in its <C>admins.json</C> count as staff the moment they connect), the prefix
+                  of the admin commands, and the settings of the HTTP API below.
+                </li>
+              </ul>
+            </Section>
+
+            <Section id="http-api" title="Game server HTTP API">
+              <p>
+                The resource answers HTTP requests on your game server&apos;s own port, under its folder name:{" "}
+                <C>http://YOUR-SERVER:30120/&lt;resource folder&gt;/status</C>. Every request needs{" "}
+                <C>Authorization: Bearer &lt;coreac_token&gt;</C> — the token from your <C>server.cfg</C>. Requests are limited to
+                60 a minute per address, and <C>X-Forwarded-For</C> is ignored.
+              </p>
+              <div className="space-y-2">
+                {httpApi.map((e) => (
+                  <Card key={e.path} className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center">
+                    <div className="flex items-center gap-3 sm:w-56 sm:shrink-0">
+                      <Badge tone={e.method === "GET" ? "blue" : "violet"}>{e.method}</Badge>
+                      <code className="font-mono text-sm text-slate-200">{e.path}</code>
+                    </div>
+                    <p className="text-sm text-slate-400">{e.desc}</p>
+                  </Card>
+                ))}
+              </div>
+              <p>
+                <b className="text-slate-300">Allowed IPs</b> limits every endpoint to the listed addresses (IPv4, IPv6 or an IPv4
+                range such as <C>203.0.113.0/24</C>). The write endpoints need the{" "}
+                <b className="text-slate-300">HTTP API — Allow Write Endpoints</b> switch <i>and</i> at least one allowed IP, and
+                they only work for callers on that list. Every write is recorded in the logs and posted to the Admin Logs webhook
+                as &quot;HTTP API&quot;.
+              </p>
+              <Code>{`curl -H "Authorization: Bearer $COREAC_TOKEN" http://YOUR-SERVER:30120/coreac/status
+
+curl -X POST -H "Authorization: Bearer $COREAC_TOKEN" \\
+     -d '{"code":"AC-7K3QP9"}' http://YOUR-SERVER:30120/coreac/unban`}</Code>
             </Section>
 
             <Section id="api" title="API reference">

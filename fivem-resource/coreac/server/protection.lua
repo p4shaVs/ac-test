@@ -274,6 +274,11 @@ local function checkReach(src, weaponHash, victimPed, shooterPed)
   end
 end
 
+-- (noAimHits aşağıda "NİŞAN TELEMETRİSİ KESİLMESİ" bölümünde tanımlı. Önceden local'i
+-- bu işleyiciden SONRA bildirildiği için burada global (nil) görünüyor ve her oyuncu
+-- çıkışında "attempt to index a nil value (global 'noAimHits')" hatası basıyordu.)
+local noAimHits = {}   -- [src] = { zamanlar }
+
 AddEventHandler('playerDropped', function()
   local s = source
   silentHits[s] = nil; lastShot[s] = nil; rapidFireStrike[s] = nil; losStrike[s] = nil; reachStrike[s] = nil
@@ -290,7 +295,6 @@ end)
 -- ---------------------------------------------------------------------------
 local NO_AIM_HITS = 10
 local NO_AIM_WINDOW = 60000
-local noAimHits = {}   -- [src] = { zamanlar }
 
 local function noteMissingAim(src)
   local t = GetGameTimer()

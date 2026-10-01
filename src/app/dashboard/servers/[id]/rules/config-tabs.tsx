@@ -3,8 +3,23 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icons } from "@/components/icons";
-import { AC_TABS, defaultAcConfig, type ACConfig, type ACField, type ACCard } from "@/lib/ac-config";
+import {
+  AC_TABS,
+  acWithoutSecrets,
+  defaultAcConfig,
+  fieldProblem,
+  isSecretField,
+  listItemProblem,
+  type ACConfig,
+  type ACField,
+  type ACCard,
+} from "@/lib/ac-config";
 import { cn } from "@/lib/utils";
+
+type Value = boolean | number | string | string[];
+
+const ALL_FIELDS: ACField[] = AC_TABS.flatMap((t) => t.cards.flatMap((c) => c.fields));
+const fid = (f: ACField) => `${f.section}.${f.key}`;
 
 // Configuration page — mirrors the reference layout: top tabs (Main / Weapons /
 // Entities / Explosions / Premium / Beta / Settings) with grouped cards. Every
@@ -16,13 +31,37 @@ export function ConfigTabs({ serverId, initialAc }: { serverId: string; initialA
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const dirty = useMemo(() => JSON.stringify(ac) !== JSON.stringify(initialAc), [ac, initialAc]);
 
-  // Export: mevcut config'i JSON dosyası olarak indir.
+  function get(f: ACField): Value {
+    const v = ac[f.section]?.[f.key];
+    return v === undefined ? f.default : v;
+  }
+  function set(f: ACField, value: Value) {
+    setAc((prev) => ({ ...prev, [f.section]: { ...prev[f.section], [f.key]: value } }));
+    setSaved(false);
+    setSaveError(null);
+  }
+
+  // Values the server would reject (and silently drop). Shown inline and block
+  // saving, so nothing a customer typed disappears without a word.
+  const problems = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const f of ALL_FIELDS) {
+      const p = fieldProblem(f, ac[f.section]?.[f.key]);
+      if (p) out[fid(f)] = p;
+    }
+    return out;
+  }, [ac]);
+  const problemCount = Object.keys(problems).length;
+
+  // Export: the config as a JSON file. Webhook URLs and API keys are left out —
+  // export files get pasted into support tickets and shared between servers.
   function exportConfig() {
-    const blob = new Blob([JSON.stringify(ac, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(acWithoutSecrets(ac), null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -31,8 +70,9 @@ export function ConfigTabs({ serverId, initialAc }: { serverId: string; initialA
     URL.revokeObjectURL(url);
   }
 
-  // Import: JSON dosyasından config yükle (yalnızca bilinen bölümler/anahtarlar
-  // uygulanır; kaydederken sunucu ayrıca sanitize eder). Kaydetmeden state'e alır.
+  // Import: load a config from a JSON file (only known sections/keys are
+  // applied; the server sanitises again on save). Goes into the page state
+  // without saving. Secrets already set here are never overwritten by a file.
   function importConfig(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -47,6 +87,9 @@ export function ConfigTabs({ serverId, initialAc }: { serverId: string; initialA
               merged[section] = { ...merged[section], ...fields };
             }
           }
+          for (const f of ALL_FIELDS) {
+            if (isSecretField(f) && ac[f.section]?.[f.key] !== undefined) merged[f.section][f.key] = ac[f.section][f.key];
+          }
           setAc(merged);
           setSaved(false);
         }
@@ -58,17 +101,22 @@ export function ConfigTabs({ serverId, initialAc }: { serverId: string; initialA
     e.target.value = "";
   }
 
-  function get(f: ACField) {
-    const v = ac[f.section]?.[f.key];
-    return v === undefined ? f.default : v;
-  }
-  function set(f: ACField, value: boolean | number | string | string[]) {
-    setAc((prev) => ({ ...prev, [f.section]: { ...prev[f.section], [f.key]: value } }));
+  // Reset restores the defaults but keeps credentials (webhook URLs, API keys):
+  // they are not "settings", and retyping five webhooks is not what a reset is for.
+  function resetToDefault() {
+    const next = defaultAcConfig();
+    for (const f of ALL_FIELDS) {
+      if (isSecretField(f) && ac[f.section]?.[f.key] !== undefined) next[f.section][f.key] = ac[f.section][f.key];
+    }
+    setAc(next);
     setSaved(false);
+    setSaveError(null);
   }
 
   async function save() {
+    if (problemCount) return;
     setSaving(true);
+    setSaveError(null);
     try {
       const res = await fetch(`/api/servers/${serverId}/config`, {
         method: "PATCH",
@@ -79,7 +127,11 @@ export function ConfigTabs({ serverId, initialAc }: { serverId: string; initialA
         setSaved(true);
         router.refresh();
         setTimeout(() => setSaved(false), 2500);
+      } else {
+        setSaveError("Could not save — please try again.");
       }
+    } catch {
+      setSaveError("Could not reach the panel — please try again.");
     } finally {
       setSaving(false);
     }
@@ -92,8 +144,8 @@ export function ConfigTabs({ serverId, initialAc }: { serverId: string; initialA
   // When searching, flatten matching fields into a single card.
   const searchCards = useMemo<ACCard[]>(() => {
     if (!searching) return [];
-    const fields = AC_TABS.flatMap((t) => t.cards.flatMap((c) => c.fields)).filter((f) =>
-      f.label.toLowerCase().includes(q) || (f.desc?.toLowerCase().includes(q) ?? false)
+    const fields = ALL_FIELDS.filter(
+      (f) => f.label.toLowerCase().includes(q) || (f.desc?.toLowerCase().includes(q) ?? false)
     );
     return [{ title: `Search results (${fields.length})`, fields }];
   }, [q, searching]);
@@ -126,7 +178,11 @@ export function ConfigTabs({ serverId, initialAc }: { serverId: string; initialA
           <button className="btn-secondary h-9 px-3 text-xs" onClick={() => fileRef.current?.click()}>
             <Icons.download size={14} className="rotate-180" /> Import
           </button>
-          <button className="btn-secondary h-9 px-3 text-xs" onClick={exportConfig}>
+          <button
+            className="btn-secondary h-9 px-3 text-xs"
+            onClick={exportConfig}
+            title="Webhook URLs and API keys are not included in the export"
+          >
             <Icons.download size={14} /> Export
           </button>
           <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={importConfig} />
@@ -158,21 +214,27 @@ export function ConfigTabs({ serverId, initialAc }: { serverId: string; initialA
 
       {/* Cards grid */}
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-        {cards.map((card) => (
-          <div key={card.title} className="rounded-2xl border border-white/5 bg-base-850/60 p-4">
-            <div className="mb-3">
-              <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
-                <Icons.shieldCheck size={15} className="text-brand-400" /> {card.title}
-              </h3>
-              {card.desc && <p className="mt-0.5 text-xs text-slate-500">{card.desc}</p>}
+        {cards.map((card) =>
+          card.wide ? (
+            <WideCard key={card.title} card={card} get={get} set={set} problems={problems} />
+          ) : (
+            // min-w-0: a grid item's automatic minimum width is its min-content, so one long
+            // unwrapped description would stretch the whole single-column grid past the screen.
+            <div key={card.title} className="min-w-0 rounded-2xl border border-white/5 bg-base-850/60 p-4">
+              <div className="mb-3">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <Icons.shieldCheck size={15} className="text-brand-400" /> {card.title}
+                </h3>
+                {card.desc && <p className="mt-0.5 text-xs text-slate-500">{card.desc}</p>}
+              </div>
+              <div className="space-y-2">
+                {card.fields.map((f) => (
+                  <FieldRow key={fid(f)} field={f} value={get(f)} onChange={(v) => set(f, v)} problem={problems[fid(f)]} />
+                ))}
+              </div>
             </div>
-            <div className="space-y-2">
-              {card.fields.map((f) => (
-                <FieldRow key={`${f.section}.${f.key}`} field={f} value={get(f)} onChange={(v) => set(f, v)} />
-              ))}
-            </div>
-          </div>
-        ))}
+          )
+        )}
       </div>
 
       {/* Sticky save bar */}
@@ -189,6 +251,12 @@ export function ConfigTabs({ serverId, initialAc }: { serverId: string; initialA
             <span className="flex items-center gap-1.5 text-emerald-400">
               <Icons.check size={16} /> Saved
             </span>
+          ) : saveError ? (
+            <span className="text-rose-300">{saveError}</span>
+          ) : problemCount ? (
+            <span className="text-amber-300">
+              Fix {problemCount} highlighted field{problemCount === 1 ? "" : "s"} before saving
+            </span>
           ) : (
             "You have unsaved changes"
           )}
@@ -197,10 +265,14 @@ export function ConfigTabs({ serverId, initialAc }: { serverId: string; initialA
           <button className="btn-secondary" onClick={() => setAc(initialAc)}>
             Cancel Changes
           </button>
-          <button className="btn-ghost text-xs" onClick={() => setAc(defaultAcConfig())}>
+          <button
+            className="btn-ghost text-xs"
+            onClick={resetToDefault}
+            title="Restores the defaults; webhook URLs and API keys are kept"
+          >
             Reset to Default
           </button>
-          <button className="btn-primary" onClick={save} disabled={saving}>
+          <button className="btn-primary" onClick={save} disabled={saving || problemCount > 0}>
             {saving ? "Saving…" : "Save Changes"}
           </button>
         </div>
@@ -209,38 +281,196 @@ export function ConfigTabs({ serverId, initialAc }: { serverId: string; initialA
   );
 }
 
+// ---------------------------------------------------------------------------
+// Wide cards (Settings tab): label + help text on the left, control on the
+// right. Sub-settings (field.parent) are indented under their toggle and dimmed
+// while it is off.
+// ---------------------------------------------------------------------------
+function WideCard({
+  card,
+  get,
+  set,
+  problems,
+}: {
+  card: ACCard;
+  get: (f: ACField) => Value;
+  set: (f: ACField, v: Value) => void;
+  problems: Record<string, string>;
+}) {
+  return (
+    <div className="min-w-0 overflow-hidden rounded-2xl border border-white/5 bg-base-850/60 lg:col-span-2 xl:col-span-3">
+      <div className="px-4 py-3.5">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+          <Icons.shieldCheck size={15} className="text-brand-400" /> {card.title}
+        </h3>
+        {card.desc && <p className="mt-0.5 text-xs text-slate-500">{card.desc}</p>}
+      </div>
+      {card.fields.map((f) => {
+        const parent = f.parent ? card.fields.find((x) => x.key === f.parent && x.section === f.section) : undefined;
+        const parentOn = parent ? get(parent) === true : true;
+        return (
+          <WideRow
+            key={fid(f)}
+            field={f}
+            value={get(f)}
+            onChange={(v) => set(f, v)}
+            child={!!parent}
+            dim={!parentOn}
+            problem={problems[fid(f)]}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function WideRow({
+  field,
+  value,
+  onChange,
+  child,
+  dim,
+  problem,
+}: {
+  field: ACField;
+  value: Value;
+  onChange: (v: Value) => void;
+  child: boolean;
+  dim: boolean;
+  problem?: string;
+}) {
+  const secret = isSecretField(field);
+  return (
+    <div
+      className={cn(
+        "grid gap-x-6 gap-y-2 border-t border-white/5 px-4 py-3",
+        field.type === "list" ? "" : "md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-center",
+        child && "border-l-2 border-l-brand-500/30 bg-base-900/40 pl-8",
+        dim && "opacity-55"
+      )}
+    >
+      <div className="min-w-0">
+        <p className="flex items-center gap-1.5 text-sm font-medium text-slate-100">
+          {secret && <Icons.lock size={12} className="shrink-0 text-slate-500" />}
+          {field.label}
+        </p>
+        {field.desc && <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{field.desc}</p>}
+      </div>
+
+      {field.type === "list" ? (
+        <ListControl field={field} value={(value as string[]) ?? []} onChange={onChange} />
+      ) : (
+        <div className="flex flex-col gap-1 md:items-end">
+          {field.type === "toggle" && (
+            <button onClick={() => onChange(!(value as boolean))} aria-label={`Toggle ${field.label}`} aria-pressed={value as boolean}>
+              <Switch on={value as boolean} />
+            </button>
+          )}
+          {field.type === "number" && <NumberInput field={field} value={value as number} onChange={onChange} />}
+          {field.type === "text" && (
+            <TextInput field={field} value={String(value)} onChange={onChange} secret={secret} invalid={!!problem} />
+          )}
+          {problem && <p className="text-[11px] text-rose-300 md:text-right">{problem}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NumberInput({ field, value, onChange }: { field: ACField; value: number; onChange: (v: number) => void }) {
+  const min = field.min ?? 0;
+  const max = field.max ?? 100000;
+  return (
+    <input
+      type="number"
+      min={min}
+      max={max}
+      className="input h-8 w-28 shrink-0 text-right"
+      value={String(value)}
+      onChange={(e) => onChange(Math.max(min, Math.min(max, Math.floor(Number(e.target.value) || 0))))}
+    />
+  );
+}
+
+function TextInput({
+  field,
+  value,
+  onChange,
+  secret,
+  invalid,
+}: {
+  field: ACField;
+  value: string;
+  onChange: (v: string) => void;
+  secret: boolean;
+  invalid: boolean;
+}) {
+  const [reveal, setReveal] = useState(false);
+  return (
+    <div className="relative w-full md:max-w-md">
+      <input
+        type={secret && !reveal ? "password" : "text"}
+        autoComplete="off"
+        spellCheck={false}
+        maxLength={field.maxLen ?? 200}
+        className={cn("input h-8 w-full", secret && "pr-9", invalid && "border-rose-500/50")}
+        value={value}
+        placeholder={field.kind === "webhook" ? "https://discord.com/api/webhooks/…" : undefined}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {secret && (
+        <button
+          type="button"
+          onClick={() => setReveal((r) => !r)}
+          aria-label={reveal ? "Hide value" : "Show value"}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-200"
+        >
+          {reveal ? <Icons.eyeOff size={14} /> : <Icons.eye size={14} />}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Compact rows (the other tabs)
+// ---------------------------------------------------------------------------
 function FieldRow({
   field,
   value,
   onChange,
+  problem,
 }: {
   field: ACField;
-  value: boolean | number | string | string[];
-  onChange: (v: boolean | number | string | string[]) => void;
+  value: Value;
+  onChange: (v: Value) => void;
+  problem?: string;
 }) {
   if (field.type === "list") {
-    return <ListField field={field} value={(value as string[]) ?? []} onChange={onChange} />;
+    return (
+      <div className="rounded-lg border border-white/5 bg-base-900/40 px-3 py-2.5">
+        <div className="mb-1.5">
+          <p className="text-sm text-slate-200">{field.label}</p>
+          {field.desc && <p className="text-[11px] text-slate-500">{field.desc}</p>}
+        </div>
+        <ListControl field={field} value={(value as string[]) ?? []} onChange={onChange} />
+      </div>
+    );
   }
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-white/5 bg-base-900/40 px-3 py-2.5">
       <div className="min-w-0">
         <p className="text-sm text-slate-200">{field.label}</p>
-        {field.desc && <p className="truncate text-[11px] text-slate-500">{field.desc}</p>}
+        {field.desc && <p className="truncate text-[11px] text-slate-500" title={field.desc}>{field.desc}</p>}
+        {problem && <p className="text-[11px] text-rose-300">{problem}</p>}
       </div>
       {field.type === "toggle" && (
         <button onClick={() => onChange(!(value as boolean))} aria-label="Toggle" className="shrink-0">
           <Switch on={value as boolean} />
         </button>
       )}
-      {field.type === "number" && (
-        <input
-          type="number"
-          className="input h-8 w-24 shrink-0 text-right"
-          value={String(value)}
-          onChange={(e) => onChange(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
-        />
-      )}
+      {field.type === "number" && <NumberInput field={field} value={value as number} onChange={onChange} />}
       {field.type === "text" && (
         <input
           type="text"
@@ -253,7 +483,9 @@ function FieldRow({
   );
 }
 
-function ListField({
+// Tag-style list editor. Entries are checked with the same rule the server uses
+// (listItemProblem) — a bad entry is refused with a reason instead of vanishing on save.
+function ListControl({
   field,
   value,
   onChange,
@@ -263,29 +495,57 @@ function ListField({
   onChange: (v: string[]) => void;
 }) {
   const [draft, setDraft] = useState("");
+  const [rejected, setRejected] = useState<string | null>(null);
 
   function addItems() {
     const parts = draft
       .split(",")
       .map((s) => s.trim())
-      .filter(Boolean)
-      .filter((s) => !value.includes(s));
-    if (parts.length) onChange([...value, ...parts]);
-    setDraft("");
+      .filter(Boolean);
+    const accepted: string[] = [];
+    const bad: string[] = [];
+    for (const p of parts) {
+      const problem = listItemProblem(field, p);
+      if (problem) bad.push(`“${p.slice(0, 40)}” (${problem.toLowerCase()})`);
+      else if (!value.includes(p) && !accepted.includes(p)) accepted.push(p);
+    }
+    if (accepted.length) onChange([...value, ...accepted]);
+    setRejected(bad.length ? `Not added: ${bad.join(", ")}` : null);
+    setDraft(bad.length ? parts.filter((p) => listItemProblem(field, p)).join(", ") : "");
   }
 
   return (
-    <div className="rounded-lg border border-white/5 bg-base-900/40 px-3 py-2.5">
-      <div className="mb-1.5">
-        <p className="text-sm text-slate-200">{field.label}</p>
-        {field.desc && <p className="text-[11px] text-slate-500">{field.desc}</p>}
-      </div>
+    <div className="min-w-0">
+      <p className="mb-1 text-[11px] text-slate-500">{value.length === 0 ? "0 items" : `${value.length} ${value.length === 1 ? "item" : "items"}`}</p>
+      {value.length > 0 && (
+        <div className="mb-2 flex max-h-32 flex-wrap gap-1.5 overflow-y-auto">
+          {value.map((item) => (
+            <span
+              key={item}
+              className="flex items-center gap-1 rounded-md bg-brand-500/10 px-2 py-0.5 font-mono text-[11px] text-brand-200 ring-1 ring-brand-500/30"
+            >
+              {item}
+              <button
+                onClick={() => onChange(value.filter((v) => v !== item))}
+                aria-label={`Remove ${item}`}
+                className="text-brand-300/70 hover:text-white"
+              >
+                <Icons.x size={11} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
       <div className="flex gap-1.5">
         <input
           className="input h-8 flex-1"
-          placeholder="value, value, …"
+          placeholder="Type an item and press Enter…"
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          maxLength={400}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setRejected(null);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
@@ -298,28 +558,16 @@ function ListField({
         </button>
         <button
           className="btn-ghost h-8 px-3 text-xs"
-          onClick={() => onChange([])}
+          onClick={() => {
+            onChange([]);
+            setRejected(null);
+          }}
           disabled={value.length === 0}
         >
           Clear All
         </button>
       </div>
-      <p className="mt-1.5 text-[11px] text-slate-500">{value.length} items</p>
-      {value.length > 0 && (
-        <div className="mt-1.5 flex max-h-32 flex-wrap gap-1.5 overflow-y-auto">
-          {value.map((item) => (
-            <span
-              key={item}
-              className="flex items-center gap-1 rounded-md bg-brand-500/10 px-2 py-0.5 text-[11px] text-brand-200 ring-1 ring-brand-500/30"
-            >
-              {item}
-              <button onClick={() => onChange(value.filter((v) => v !== item))} className="text-brand-300/70 hover:text-white">
-                <Icons.x size={11} />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
+      {rejected && <p className="mt-1 text-[11px] text-rose-300">{rejected}</p>}
     </div>
   );
 }

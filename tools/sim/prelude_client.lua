@@ -129,7 +129,13 @@ function NetworkIsSessionStarted() return true end
 function DoesEntityExist() return true end
 function GetPedParachuteState() return -1 end
 function GetEntityModel() return GetHashKey('mp_m_freemode_01') end
-function GetResourceState() return 'missing' end
+-- Commands, NUI and resource states (used by the Settings-tab client scenario).
+SIM.commands, SIM.nui, SIM.nuiCallbacks, SIM.resources = {}, {}, {}, {}
+function RegisterCommand(name, fn) SIM.commands[name] = fn end
+function RegisterKeyMapping() end
+function SendNUIMessage(msg) SIM.nui[#SIM.nui + 1] = msg end
+function RegisterNUICallback(name, fn) SIM.nuiCallbacks[name] = fn end
+function GetResourceState(n) return SIM.resources[n] or 'missing' end
 function GetCurrentResourceName() return 'coreac' end
 function GetConvar(_, d) return d end
 LocalPlayer = { state = setmetatable({}, { __index = { set = function(self, k, v) rawset(self, k, v) end } }) }

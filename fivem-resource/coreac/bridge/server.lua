@@ -266,7 +266,7 @@ local function syncRulesToCoreAC(rules)
     local cfg_key = CoreAC.CFct1C6gobnW4qkaQUx3Xk9Q
     GlobalState[cfg_key] = {
         Main     = CoreAC.Config.Main,
-        Settings = CoreAC.Config.Settings,
+        Settings = CoreAC.PublicSettings(CoreAC.Config.Settings),
         Entities = CoreAC.Config.Entities,
     }
 
@@ -282,6 +282,43 @@ end
 -- ---------------------------------------------------------------------------
 local lastAcConfig = nil
 
+--- OYUNCULARA giden kopya: Settings bölümü çıkarılır. Config tüm oyunculara
+--- yayınlanır ve hileci bunu okuyabilir; Settings'te muafiyet listeleri, VPN
+--- API anahtarı, mesajlar, txAdmin yolu, HTTP API IP listesi gibi yalnızca
+--- sunucunun bilmesi gereken şeyler var. (Client modülleri Settings okumaz.)
+local function forPlayers(rawAc)
+    local out = {}
+    for section, fields in pairs(rawAc) do
+        if section ~= 'Settings' and type(fields) == 'table' then out[section] = fields end
+    end
+    return out
+end
+
+-- Framework resource adları (Settings → Framework & API). Sunucu bunları yeniden
+-- adlandırmış olabilir; kod adı sabit yazmak yerine CAC.fw('qb' | 'qbx' | 'esx') kullanır.
+local FW_DEFAULT = { qb = 'qb-core', qbx = 'qbx_core', esx = 'es_extended' }
+local FW_KEY = { qb = 'QbCoreResourceName', qbx = 'QbxCoreResourceName', esx = 'EsxResourceName' }
+function CAC.fw(kind)
+    local v = CoreAC.Config.Settings[FW_KEY[kind]]
+    return (type(v) == 'string' and v ~= '') and v or FW_DEFAULT[kind]
+end
+
+-- Oyuncu tarafının da bilmesi gereken iki zararsız değer: komut öneki ve framework
+-- adları. (Settings'in geri kalanı oyunculara gitmez — yukarıdaki forPlayers.)
+local function sendPublic(target)
+    TriggerClientEvent('coreac:prefix', target, CoreAC.Config.Settings.CommandPrefix)
+    TriggerClientEvent('coreac:frameworks', target, {
+        qb = CAC.fw('qb'), qbx = CAC.fw('qbx'), esx = CAC.fw('esx'),
+    })
+end
+
+-- Config her uygulandığında haber verilecek modüller (Safe Guard kümeleri, komut
+-- öneki, txAdmin yönetici listesi, HTTP API…). fn(CoreAC.Config.Settings)
+local configHooks = {}
+function CAC.onConfig(fn)
+    if type(fn) == 'function' then configHooks[#configHooks + 1] = fn end
+end
+
 function CAC.applyAcConfig(rawAc)
     if type(rawAc) ~= 'table' then return end
     -- Panel listeleri metin dizisi olarak gelir; modüllerin çoğu hash ile
@@ -290,7 +327,7 @@ function CAC.applyAcConfig(rawAc)
     local ac = CoreAC.NormalizeAcConfig(rawAc)
     -- Client'lara HAM config gider ve orada normalize edilir: ağ üzerinden
     -- devasa hash anahtarlı tablolar taşımaktan kaçınırız, payload küçük kalır.
-    lastAcConfig = rawAc
+    lastAcConfig = forPlayers(rawAc)
     for section, fields in pairs(ac) do
         if type(fields) == 'table' and CoreAC.Config[section] then
             for key, value in pairs(fields) do
@@ -299,11 +336,12 @@ function CAC.applyAcConfig(rawAc)
         end
     end
 
-    -- GlobalState'i güncelle (client modülleri config bag'i okuyanlar için)
+    -- GlobalState'i güncelle (client modülleri config bag'i okuyanlar için).
+    -- Settings burada da süzülür: GlobalState tüm oyunculara replike olur.
     local cfg_key = CoreAC.CFct1C6gobnW4qkaQUx3Xk9Q
     GlobalState[cfg_key] = {
         Main       = CoreAC.Config.Main,
-        Settings   = CoreAC.Config.Settings,
+        Settings   = CoreAC.PublicSettings(CoreAC.Config.Settings),
         Entities   = CoreAC.Config.Entities,
         Weapons    = CoreAC.Config.Weapons,
         Explosions = CoreAC.Config.Explosions,
@@ -312,13 +350,20 @@ function CAC.applyAcConfig(rawAc)
     }
 
     -- Client CoreAC.Config tablolarına uygulansın diye yayınla (ham hâliyle)
-    TriggerClientEvent('coreac:acConfig', -1, rawAc)
+    TriggerClientEvent('coreac:acConfig', -1, lastAcConfig)
+    sendPublic(-1)
+
+    for _, fn in ipairs(configHooks) do
+        local ok, err = pcall(fn, CoreAC.Config.Settings)
+        if not ok then print(('^1[CoreAC] config hook failed: %s^7'):format(tostring(err))) end
+    end
 end
 
 -- Sonradan bağlanan client mevcut config'i ister
 RegisterNetEvent('coreac:requestAcConfig', function()
     if lastAcConfig then
         TriggerClientEvent('coreac:acConfig', source, lastAcConfig)
+        sendPublic(source)
     end
 end)
 

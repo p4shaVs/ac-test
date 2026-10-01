@@ -1,0 +1,60 @@
+// Runs every check of the Settings-tab work and prints one line per suite.
+//
+//   npm run test:sim          (or: node tools/sim/run-all.cjs)
+//
+// Exit code is non-zero when any suite fails. A failing suite prints its last lines.
+//
+// What each suite proves:
+//   * Lua 5.4 compile         every resource file loads under the real compiler (luaparse is lenient)
+//   * consistency             panel ↔ Lua keys, defaults, typed reader, secrets never leave the panel
+//   * scenario_*              the real resource scripts running in a Lua 5.4 VM with a FiveM stub:
+//                             connection gates, bans & evidence, Safe Guard, config/logs/framework, HTTP API, client side
+//   * panel-checks            input validation (SSRF / injection), what the game server may receive, Discord routing
+const { spawnSync } = require("child_process");
+const path = require("path");
+
+const here = __dirname;
+const root = path.join(here, "..", "..");
+const isWin = process.platform === "win32";
+
+const suites = [
+  { name: "Lua compiles under Lua 5.4", cmd: process.execPath, args: ["luaload.cjs", "../../fivem-resource"], cwd: here },
+  { name: "Lua syntax (luaparse)", cmd: process.execPath, args: ["luacheck.cjs", "../../fivem-resource/coreac"], cwd: here },
+  { name: "panel ↔ Lua consistency (check:ac)", cmd: process.execPath, args: ["scripts/check-ac-consistency.js"], cwd: root },
+  { name: "scenario: connection gates", cmd: process.execPath, args: ["run.cjs", "scenario_conn.lua"], cwd: here },
+  { name: "scenario: bans & evidence", cmd: process.execPath, args: ["run.cjs", "scenario_bans.lua"], cwd: here },
+  { name: "scenario: Safe Guard", cmd: process.execPath, args: ["run.cjs", "scenario_safeguard.lua"], cwd: here },
+  { name: "scenario: config, logs, framework, prefix", cmd: process.execPath, args: ["run.cjs", "scenario_config.lua"], cwd: here },
+  { name: "scenario: game server HTTP API", cmd: process.execPath, args: ["run.cjs", "scenario_httpapi.lua"], cwd: here },
+  {
+    name: "scenario: client side (prefix, NUI video, screenshots)",
+    cmd: process.execPath,
+    args: ["run.cjs", "scenario_client_settings.lua"],
+    cwd: here,
+    env: { CLIENT: "1", CLIENT_FILES: "client/admin.lua,client/main.lua" },
+  },
+  { name: "panel checks (validation, secrets, Discord routing)", cmd: isWin ? "npx.cmd" : "npx", args: ["tsx", "tools/sim/panel-checks.ts"], cwd: root, shell: isWin },
+];
+
+let failed = 0;
+for (const s of suites) {
+  const t0 = Date.now();
+  const r = spawnSync(s.cmd, s.args, {
+    cwd: s.cwd,
+    env: { ...process.env, ...(s.env || {}) },
+    encoding: "utf8",
+    shell: s.shell === true,
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  const out = `${r.stdout || ""}${r.stderr || ""}`;
+  const ok = r.status === 0;
+  const summary = (out.match(/(\d+\/\d+ (?:checks passed|Lua files[^\n]*|Lua files compile[^\n]*))/g) || []).pop() ||
+    (out.split("\n").filter((l) => /^OK —/.test(l))[0] || "");
+  console.log(`${ok ? "  ok  " : " FAIL "} ${s.name}  (${((Date.now() - t0) / 1000).toFixed(1)}s)${summary ? "  " + summary.trim() : ""}`);
+  if (!ok) {
+    failed++;
+    console.log(out.split("\n").filter((l) => /FAIL|ERROR|✗|!!|problem/.test(l)).slice(-12).join("\n"));
+  }
+}
+console.log(failed ? `\n${failed} suite(s) FAILED` : "\nall suites passed");
+process.exit(failed ? 1 : 0);

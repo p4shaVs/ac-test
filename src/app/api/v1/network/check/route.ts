@@ -4,7 +4,8 @@ import { db } from "@/lib/db";
 import { handler, ok, ApiError } from "@/lib/api";
 import { authenticateServer } from "@/lib/server-auth";
 import { rateLimit } from "@/lib/ratelimit";
-import { readNetworkPolicy, queryNetworkReputation } from "@/lib/network-bans";
+import { readNetworkPolicy, queryNetworkReputation, reputationScore } from "@/lib/network-bans";
+import { readAcSettings } from "@/lib/ac-settings";
 import { sendWebhook } from "@/lib/discord";
 import { severityForType } from "@/lib/detection-actions";
 
@@ -14,6 +15,14 @@ export const dynamic = "force-dynamic";
 // ban check passes. The panel computes the verdict from THIS server's policy and
 // returns the action; the resource just obeys. The network never bans — the
 // worst it returns is KICK (deny entry), and only when the operator opted in.
+//
+// The same call also answers the two connection gates of Configuration →
+// Settings → Connection & Identity, because both need data only the panel has:
+//   * Reputation gate — network reputation (see reputationScore) below
+//     "Min Reputation Score". "Reputation Gate Enforce" off = shadow mode: the
+//     refusal is logged but the player gets in.
+//   * Max Threat Score — 40 points per automatic kick in the last 24 hours.
+// The response carries `deny` ("reputation" | "threat" | null) and `shadow`.
 const schema = z.object({
   license: z.string().max(120).optional(),
   steam: z.string().max(120).optional(),
@@ -28,15 +37,69 @@ export const POST = handler(async (req: NextRequest) => {
 
   const body = schema.parse(await req.json());
   const policy = readNetworkPolicy(server.config);
+  const settings = readAcSettings(server.config);
+  const gateOn = settings.MinReputationScore > 0;
+  const threatOn = settings.MaxThreatScore > 0;
 
-  // Policy off → do not even query; the resource does nothing.
-  if (policy.action === "OFF") {
-    return ok({ flagged: false, action: "OFF", distinctOwners: 0 });
+  // Nothing to evaluate (network policy off, both gates off) → do not even query.
+  if (policy.action === "OFF" && !gateOn && !threatOn) {
+    return ok({ flagged: false, action: "OFF", distinctOwners: 0, reputation: 100, threat: 0, deny: null, shadow: false });
   }
 
   const rep = await queryNetworkReputation(server.ownerId, body);
-  if (!rep.flagged) {
-    return ok({ flagged: false, action: "LOG", distinctOwners: rep.distinctOwners });
+  const reputation = reputationScore(rep.distinctOwners);
+
+  // Local threat: automatic kicks in the last 24 h. Staff kicks and old history
+  // do not count, so a player is never locked out for good.
+  let threat = 0;
+  if (threatOn && body.license) {
+    const known = await db.player.findUnique({
+      where: { serverId_license: { serverId: server.id, license: body.license } },
+      select: { id: true },
+    });
+    if (known) {
+      const kicks = await db.punishAction.count({
+        where: {
+          serverId: server.id, playerId: known.id, type: "KICK", issuedBy: "AntiCheat",
+          createdAt: { gte: new Date(Date.now() - 24 * 3600_000) },
+        },
+      });
+      threat = Math.min(100, kicks * 40);
+    }
+  }
+
+  let deny: "reputation" | "threat" | null = null;
+  let shadow = false;
+  if (threatOn && threat >= settings.MaxThreatScore) deny = "threat";
+  else if (gateOn && reputation < settings.MinReputationScore) {
+    if (settings.ReputationGateEnforce) deny = "reputation";
+    else shadow = true; // would have been refused — logged only
+  }
+
+  if (deny || shadow) {
+    const why = deny === "threat"
+      ? `threat ${threat} ≥ ${settings.MaxThreatScore}`
+      : `reputation ${reputation} < ${settings.MinReputationScore}`;
+    await db.serverLog.create({
+      data: {
+        serverId: server.id,
+        level: "WARN",
+        source: "connect",
+        message: `${shadow ? "Reputation gate (shadow — not blocked)" : "Connection blocked"}: ${body.playerName} (${why})`,
+      },
+    });
+    void sendWebhook(server.config, "warn", server.name, {
+      player: body.playerName,
+      reason: `${shadow ? "Reputation gate — would have blocked (shadow mode)" : "Connection blocked"}: ${why}`,
+    });
+  }
+
+  // The network flag itself only matters while the network policy is on.
+  if (policy.action === "OFF" || !rep.flagged) {
+    return ok({
+      flagged: false, action: policy.action === "OFF" ? "OFF" : "LOG",
+      distinctOwners: rep.distinctOwners, reputation, threat, deny, shadow,
+    });
   }
 
   // Flagged → always leave a visible record (panel + Discord). Action is LOG or
@@ -85,5 +148,5 @@ export const POST = handler(async (req: NextRequest) => {
     }`,
   });
 
-  return ok({ flagged: true, action, distinctOwners: rep.distinctOwners });
+  return ok({ flagged: true, action, distinctOwners: rep.distinctOwners, reputation, threat, deny, shadow });
 });

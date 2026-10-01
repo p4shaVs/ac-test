@@ -68,14 +68,14 @@ local DOWNED_BAG_KEYS = { 'isDead', 'dead', 'isdead', 'isDowned', 'downed', 'inL
 
 local function frameworkDowned(src)
   local ok, downed = pcall(function()
-    if GetResourceState('qb-core') == 'started' then
-      local QB = exports['qb-core']:GetCoreObject()
+    if GetResourceState(CAC.fw('qb')) == 'started' then
+      local QB = exports[CAC.fw('qb')]:GetCoreObject()
       local p = QB and QB.Functions.GetPlayer(src)
       local m = p and p.PlayerData and p.PlayerData.metadata
       if m and (m.isdead or m.inlaststand) then return true end
     end
-    if GetResourceState('qbx_core') == 'started' then
-      local p = exports.qbx_core:GetPlayer(src)
+    if GetResourceState(CAC.fw('qbx')) == 'started' then
+      local p = exports[CAC.fw('qbx')]:GetPlayer(src)
       local m = p and p.PlayerData and p.PlayerData.metadata
       if m and (m.isdead or m.inlaststand) then return true end
     end

@@ -8,7 +8,8 @@ import { generateBanCode } from "@/lib/keys";
 import { parseJson } from "@/lib/utils";
 import { isWhitelisted } from "@/lib/bypass";
 import { sendWebhook, webhookEnabled } from "@/lib/discord";
-import { sanitizeActions, resolveAction, capByConfidence, severityForType, detectionLabel } from "@/lib/detection-actions";
+import { sanitizeActions, resolveAction, capByConfidence, severityForType, detectionLabel, detectionConfidence } from "@/lib/detection-actions";
+import { readAcSettings, punishmentsOn } from "@/lib/ac-settings";
 import { recordNetworkBan } from "@/lib/network-bans";
 
 // Kaynak, bir hile tespitini raporlar. Aksiyon (LOG/KICK/BAN) müşterinin
@@ -122,12 +123,18 @@ export const POST = handler(async (req: NextRequest) => {
   // Yetkili muafiyeti (Settings → Staff Bypass): tespit kayıtlı, ceza yok.
   if (body.bypass === "staff") action = "LOG";
 
-  // LOG-ONLY (deneme) modu: Configuration → Settings'ten açılır. Açıkken HİÇBİR
-  // tespit kick/ban ATMAZ (ban kaydı bile açılmaz) — sadece kaydedilir/loglanır.
-  // Executor gibi FP-riskli korumaları açıp önce loglardan false-positive var mı
-  // izlemek için. FP yoksa modu kapatıp enforcement'a geçilir.
-  const logOnly = ((config.ac as any)?.Settings?.LogOnly === true);
-  if (logOnly) action = "LOG";
+  // Ceza anahtarları (Configuration → Settings):
+  //   * LOG-ONLY (deneme) modu — geçici; FP-riskli korumaları açıp önce loglardan
+  //     false-positive var mı izlemek için.
+  //   * Enable Bans — kalıcı politika anahtarı.
+  // İkisinden biri kapatıyorsa HİÇBİR tespit kick/ban ATMAZ (ban kaydı bile açılmaz),
+  // yalnızca kaydedilir. Elle verilen ban/kick'ler (moderate / oyun içi menü) etkilenmez.
+  const settings = readAcSettings(server.config);
+  if (!punishmentsOn(settings)) action = "LOG";
+
+  // Otomatik ban süresi (gün). 0 = kalıcı.
+  const banDays = settings.BanDuration;
+  const banExpiresAt = banDays > 0 ? new Date(Date.now() + banDays * 86_400_000) : null;
 
   let banned = false;
   let kicked = false;
@@ -136,8 +143,13 @@ export const POST = handler(async (req: NextRequest) => {
 
   if (action === "BAN" && player) {
     // Tekrarlı ban engeli: oyuncunun zaten aktif banı varsa yeni ban açma.
+    // Süresi dolmuş ama henüz pasifleştirilmemiş (GET /bans ~dakikada bir temizler)
+    // süreli ban sayılmaz: yoksa oyuncu yeni bir tespitle ban yemezdi.
     const existingBan = await db.ban.findFirst({
-      where: { serverId: server.id, playerId: player.id, active: true },
+      where: {
+        serverId: server.id, playerId: player.id, active: true,
+        OR: [{ permanent: true }, { expiresAt: { gt: new Date() } }],
+      },
       select: { code: true },
     });
     if (existingBan) {
@@ -160,7 +172,8 @@ export const POST = handler(async (req: NextRequest) => {
             reason: `Automatic ban: ${body.type}`,
             bannedBy: "AntiCheat",
             active: true,
-            permanent: true,
+            permanent: banDays === 0,
+            expiresAt: banExpiresAt,
           },
         }),
         db.punishAction.create({
@@ -187,12 +200,15 @@ export const POST = handler(async (req: NextRequest) => {
       // screenshot-basic ile yakalayıp banla ilişkilendiriyoruz). Kaynak
       // screenshot-basic kurulu değilse client tarafı bunu zaten sessizce
       // FAILED'a düşürür (bkz. client/main.lua coreac:screenshot handler).
-      // Configuration → Settings → "Enable Gameplay Recording" (default on).
-      const SHOT_COUNT = 5;
-      const recordEvidence = (config.ac as any)?.Settings?.EnableGameplayRecord !== false;
-      if (player.license && recordEvidence) {
+      // Configuration → Settings → Bans & Evidence:
+      //   Enable Gameplay Record  → kare serisi (Optimize Record Mode: 3 hafif kare, yoksa 5)
+      //   yalnızca Enable Screen Shots → tek kare
+      const shotCount = settings.EnableGameplayRecord
+        ? settings.OptimizeRecordMode ? 3 : 5
+        : settings.EnableScreenShots ? 1 : 0;
+      if (player.license && shotCount > 0) {
         const shots = await db.$transaction(
-          Array.from({ length: SHOT_COUNT }, (_, i) =>
+          Array.from({ length: shotCount }, (_, i) =>
             db.screenshotRequest.create({
               data: {
                 serverId: server.id,
@@ -211,13 +227,16 @@ export const POST = handler(async (req: NextRequest) => {
 
       // Feed the (permanent) ban into the network reputation — only if this
       // server opted to contribute. Hashed identifiers only; see network-bans.ts.
-      await recordNetworkBan(server, {
-        license: player.license,
-        steam: player.steam,
-        discord: player.discord,
-        playerName: player.name,
-        type: body.type,
-      });
+      // A time-limited ban (Ban Duration) is a local sentence, not a network flag.
+      if (banDays === 0) {
+        await recordNetworkBan(server, {
+          license: player.license,
+          steam: player.steam,
+          discord: player.discord,
+          playerName: player.name,
+          type: body.type,
+        });
+      }
     }
   } else if (action === "KICK" && player) {
     kicked = true;
@@ -235,13 +254,46 @@ export const POST = handler(async (req: NextRequest) => {
     });
   }
 
+  // Enable Screen Shots: ONE screenshot at the moment of a detection that kicks, or
+  // that is strong evidence on its own. Noisy heuristics never get one, and a
+  // player gets at most one a minute (and a server 200 an hour) so a chatty check
+  // cannot fill the disk or hammer the players' uploads.
+  if (
+    !banned && player?.license && settings.EnableScreenShots &&
+    (action === "KICK" || (detectionConfidence(body.type) !== "heuristic" && body.bypass !== "staff" && !whitelisted))
+  ) {
+    const [lastMinute, lastHour] = await Promise.all([
+      db.screenshotRequest.count({
+        where: { serverId: server.id, playerLicense: player.license, detectionId: { not: null }, createdAt: { gte: new Date(Date.now() - 60_000) } },
+      }),
+      db.screenshotRequest.count({
+        where: { serverId: server.id, requestedBy: "AntiCheat", createdAt: { gte: new Date(Date.now() - 3_600_000) } },
+      }),
+    ]);
+    if (lastMinute === 0 && lastHour < 200) {
+      const shot = await db.screenshotRequest.create({
+        data: {
+          serverId: server.id,
+          playerLicense: player.license,
+          playerName: player.name,
+          detectionId: detection.id,
+          seq: 0,
+          requestedBy: "AntiCheat",
+        },
+        select: { id: true },
+      });
+      screenshotRequestIds = [shot.id];
+    }
+  }
+
   await db.detection.update({ where: { id: detection.id }, data: { action } });
 
   // Discord: ONE message per detection, sent after the outcome is known
   // (it used to post "detection" before the decision and "autoban" again after).
-  const hookEvent = banned && webhookEnabled(server.config, "autoban") ? "autoban" : "detection";
+  const hookEvent = banned && webhookEnabled(server.config, "autoban", { action }) ? "autoban" : "detection";
   void sendWebhook(server.config, hookEvent, server.name, {
     player: body.playerName,
+    detectionType: body.type,
     detectionLabel: detectionLabel(body.type),
     action,
     origin: body.origin,
@@ -262,5 +314,9 @@ export const POST = handler(async (req: NextRequest) => {
   return ok({
     recorded: true, action, banned, kicked, banCode, whitelisted, screenshotRequestIds,
     label: detectionLabel(body.type),
+    // Shown on the ban screen ("Expires …"); null = permanent.
+    banExpiresAt: banned && banExpiresAt ? banExpiresAt.toISOString() : null,
+    // Optimize Record Mode: lighter JPEGs for the evidence frames.
+    screenshotQuality: settings.OptimizeRecordMode ? 0.55 : null,
   });
 });

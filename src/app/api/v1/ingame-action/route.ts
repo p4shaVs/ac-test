@@ -103,5 +103,13 @@ export const POST = handler(async (req: NextRequest) => {
       : undefined,
   });
 
-  return ok({ recorded: true, banCode });
+  // Admin Logs channel: an admin-menu command is a staff action whatever it was.
+  void sendWebhook(server.config, "admin", server.name, {
+    player: body.playerName,
+    by: body.by,
+    reason: `used the admin menu (${body.type.toLowerCase()})`,
+    extra: { Action: body.type, Reason: body.reason.slice(0, 180) },
+  });
+
+  return ok({ recorded: true, banCode, expiresAt: expiresAt ? expiresAt.toISOString() : null });
 });

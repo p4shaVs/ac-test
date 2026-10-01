@@ -14,7 +14,11 @@
 --   * "ac clear peds" OYUNCU ped'lerini de silmeye çalışıyordu.
 -- =============================================================================
 
-local PREFIX = (CoreAC.Config.Settings and CoreAC.Config.Settings.CommandPrefix) or 'ac'
+-- Komut öneki panelden değişir (Settings → Framework & API → Command Prefix). Config
+-- bu dosya yüklendikten SONRA gelir, bu yüzden önek burada bir kez okunamaz: her
+-- config güncellemesinde yeniden okunur (aşağıda CAC.onConfig). FiveM'de komut kaydı
+-- silinemez — eski önek kayıtlı kalır ama artık hiçbir şey yapmaz.
+local PREFIX = 'ac'
 
 -- Çıktı: sunucu konsoluna basılır; komut PANELİN Console sayfasından geldiyse
 -- (server/main.lua pollCommands) aynı satır panele log olarak da gider ki
@@ -80,7 +84,7 @@ local function clearEntities(kind)
     return n
 end
 
-RegisterCommand(PREFIX, function(source, args)
+local function consoleCommand(source, args)
     -- Yalnızca konsol / panel (source 0). Oyuncunun /ac'si client'ta çalışır.
     if tonumber(source) ~= 0 then return end
     local out = replier(CAC.commandFromPanel == true)
@@ -183,4 +187,23 @@ RegisterCommand(PREFIX, function(source, args)
     else
         out(('Unknown sub-command "%s". Type "%s" for the list.'):format(sub, PREFIX), '^1')
     end
-end, false)
+end
+
+local registeredPrefixes = {}
+local function registerPrefix(name)
+    if registeredPrefixes[name] then return end
+    registeredPrefixes[name] = true
+    RegisterCommand(name, function(source, args)
+        if name ~= PREFIX then return end   -- eski önek: artık devre dışı
+        consoleCommand(source, args)
+    end, false)
+end
+
+registerPrefix(PREFIX)
+CAC.onConfig(function(settings)
+    local p = settings and settings.CommandPrefix
+    if type(p) == 'string' and p:match('^[a-z][a-z0-9_]*$') and #p <= 16 then
+        PREFIX = p
+        registerPrefix(p)
+    end
+end)

@@ -7,6 +7,7 @@ import { requireOwnedServer } from "@/lib/api-guards";
 import { audit } from "@/lib/audit";
 import { clientIp } from "@/lib/session";
 import { revokeNetworkBan } from "@/lib/network-bans";
+import { sendWebhook } from "@/lib/discord";
 
 const schema = z.object({ banId: z.string().min(1) });
 
@@ -58,6 +59,14 @@ export const POST = handler(
     // Correcting a ban locally also clears this owner's network contribution,
     // so the player is not left flagged network-wide by a mistake.
     await revokeNetworkBan(server, { license: ban.license, steam: ban.steam, discord: ban.discord });
+
+    // Logs & Webhooks → Log Unbans To Discord (the in-game route posts the same line).
+    void sendWebhook(server.config, "unban", server.name, {
+      player: ban.playerName,
+      reason: "Unbanned from the web panel",
+      by: user.username,
+      code: ban.code ?? undefined,
+    });
 
     await audit({
       userId: user.id,

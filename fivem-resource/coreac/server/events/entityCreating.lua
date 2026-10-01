@@ -42,6 +42,14 @@ AddEventHandler("entityCreating", LPH_JIT_MAX(function(entity)
         return
     end
 
+    -- Safe Guard (panel → Safe Scripts / Ignored Scripts): güvenilen bir resource'un
+    -- sunucuda yarattığı entity kara liste / beyaz liste / limit / sahiplik
+    -- kontrollerine girmez ve hiçbir sayaca eklenmez.
+    local creator = GetEntityScript(entity)
+    if creator and creator ~= '' and CAC.isSafeScript and CAC.isSafeScript(creator) then
+        return
+    end
+
     local firstOwner = NetworkGetFirstEntityOwner(entity)
     local source = NetworkGetEntityOwner(entity)
     if not source or firstOwner ~= source then

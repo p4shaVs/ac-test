@@ -34,12 +34,17 @@ server_scripts {
   -- 4. Server bridge (CoreAC.DetectPlayer → CAC web API + ek CoreAC globals)
   'bridge/server.lua',
 
+  -- 4b. Safe Guard: Safe Events / Safe Scripts / Ignored Scripts / Injection Safe List
+  'server/safe_guard.lua',
+
   -- 5. CoreAC modülleri — anti-backdoors ve resource handler (exports sağlar)
   'server/anti-backdoors.lua',
   'server/resourcesHandler.lua',
 
   -- 6. CAC web ana betiği (heartbeat, oyuncu sync, ban, ceza kuyruğu)
   'server/main.lua',
+  'server/connection.lua',    -- Connection & Identity: isim, Steam/Discord, çift bağlantı, VPN, itibar/tehdit kapıları
+  'server/http_api.lua',      -- Oyun sunucusunun HTTP API'si (token + IP allowlist; yazma uçları panelden açılır)
 
   -- 7. CAC tehdit motoru + canlı özellikler + korumalar
   -- 'server/threat_engine.lua',  -- KALDIRILDI: THREAT_SCORE / merkezi tehdit skoru devre dışı

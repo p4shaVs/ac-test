@@ -257,18 +257,65 @@ CoreAC.Config = {
         IgnoredEvents            = {},
     },
     Settings = {
-        CommandPrefix              = 'ac',
         StaffBypass                = true,   -- sunucu yetkilileri otomatik kick/ban yemez (yalnızca log)
-        EnableGameplayRecord       = false,
         EnableAntiBackdoors        = true,
         StopServerWhenDetected     = false,
-        IgnoredScripts             = {},
-        -- playerConnecting / playerDropped modül alanları
-        AntiConnectionDupe         = false,
-        LogConnectionsToConsole    = false,
-        LogConnectionsToDiscord    = false,
-        LogOnConnect               = false,
-        LogOnDisconnect            = false,
+
+        -- -------------------------------------------------------------------
+        -- Panel → Configuration → Settings. Bu varsayılanlar panel config'i
+        -- (heartbeat) gelene kadar geçerlidir ve src/lib/ac-config.ts ile AYNI
+        -- olmalıdır — `npm run check:ac` ikisinin ayrışmasını yakalar.
+        -- Settings bölümü oyunculara YAYINLANMAZ (bkz. CoreAC.PublicSettings).
+        -- -------------------------------------------------------------------
+        -- Safe Guard
+        SafeEvents                       = {},
+        SafeScripts                      = {},
+        IgnoredScripts                   = {},
+        AntiResourceInjectionSafeList    = {},
+        -- Connection & Identity
+        AntiVPN                    = false,
+        VpnMessage                 = 'VPN usage is not allowed on this server.',
+        VpnApiKey                  = '',
+        AntiConnectionDupe         = true,
+        DupeMessage                = 'Multiple connections detected from your account.',
+        RequireSteam               = false,
+        SteamRequiredMessage       = 'A linked Steam account is required to join this server.',
+        RequireDiscord             = false,
+        DiscordRequiredMessage     = 'Discord account linking is required to join this server.',
+        RequireAlphanumericName    = false,
+        NameMessage                = 'Your username contains prohibited characters.',
+        ReputationGateEnforce      = false,
+        MinReputationScore         = 0,
+        ReputationMessage          = "Your account did not pass this server's trust check.",
+        MaxThreatScore             = 0,
+        ThreatMessage              = 'You are a potential threat to the server.',
+        BlockIfVerifyFails         = false,
+        VerifyUnavailableMessage   = 'CoreAC could not verify your account right now. Please try again in a moment.',
+        -- Bans & Evidence
+        EnableBans                 = true,
+        BanIpAddress               = false,
+        BanDuration                = 0,
+        BanMessage                 = 'You have been banned by CoreAC for cheating.',
+        EnableScreenShots          = true,
+        EnableGameplayRecord       = true,
+        OptimizeRecordMode         = true,
+        BanVideoUrl                = '',
+        -- Logs & Webhooks (Discord adresleri yalnızca panelde durur)
+        LogOnConnect               = true,
+        LogConnectionsToDiscord    = true,
+        LogOnDisconnect            = true,
+        LogConnectionsToConsole    = true,
+        LogPunishmentsToConsole    = true,
+        ShowIpAddress              = false,
+        -- Framework & API
+        EsxResourceName            = 'es_extended',
+        QbCoreResourceName         = 'qb-core',
+        QbxCoreResourceName        = 'qbx_core',
+        TxAdminPath                = '',
+        CommandPrefix              = 'ac',
+        HttpApiAllowWrite          = false,
+        HttpApiAllowedIps          = {},
+
         -- Diğer modules alanları
         EnableWhitelist            = false,
         EnableBlacklist            = true,
@@ -504,6 +551,20 @@ local function toExplosionLookup(list)
     return out
 end
 
+--- OYUNCULARA giden kopya için Settings süzgeci. Config, GlobalState ve
+--- 'coreac:acConfig' ile TÜM oyunculara yayınlanır — hileci bunları okuyabilir.
+--- Settings bölümü (muafiyet listeleri, mesajlar, VPN API anahtarı, txAdmin yolu,
+--- HTTP API IP listesi…) yalnızca sunucuda kalır; yalnızca sunucu modüllerinin
+--- GlobalState üzerinden okuduğu iki düz bayrak geçer (anti-backdoors.lua).
+local PUBLIC_SETTINGS = { EnableAntiBackdoors = true, StopServerWhenDetected = true }
+function CoreAC.PublicSettings(settings)
+    local out = {}
+    for key in pairs(PUBLIC_SETTINGS) do
+        if type(settings) == 'table' and settings[key] ~= nil then out[key] = settings[key] end
+    end
+    return out
+end
+
 --- Panelden gelen tam config objesini modüllerin beklediği şekle getirir.
 --- Girdiyi değiştirmez; yeni bir tablo döndürür.
 function CoreAC.NormalizeAcConfig(ac)
@@ -598,7 +659,7 @@ if isServerSide then
     -- GlobalState[CONFIG_BAG_KEY] → modules bu key'i okuyarak config'e erişir
     GlobalState[CONFIG_BAG_KEY] = {
         Main     = CoreAC.Config.Main,
-        Settings = CoreAC.Config.Settings,
+        Settings = CoreAC.PublicSettings(CoreAC.Config.Settings),
         Entities = CoreAC.Config.Entities,
     }
 end

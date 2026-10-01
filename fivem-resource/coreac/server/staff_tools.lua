@@ -46,24 +46,119 @@ AddEventHandler('txAdmin:events:adminAuth', function(data)
   staffCache[id] = nil
 end)
 
+-- Framework resource adları panelden gelir (Settings → Framework & API); her framework
+-- kendi pcall'ında çalışır ki birinin hatası (eksik export…) diğerlerini susturmasın.
+local function qbAdmin(src)
+  local name = CAC.fw('qb')
+  if GetResourceState(name) ~= 'started' then return false end
+  local QB = exports[name]:GetCoreObject()
+  if QB and QB.Functions and QB.Functions.HasPermission then
+    return QB.Functions.HasPermission(src, 'admin') or QB.Functions.HasPermission(src, 'god')
+  end
+  return false
+end
+
+local function qbxAdmin(src)
+  local name = CAC.fw('qbx')
+  if GetResourceState(name) ~= 'started' then return false end
+  return exports[name]:HasPermission(src, 'admin') or exports[name]:HasPermission(src, 'god')
+end
+
+local function esxAdmin(src)
+  local name = CAC.fw('esx')
+  if GetResourceState(name) ~= 'started' then return false end
+  local ESX = exports[name]:getSharedObject()
+  local xp = ESX and ESX.GetPlayerFromId(src)
+  local g = xp and xp.getGroup and xp.getGroup()
+  return g == 'admin' or g == 'superadmin'
+end
+
 local function frameworkAdmin(src)
-  local ok, res = pcall(function()
-    if GetResourceState('qb-core') == 'started' then
-      local QB = exports['qb-core']:GetCoreObject()
-      if QB and QB.Functions and QB.Functions.HasPermission then
-        if QB.Functions.HasPermission(src, 'admin') or QB.Functions.HasPermission(src, 'god') then return true end
+  for _, check in ipairs({ qbAdmin, qbxAdmin, esxAdmin }) do
+    local ok, res = pcall(check, src)
+    if ok and res == true then return true end
+  end
+  return false
+end
+
+-- ---------------------------------------------------------------------------
+-- txAdmin yöneticileri DOSYADAN (panel → Framework & API → Tx Admin Path).
+-- 'txAdmin:events:adminAuth' olayı oyuncu oyuna girdikten sonra gelir; admins.json ise
+-- oyuncu bağlanırken bile bilinir — Require Discord / Anti VPN gibi bağlanma kapıları
+-- yetkilileri engellemesin diye. Dosyadan yalnızca kimlik dizgileri (fivem:…, discord:…,
+-- license:…, steam:…) okunur; parola özetleri vb. hiç saklanmaz, loglanmaz.
+-- ---------------------------------------------------------------------------
+local txFileIds = {}          -- "fivem:123456" → true (küçük harf)
+local txLoadedPath, txLoadedAt = nil, 0
+local TX_PREFIX = { fivem = true, discord = true, license = true, license2 = true, steam = true }
+
+local function collectIdentifiers(node, set, depth)
+  if depth > 8 then return end
+  local t = type(node)
+  if t == 'string' then
+    local pre = node:match('^(%a+):%w+$')
+    if pre and TX_PREFIX[pre:lower()] and #node <= 80 then set[node:lower()] = true end
+  elseif t == 'table' then
+    for _, v in pairs(node) do collectIdentifiers(v, set, depth + 1) end
+  end
+end
+
+local function loadTxAdmins(path)
+  local set, file = {}, nil
+  if type(path) == 'string' and path ~= '' and io and io.open then
+    -- sondaki / ve \ işaretlerini at (string.char(92) = ters eğik çizgi)
+    while #path > 1 and (path:sub(-1) == '/' or path:sub(-1) == string.char(92)) do
+      path = path:sub(1, -2)
+    end
+    for _, rel in ipairs({ '/admins.json', '/data/admins.json', '/default/data/admins.json' }) do
+      local ok, f = pcall(io.open, path .. rel, 'rb')
+      if ok and f then
+        local raw = f:read('*a')
+        f:close()
+        local parsed, data = pcall(json.decode, raw or '')
+        if parsed and type(data) == 'table' then
+          collectIdentifiers(data, set, 0)
+          file = path .. rel
+          break
+        end
       end
     end
-    if GetResourceState('es_extended') == 'started' then
-      local ESX = exports['es_extended']:getSharedObject()
-      local xp = ESX and ESX.GetPlayerFromId(src)
-      local g = xp and xp.getGroup and xp.getGroup()
-      if g == 'admin' or g == 'superadmin' then return true end
+  end
+  local n = 0
+  for _ in pairs(set) do n = n + 1 end
+  local before = 0
+  for _ in pairs(txFileIds) do before = before + 1 end
+  txFileIds = set
+  if before ~= n or txLoadedPath ~= file then
+    if file then
+      print(('^2[CoreAC] txAdmin: %d staff identifier(s) loaded from %s^7'):format(n, file))
+    elseif type(path) == 'string' and path ~= '' then
+      print(('^3[CoreAC] txAdmin: no admins.json found under "%s" (Tx Admin Path).^7'):format(path))
     end
-    return false
-  end)
-  return ok and res == true
+  end
+  txLoadedPath, txLoadedAt = file, GetGameTimer()
+  return n
 end
+CAC.loadTxAdmins = loadTxAdmins
+
+local function txFileStaff(src)
+  if next(txFileIds) == nil then return false end
+  for _, id in ipairs(GetPlayerIdentifiers(src)) do
+    if txFileIds[id:lower()] then return true end
+  end
+  return false
+end
+
+local txPath = nil
+CAC.onConfig(function(settings)
+  local p = settings and settings.TxAdminPath or ''
+  -- Yol değiştiyse hemen, değilse en fazla 5 dakikada bir yeniden oku (dosya düzenlenmiş olabilir).
+  if p ~= txPath or GetGameTimer() - txLoadedAt > 300000 then
+    txPath = p
+    loadTxAdmins(p)
+    for k in pairs(staffCache) do staffCache[k] = nil end   -- yeni liste hemen geçerli olsun
+  end
+end)
 
 --- Oyuncu sunucunun doğruladığı bir yetkili mi?
 function CAC.isStaff(src)
@@ -75,6 +170,7 @@ function CAC.isStaff(src)
   local v = txAdmins[src] == true
     or (CAC.adminOf and CAC.adminOf(src) ~= nil)
     or IsPlayerAceAllowed(src, 'command')
+    or txFileStaff(src)
     or frameworkAdmin(src)
   v = v == true
   staffCache[src] = { v = v, t = now }

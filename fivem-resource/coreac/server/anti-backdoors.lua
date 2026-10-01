@@ -25,7 +25,9 @@ exports("checkConvar", LPH_NO_VIRTUALIZE(function(varName)
     local Configuration = GlobalState[GlobalState.CFct1C6gobnW4qkaQUx3Xk9Q or ""]
     if (not Configuration or Configuration.Settings.EnableAntiBackdoors) then
         local invoker = GetInvokingResource()
-        if varName == "mysql_connection_string" and invoker ~= "qb-core" and not invoker:lower():find("multichar") and not invoker:lower():find("character") then
+        -- Panel → Safe Guard: güvenilen / yok sayılan resource'un çağrıları raporlanmaz.
+        if invoker and CAC and CAC.isSafeScript and CAC.isSafeScript(invoker) then return false end
+        if varName == "mysql_connection_string" and invoker ~= CAC.fw('qb') and not invoker:lower():find("multichar") and not invoker:lower():find("character") then
             Citizen.CreateThread(function()
                 while not CoreAC or not CoreAC.Started do Wait(100) end
                 print2("^3"..invoker.."^0: is trying to retrieve your ^1SQL Credentials^0.","^1","Security")
@@ -55,6 +57,7 @@ exports("checkHttpRequest", LPH_NO_VIRTUALIZE(function(url)
     local Configuration = GlobalState[GlobalState.CFct1C6gobnW4qkaQUx3Xk9Q or ""]
     if (not Configuration or Configuration.Settings.EnableAntiBackdoors) then
         local invoker = GetInvokingResource()
+        if invoker and CAC and CAC.isSafeScript and CAC.isSafeScript(invoker) then return false end
         if (url:find("pastebin.com") and not url:find("api/api_post.php")) or url:find("ketamin.cc") or url:find("cipher") or url:find("pqzskjptss.shop") or (url:find(".php?") and url:find("stage")) then
             CreateThread(function()
                 while not CoreAC or not CoreAC.Started do Wait(100) end

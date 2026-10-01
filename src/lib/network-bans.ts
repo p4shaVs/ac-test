@@ -40,6 +40,20 @@ export const DEFAULT_NETWORK_POLICY: NetworkPolicy = { action: "LOG", contribute
 // treated as a real network signal. Anti-poisoning floor — see file header.
 export const NETWORK_MIN_OWNERS = 2;
 
+/**
+ * Connection gate (Configuration → Settings → Connection & Identity): a player's
+ * network reputation is 100 minus this many points for every OTHER server owner
+ * that banned them. 35 → two owners = 30, so "Min Reputation Score 50" keeps out
+ * exactly what the network flag already considers flagged, while one owner's ban
+ * alone (65) never blocks anyone.
+ */
+export const REPUTATION_PENALTY_PER_OWNER = 35;
+
+/** Reputation score (0-100) for a player banned by `owners` other server owners. */
+export function reputationScore(owners: number): number {
+  return Math.max(0, 100 - REPUTATION_PENALTY_PER_OWNER * Math.max(0, owners));
+}
+
 export function readNetworkPolicy(config: string | null | undefined): NetworkPolicy {
   const parsed = parseJson<Record<string, unknown>>(config ?? "{}", {});
   const n = (parsed.network ?? {}) as Record<string, unknown>;
