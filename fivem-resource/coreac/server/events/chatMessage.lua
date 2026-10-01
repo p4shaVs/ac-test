@@ -1,7 +1,9 @@
 local function check3dMe(text, source)
     if type(text) == "string" and text:find("<") and text:find("img") and text:find("src") then
         CancelEvent()
-        CoreAC.DetectPlayer(source, "Attempted to crash players", {
+        -- Eskiden "Attempted to crash players" adıyla gidiyordu: panel bu tipi tanımadığı için
+        -- yalnızca loglanırdı. Artık CRASH_ATTEMPT (Punishments'taki ayar uygulanır).
+        CoreAC.DetectPlayer(source, CoreAC.Detections.ANTI_CRASH_ATTEMPT, {
             reason = "/me Exploit",
         })
         return

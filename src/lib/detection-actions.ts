@@ -163,6 +163,10 @@ export const DETECTION_TYPES: DetectionTypeDef[] = [
   D("PED_LIMIT", "Ped Spawn Limit", "entity", "strong", "KICK"),
   D("OBJECT_LIMIT", "Object Spawn Limit", "entity", "strong", "KICK"),
   D("PROJECTILE_LIMIT", "Projectile Spawn Limit", "entity", "strong", "KICK"),
+  // Anti-crash flood shield (server/crash_guard.lua): 60+ script entities in 2 s, 25+ particle
+  // effects in 2 s, 25+ projectiles in 3 s, a burst of scripted tasks on other players, or 3+ props
+  // attached to another player. The extra is always blocked; this decides the punishment.
+  D("ENTITY_FLOOD", "Entity / Effect Flood (crash attempt)", "entity", "strong", "KICK"),
   D("ILLEGAL_OBJECT", "Illegal Object Spawn", "entity", "heuristic", "LOG"),
   D("ISOLATED_VEHICLE", "Isolated Vehicle Spawn", "entity", "heuristic", "LOG"),
   D("ATTACH_VEHICLE", "Vehicle Attach", "entity", "heuristic", "LOG"),

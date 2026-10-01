@@ -1,5 +1,6 @@
 import { getOwnedServer } from "@/lib/guards";
 import { db } from "@/lib/db";
+import { PageHeader } from "@/components/ui";
 import { ConsoleClient, type ConsoleLine } from "./console-client";
 
 export const dynamic = "force-dynamic";
@@ -13,18 +14,25 @@ export default async function ConsolePage({
   const logs = await db.serverLog.findMany({
     where: { serverId: server.id },
     orderBy: { createdAt: "desc" },
-    take: 80,
+    take: 200,
   });
 
-  const lines: ConsoleLine[] = logs
-    .reverse()
-    .map((l) => ({
-      id: l.id,
-      level: l.level,
-      source: l.source,
-      message: l.message,
-      createdAt: l.createdAt.toISOString(),
-    }));
+  const lines: ConsoleLine[] = logs.reverse().map((l) => ({
+    id: l.id,
+    level: l.level,
+    source: l.source,
+    message: l.message,
+    createdAt: l.createdAt.toISOString(),
+  }));
 
-  return <ConsoleClient serverId={server.id} initialLines={lines} online={server.status === "ONLINE"} />;
+  return (
+    <>
+      <PageHeader
+        eyebrow="Logs"
+        title="Console"
+        description="Run commands on your game server and watch its log live. Output refreshes every few seconds."
+      />
+      <ConsoleClient serverId={server.id} initialLines={lines} online={server.status === "ONLINE"} />
+    </>
+  );
 }

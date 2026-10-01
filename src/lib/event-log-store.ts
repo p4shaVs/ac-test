@@ -12,6 +12,8 @@ export interface LiveEvent {
   detail: string;
   /** Identical lines inside one 2 s batch are merged by the resource. */
   count: number;
+  /** Structured details (weapon, model, coords, arguments…) shown as JSON. */
+  data?: Record<string, unknown>;
 }
 
 export const LIVE_EVENT_KINDS = ["spawn", "remove", "explosion", "damage", "particle", "kill", "event", "join", "leave", "other"] as const;

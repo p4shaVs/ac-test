@@ -326,6 +326,117 @@ export const Icons = {
       <path d="M12 7v5l4 2" />
     </Base>
   ),
+  info: (p: IconProps) => (
+    <Base {...p}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5" />
+      <path d="M12 8h.01" />
+    </Base>
+  ),
+  pencil: (p: IconProps) => (
+    <Base {...p}>
+      <path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z" />
+      <path d="m13.5 6.5 4 4" />
+    </Base>
+  ),
+  sliders: (p: IconProps) => (
+    <Base {...p}>
+      <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" />
+      <circle cx="16" cy="6" r="2" />
+      <circle cx="10" cy="12" r="2" />
+      <circle cx="18" cy="18" r="2" />
+    </Base>
+  ),
+  refresh: (p: IconProps) => (
+    <Base {...p}>
+      <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+      <path d="M21 3v5h-5" />
+    </Base>
+  ),
+  chevronRight: (p: IconProps) => (
+    <Base {...p}>
+      <path d="m9 6 6 6-6 6" />
+    </Base>
+  ),
+  braces: (p: IconProps) => (
+    <Base {...p}>
+      <path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1" />
+      <path d="M16 21h1a2 2 0 0 0 2-2v-4a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1" />
+    </Base>
+  ),
+  note: (p: IconProps) => (
+    <Base {...p}>
+      <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9l-6-6Z" />
+      <path d="M14 3v6h6M8 13h8M8 17h5" />
+    </Base>
+  ),
+  alert: (p: IconProps) => (
+    <Base {...p}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v6" />
+      <path d="M12 16.5h.01" />
+    </Base>
+  ),
+  filter: (p: IconProps) => (
+    <Base {...p}>
+      <path d="M3 5h18l-7 8v6l-4-2v-4L3 5Z" />
+    </Base>
+  ),
+  external: (p: IconProps) => (
+    <Base {...p}>
+      <path d="M14 4h6v6" />
+      <path d="M20 4 10 14" />
+      <path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+    </Base>
+  ),
+  undo: (p: IconProps) => (
+    <Base {...p}>
+      <path d="M9 14 4 9l5-5" />
+      <path d="M4 9h11a5 5 0 0 1 0 10h-2" />
+    </Base>
+  ),
+  layers: (p: IconProps) => (
+    <Base {...p}>
+      <path d="m12 3 9 5-9 5-9-5 9-5Z" />
+      <path d="m3 13 9 5 9-5" />
+    </Base>
+  ),
+  crosshair: (p: IconProps) => (
+    <Base {...p}>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+    </Base>
+  ),
+  heart: (p: IconProps) => (
+    <Base {...p}>
+      <path d="M19.5 12.6 12 20l-7.5-7.4A5 5 0 0 1 12 6a5 5 0 0 1 7.5 6.6Z" />
+    </Base>
+  ),
+  car: (p: IconProps) => (
+    <Base {...p}>
+      <path d="M5 17h14M6 17v2M18 17v2" />
+      <path d="M4 17v-4l2-5a2 2 0 0 1 1.9-1.4h8.2A2 2 0 0 1 18 8l2 5v4" />
+      <path d="M4 13h16" />
+    </Base>
+  ),
+  flame: (p: IconProps) => (
+    <Base {...p}>
+      <path d="M12 21a6 6 0 0 0 6-6c0-4-3-6-4-9-2 2-3 3-3 5-1-1-1.5-2-1.5-3C7 10 6 12.5 6 15a6 6 0 0 0 6 6Z" />
+    </Base>
+  ),
+  plug: (p: IconProps) => (
+    <Base {...p}>
+      <path d="M9 2v6M15 2v6" />
+      <path d="M6 8h12v4a6 6 0 0 1-12 0V8Z" />
+      <path d="M12 18v4" />
+    </Base>
+  ),
+  bug: (p: IconProps) => (
+    <Base {...p}>
+      <rect x="7" y="7" width="10" height="13" rx="5" />
+      <path d="M12 7V4M9 4l1.5 1.5M15 4l-1.5 1.5M3 12h4M17 12h4M4 18l3-2M20 18l-3-2M4 7l3 2M20 7l-3 2" />
+    </Base>
+  ),
 };
 
 export type IconName = keyof typeof Icons;

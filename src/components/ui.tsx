@@ -8,19 +8,16 @@ import { Icons, type IconName } from "./icons";
 /* -------------------------------------------------------------------------- */
 
 /**
- * CoreAC brand mark — an angular, faceted shield (protection) with a solid hex
- * "core" at its heart. Drawn inline so it inherits the brand gradient and stays
- * crisp at any size; the same geometry ships as /logo-mark.svg, /logo.svg
- * (lockup) and the favicon.
+ * CoreAC mark — an angular, faceted shield with a solid hex "core". Monochrome:
+ * a bright-to-silver stroke so it reads on the near-black surfaces at any size.
  */
 export function LogoMark({ size = 36 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
       <defs>
         <linearGradient id="csMark" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#818cf8" />
-          <stop offset="0.5" stopColor="#6366f1" />
-          <stop offset="1" stopColor="#a855f7" />
+          <stop offset="0" stopColor="#ffffff" />
+          <stop offset="1" stopColor="#9a9aa2" />
         </linearGradient>
       </defs>
       <path
@@ -42,18 +39,14 @@ export function Logo({
   size?: "sm" | "md" | "lg";
   withText?: boolean;
 }) {
-  const box = size === "sm" ? 30 : size === "lg" ? 44 : 36;
+  const box = size === "sm" ? 28 : size === "lg" ? 42 : 32;
   return (
     <span className="flex items-center gap-2.5">
       <LogoMark size={box} />
       {withText && (
         <span className="flex flex-col leading-none">
-          <span className="text-[15px] font-bold tracking-tight text-white">
-            CoreAC
-          </span>
-          <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-brand-300/80">
-            Anti-Cheat
-          </span>
+          <span className="text-[15px] font-bold tracking-tight text-white">CoreAC</span>
+          <span className="mt-1 text-[9.5px] font-semibold uppercase tracking-[0.24em] text-slate-500">Anti-Cheat</span>
         </span>
       )}
     </span>
@@ -64,11 +57,7 @@ export function Logo({
 /* Card                                                                        */
 /* -------------------------------------------------------------------------- */
 
-export function Card({
-  className,
-  children,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) {
+export function Card({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div className={cn("card p-5", className)} {...props}>
       {children}
@@ -77,16 +66,16 @@ export function Card({
 }
 
 /* -------------------------------------------------------------------------- */
-/* StatCard  (referanslardaki CONNECTIONS / TOTAL BANS kartları)               */
+/* StatCard — a number with a label; colour only as a small status dot         */
 /* -------------------------------------------------------------------------- */
 
-const accentMap = {
-  brand: "text-brand-300 from-brand-500/20",
-  cyan: "text-accent-cyan from-cyan-500/20",
-  violet: "text-accent-violet from-purple-500/20",
-  emerald: "text-accent-emerald from-emerald-500/20",
-  amber: "text-accent-amber from-amber-500/20",
-  rose: "text-accent-rose from-rose-500/20",
+const accentDot = {
+  brand: "bg-white",
+  cyan: "bg-sky-300",
+  violet: "bg-violet-300",
+  emerald: "bg-emerald-400",
+  amber: "bg-amber-400",
+  rose: "bg-rose-400",
 } as const;
 
 export function StatCard({
@@ -99,52 +88,45 @@ export function StatCard({
   label: string;
   value: React.ReactNode;
   icon: IconName;
-  accent?: keyof typeof accentMap;
+  accent?: keyof typeof accentDot;
   sub?: React.ReactNode;
 }) {
   const Icon = Icons[icon];
   return (
-    <div className="card group relative overflow-hidden p-5">
-      <div
-        className={cn(
-          "pointer-events-none absolute -right-6 -top-10 h-28 w-28 rounded-full bg-gradient-to-b to-transparent blur-2xl transition-opacity group-hover:opacity-80",
-          accentMap[accent].split(" ")[1]
-        )}
-      />
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-            {label}
-          </p>
-          <p className="mt-2 text-3xl font-bold tracking-tight text-white">
-            {value}
-          </p>
-          {sub && <p className="mt-1 text-xs text-slate-500">{sub}</p>}
-        </div>
-        <span
-          className={cn(
-            "grid h-10 w-10 place-items-center rounded-xl bg-white/5 ring-1 ring-inset ring-white/10",
-            accentMap[accent].split(" ")[0]
-          )}
-        >
-          <Icon size={20} />
-        </span>
+    <div className="card relative overflow-hidden p-5">
+      <div className="flex items-center justify-between">
+        <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+          <span className={cn("h-1.5 w-1.5 rounded-full", accentDot[accent])} />
+          {label}
+        </p>
+        <Icon size={16} className="text-slate-600" />
       </div>
+      <p className="mt-3 text-[30px] font-semibold leading-none tracking-tight text-white tabular-nums">{value}</p>
+      {sub && <p className="mt-2 text-xs text-slate-500">{sub}</p>}
     </div>
   );
 }
 
 /* -------------------------------------------------------------------------- */
-/* Badge / durum rozetleri                                                     */
+/* Badges                                                                      */
 /* -------------------------------------------------------------------------- */
 
 const badgeTones = {
-  green: "bg-emerald-500/10 text-emerald-300 ring-1 ring-inset ring-emerald-500/20",
-  red: "bg-rose-500/10 text-rose-300 ring-1 ring-inset ring-rose-500/20",
-  amber: "bg-amber-500/10 text-amber-300 ring-1 ring-inset ring-amber-500/20",
-  blue: "bg-brand-500/10 text-brand-300 ring-1 ring-inset ring-brand-500/20",
-  violet: "bg-purple-500/10 text-purple-300 ring-1 ring-inset ring-purple-500/20",
-  gray: "bg-white/5 text-slate-400 ring-1 ring-inset ring-white/10",
+  green: "bg-emerald-400/10 text-emerald-300 ring-1 ring-inset ring-emerald-400/20",
+  red: "bg-rose-400/10 text-rose-300 ring-1 ring-inset ring-rose-400/20",
+  amber: "bg-amber-400/10 text-amber-300 ring-1 ring-inset ring-amber-400/20",
+  blue: "bg-white/[0.06] text-slate-200 ring-1 ring-inset ring-white/15",
+  violet: "bg-violet-300/10 text-violet-200 ring-1 ring-inset ring-violet-300/20",
+  gray: "bg-white/[0.04] text-slate-400 ring-1 ring-inset ring-white/10",
+} as const;
+
+const dotTones = {
+  green: "bg-emerald-400",
+  red: "bg-rose-400",
+  amber: "bg-amber-400",
+  blue: "bg-white",
+  violet: "bg-violet-300",
+  gray: "bg-slate-500",
 } as const;
 
 export function Badge({
@@ -160,25 +142,13 @@ export function Badge({
 }) {
   return (
     <span className={cn("badge", badgeTones[tone], className)}>
-      {dot && (
-        <span
-          className={cn(
-            "h-1.5 w-1.5 rounded-full",
-            tone === "green" && "bg-emerald-400",
-            tone === "red" && "bg-rose-400",
-            tone === "amber" && "bg-amber-400",
-            tone === "blue" && "bg-brand-400",
-            tone === "violet" && "bg-purple-400",
-            tone === "gray" && "bg-slate-400"
-          )}
-        />
-      )}
+      {dot && <span className={cn("h-1.5 w-1.5 rounded-full", dotTones[tone])} />}
       {children}
     </span>
   );
 }
 
-/** Statü stringine göre otomatik ton seçen rozet. */
+/** Status string → tone. */
 export function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { tone: keyof typeof badgeTones; label: string }> = {
     ONLINE: { tone: "green", label: "Online" },
@@ -202,7 +172,7 @@ export function StatusBadge({ status }: { status: string }) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Buton (link)                                                                */
+/* Link button                                                                 */
 /* -------------------------------------------------------------------------- */
 
 export function LinkButton({
@@ -248,7 +218,7 @@ export function LinkButton({
 }
 
 /* -------------------------------------------------------------------------- */
-/* Boş durum                                                                   */
+/* Empty state                                                                 */
 /* -------------------------------------------------------------------------- */
 
 export function EmptyState({
@@ -264,41 +234,127 @@ export function EmptyState({
 }) {
   const Icon = Icons[icon];
   return (
-    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 px-6 py-14 text-center">
-      <span className="grid h-12 w-12 place-items-center rounded-2xl bg-white/5 text-slate-400 ring-1 ring-inset ring-white/10">
-        <Icon size={22} />
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 px-6 py-16 text-center">
+      <span className="grid h-11 w-11 place-items-center rounded-xl border border-white/10 bg-white/[0.03] text-slate-400">
+        <Icon size={20} />
       </span>
-      <h3 className="mt-4 text-sm font-semibold text-slate-200">{title}</h3>
-      {description && (
-        <p className="mt-1 max-w-sm text-sm text-slate-500">{description}</p>
-      )}
+      <h3 className="mt-4 text-sm font-semibold text-slate-100">{title}</h3>
+      {description && <p className="mt-1 max-w-sm text-sm text-slate-500">{description}</p>}
       {action && <div className="mt-5">{action}</div>}
     </div>
   );
 }
 
 /* -------------------------------------------------------------------------- */
-/* Bölüm başlığı                                                               */
+/* Page header                                                                 */
 /* -------------------------------------------------------------------------- */
 
 export function PageHeader({
   title,
   description,
   actions,
+  eyebrow,
 }: {
   title: string;
   description?: string;
   actions?: React.ReactNode;
+  eyebrow?: string;
 }) {
   return (
-    <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-white">{title}</h1>
-        {description && (
-          <p className="mt-1 text-sm text-slate-400">{description}</p>
-        )}
+    <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="min-w-0">
+        {eyebrow && <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{eyebrow}</p>}
+        <h1 className="text-[28px] font-semibold leading-tight tracking-tight text-white">{title}</h1>
+        {description && <p className="mt-1.5 max-w-2xl text-sm text-slate-400">{description}</p>}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Switch (visual only — wrap it in a button)                                  */
+/* -------------------------------------------------------------------------- */
+
+export function Switch({ on, disabled }: { on: boolean; disabled?: boolean }) {
+  return (
+    <span className={cn("switch", on ? "switch-on" : "switch-off", disabled && "opacity-40")}>
+      <span
+        className={cn(
+          "switch-knob",
+          on ? "translate-x-[18px] bg-[#0a0a0b]" : "translate-x-[3px] bg-slate-400"
+        )}
+      />
+    </span>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* JSON viewer — syntax-coloured, read only                                    */
+/* -------------------------------------------------------------------------- */
+
+function JsonNode({ value, indent }: { value: unknown; indent: number }): React.ReactElement {
+  const pad = "  ".repeat(indent + 1);
+  const close = "  ".repeat(indent);
+  if (value === null || value === undefined) return <span className="json-null">null</span>;
+  if (typeof value === "string") return <span className="json-str">{JSON.stringify(value)}</span>;
+  if (typeof value === "number") return <span className="json-num">{String(value)}</span>;
+  if (typeof value === "boolean") return <span className="json-bool">{String(value)}</span>;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span>[]</span>;
+    return (
+      <>
+        {"[\n"}
+        {value.map((v, i) => (
+          <React.Fragment key={i}>
+            {pad}
+            <JsonNode value={v} indent={indent + 1} />
+            {i < value.length - 1 ? ",\n" : "\n"}
+          </React.Fragment>
+        ))}
+        {close + "]"}
+      </>
+    );
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) return <span>{"{}"}</span>;
+    return (
+      <>
+        {"{\n"}
+        {entries.map(([k, v], i) => (
+          <React.Fragment key={k}>
+            {pad}
+            <span className="json-key">{JSON.stringify(k)}</span>
+            {": "}
+            <JsonNode value={v} indent={indent + 1} />
+            {i < entries.length - 1 ? ",\n" : "\n"}
+          </React.Fragment>
+        ))}
+        {close + "}"}
+      </>
+    );
+  }
+  return <span>{String(value)}</span>;
+}
+
+export function JsonView({ value, className, maxHeight = 420 }: { value: unknown; className?: string; maxHeight?: number }) {
+  return (
+    <pre className={cn("json-view whitespace-pre", className)} style={{ maxHeight }}>
+      <JsonNode value={value} indent={0} />
+    </pre>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Section label                                                               */
+/* -------------------------------------------------------------------------- */
+
+export function SectionLabel({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
+  return (
+    <div className="mb-2.5 flex items-center justify-between">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{children}</p>
+      {right}
     </div>
   );
 }

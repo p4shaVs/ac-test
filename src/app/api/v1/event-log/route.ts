@@ -19,6 +19,13 @@ const schema = z.object({
         src: z.number().int().min(0).max(65535).default(0),
         detail: z.string().max(200).default(""),
         count: z.number().int().min(1).max(100000).default(1),
+        // Structured details from the resource. The game client never reaches
+        // this route (server token only), but keep it small and plain anyway.
+        data: z
+          .record(z.unknown())
+          .optional()
+          .catch(undefined)
+          .transform((d) => (d && JSON.stringify(d).length <= 2000 ? d : undefined)),
       })
     )
     .max(200),
@@ -32,7 +39,7 @@ export const POST = handler(async (req: NextRequest) => {
   const { events } = schema.parse(await req.json());
   pushEvents(
     server.id,
-    events.map((e) => ({ t: e.t ?? Date.now(), kind: e.kind, player: e.player, src: e.src, detail: e.detail, count: e.count }))
+    events.map((e) => ({ t: e.t ?? Date.now(), kind: e.kind, player: e.player, src: e.src, detail: e.detail, count: e.count, data: e.data }))
   );
   return ok({ stored: events.length });
 });

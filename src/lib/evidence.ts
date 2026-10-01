@@ -11,7 +11,7 @@ const LABELS: Record<string, string> = {
   sound: "Sound", side: "Side", poolBefore: "HP+armor before", poolAfter: "HP+armor after", ammoInWeapon: "Ammo",
   lastAmmoInWeapon: "Previous ammo", ammoInClip: "Clip", lastAmmoInClip: "Previous clip",
   normal: "Everyone else", players: "Compared with", kills: "Kills", oneTaps: "One-shot head kills",
-  medianDist: "Typical distance", offsetDeg: "Off aim", offTarget: "Hits off the crosshair", medianOffDeg: "Typical miss", maxOffDeg: "Worst miss", angleCos: "Aim match", dist: "Distance", multiplier: "Multiplier", impact: "Impact",
+  medianDist: "Typical distance", kind: "What", limit: "Limit", windowMs: "Window", target: "Target", task: "Task", hooked: "Hooked function", offsetDeg: "Off aim", offTarget: "Hits off the crosshair", medianOffDeg: "Typical miss", maxOffDeg: "Worst miss", angleCos: "Aim match", dist: "Distance", multiplier: "Multiplier", impact: "Impact",
 };
 
 const SOURCES: Record<string, string> = {
@@ -27,6 +27,12 @@ const SOURCES: Record<string, string> = {
   no_aim_telemetry: "server: hitting players while aim data is cut off",
   aim_offset: "client: hits land off the crosshair",
   aim_offset_stats: "server: most recent hits land well off the crosshair",
+  crash_model: "server: spawned a model that crashes other players",
+  attached_to_player: "server: stuck a vehicle or NPC onto another player",
+  oversized_particle: "server: particle effect far above any real size",
+  phone_explosion: "server: phone explosion request",
+  kick_votes: "server: kick-vote spam",
+  aim_telemetry_invalid: "server: aim data forged far from the player",
   peer_damage: "server: hits stronger than every other player's with this weapon",
 };
 
@@ -39,6 +45,7 @@ function unit(key: string, v: unknown): string {
     if (key === "players") return `${v} players`;
     if (key === "seconds") return `${v} s`;
     if (key === "kmh" || key === "capKmh") return `${Math.round(v)} km/h`;
+    if (key === "windowMs") return `${(v / 1000).toFixed(0)} s`;
     if (key === "immuneForMs") return `${(v / 1000).toFixed(1)} s`;
     return String(Math.round(v * 100) / 100);
   }

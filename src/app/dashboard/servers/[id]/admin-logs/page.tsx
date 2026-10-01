@@ -1,97 +1,136 @@
 import { getOwnedServer } from "@/lib/guards";
 import { db } from "@/lib/db";
-import { PageHeader, EmptyState, Badge, Card } from "@/components/ui";
-import { Icons } from "@/components/icons";
-import { timeAgo } from "@/lib/utils";
+import { PageHeader } from "@/components/ui";
+import { parseJson } from "@/lib/utils";
+import { AdminLogsView, type AdminLogRow } from "./admin-logs-view";
 
 export const dynamic = "force-dynamic";
 
-// A log of what your STAFF did — kicks/bans/warns/unbans they issued and the
-// panel/in-game actions they took. The anti-cheat's own automatic actions are
-// excluded (those live under Events / Detections).
+const MODERATION = new Set(["BAN", "KICK", "WARN", "UNBAN"]);
+
+// Ban-detail actions read as a sentence rather than the raw log line.
+const SENTENCE: Record<string, string> = {
+  "FALSE BAN FIXED": "Ban corrected as a false positive and lifted",
+  "BAN NOTE": "Added a note to the ban",
+  "MARKED FALSE POSITIVE": "Ban marked as a false positive",
+  "UNMARKED FALSE POSITIVE": "False-positive mark removed from the ban",
+  UNBAN: "Ban lifted",
+};
+
+// Panel / in-game lines are written "ACTION → target (reason) — admin" or
+// "What happened — admin"; console commands "> command (admin)".
+function parseLine(message: string): { action: string; target: string | null; actor: string | null; description: string } {
+  let m = /^(.+?) → (.+?) — ([^—]+)$/.exec(message);
+  if (m) {
+    const t = /^(.+?) \((.*)\)$/.exec(m[2]);
+    const action = m[1].trim();
+    const sentence = SENTENCE[action];
+    const description = sentence ? sentence + (t ? ` (${t[2]})` : "") : t ? t[2] : message;
+    return { action, target: (t ? t[1] : m[2]).trim(), actor: m[3].trim(), description };
+  }
+  m = /^> (.+) \(([^()]+)\)$/.exec(message);
+  if (m) return { action: "CONSOLE", target: null, actor: m[2].trim(), description: m[1] };
+  m = /^(.+?) — ([^—]+)$/.exec(message);
+  if (m) {
+    const what = m[1].trim();
+    const action = /^Resource /.test(what)
+      ? "RESOURCE"
+      : /^All bans removed/.test(what)
+        ? "UNBAN ALL"
+        : /updated/i.test(what)
+          ? "CONFIG"
+          : "PANEL";
+    return { action, target: null, actor: m[2].trim(), description: what };
+  }
+  return { action: "PANEL", target: null, actor: null, description: message };
+}
+
+// What your STAFF did — moderation and panel/in-game/console actions. CoreAC's
+// own automatic actions are under Detections and Kicks/Bans.
 export default async function AdminLogsPage({ params }: { params: { id: string } }) {
   const { server } = await getOwnedServer(params.id);
 
   const [actions, logs] = await Promise.all([
     db.punishAction.findMany({
-      where: { serverId: server.id, issuedBy: { not: "AntiCheat" } },
+      where: { serverId: server.id, issuedBy: { notIn: ["AntiCheat", "CoreAC", "System"] } },
       orderBy: { createdAt: "desc" },
-      take: 120,
+      take: 250,
     }),
     db.serverLog.findMany({
-      where: { serverId: server.id, source: { in: ["panel", "admin", "ingame"] } },
+      where: { serverId: server.id, source: { in: ["panel", "admin", "ingame", "console"] } },
       orderBy: { createdAt: "desc" },
-      take: 120,
+      take: 250,
     }),
   ]);
 
-  type Row = { id: string; who: string; kind: string; tone: "red" | "amber" | "green" | "blue" | "gray"; text: string; at: Date };
-  const KIND: Record<string, { tone: Row["tone"]; label: string }> = {
-    BAN: { tone: "red", label: "Ban" },
-    KICK: { tone: "amber", label: "Kick" },
-    WARN: { tone: "amber", label: "Warn" },
-    UNBAN: { tone: "green", label: "Unban" },
-  };
+  const rows: AdminLogRow[] = actions.map((a) => ({
+    id: "a" + a.id,
+    action: a.type,
+    actor: a.issuedBy,
+    target: a.playerName,
+    description: a.reason,
+    source: "moderation",
+    at: a.createdAt.toISOString(),
+    raw: {
+      id: a.id,
+      type: a.type,
+      player: a.playerName,
+      playerId: a.playerId,
+      reason: a.reason,
+      issuedBy: a.issuedBy,
+      status: a.status,
+      createdAt: a.createdAt.toISOString(),
+      deliveredAt: a.deliveredAt?.toISOString() ?? null,
+    },
+  }));
 
-  const rows: Row[] = [
-    ...actions.map((a) => ({
-      id: "a" + a.id,
-      who: a.issuedBy,
-      kind: (KIND[a.type]?.label ?? a.type),
-      tone: (KIND[a.type]?.tone ?? "gray") as Row["tone"],
-      text: `${a.playerName} — ${a.reason}`,
-      at: a.createdAt,
-    })),
-    ...logs.map((l) => {
-      // Panel/in-game log lines are formatted "ACTION → target — admin".
-      const who = l.message.includes("—") ? l.message.split("—").pop()!.trim() : l.source;
-      return {
-        id: "l" + l.id,
-        who,
-        kind: "Action",
-        tone: "blue" as Row["tone"],
-        text: l.message,
-        at: l.createdAt,
-      };
-    }),
-  ]
-    .sort((x, y) => y.at.getTime() - x.at.getTime())
-    .slice(0, 160);
-
-  // De-duplicate: a moderation shows up as both a PunishAction and a ServerLog.
-  const seen = new Set<string>();
+  // A moderation from the panel is stored twice (the queued action and a log
+  // line); keep the action and drop its log line.
+  const modKeys = new Set(actions.map((a) => `${a.type}|${a.playerName}|${Math.round(a.createdAt.getTime() / 5000)}`));
+  for (const l of logs) {
+    const p = parseLine(l.message);
+    if (MODERATION.has(p.action) && p.target) {
+      const k = Math.round(l.createdAt.getTime() / 5000);
+      if ([k - 1, k, k + 1].some((x) => modKeys.has(`${p.action}|${p.target}|${x}`))) continue;
+    }
+    rows.push({
+      id: "l" + l.id,
+      action: p.action,
+      actor: p.actor ?? l.source,
+      target: p.target,
+      description: p.description,
+      source: l.source,
+      at: l.createdAt.toISOString(),
+      raw: {
+        id: l.id,
+        level: l.level,
+        source: l.source,
+        message: l.message,
+        meta: parseJson<Record<string, unknown>>(l.meta, {}),
+        createdAt: l.createdAt.toISOString(),
+      },
+    });
+  }
+  // "Fix false ban" writes its own line and queues an UNBAN for the game
+  // server; show it once, as the fix.
+  const fixed = new Set(
+    rows.filter((r) => r.action === "FALSE BAN FIXED" && r.target).map((r) => `${r.target}|${Math.round(new Date(r.at).getTime() / 5000)}`)
+  );
   const merged = rows.filter((r) => {
-    const key = r.at.getTime() + "|" + r.text.slice(0, 24);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
+    if (r.action !== "UNBAN" || r.source !== "moderation" || !r.target) return true;
+    const k = Math.round(new Date(r.at).getTime() / 5000);
+    return ![k - 1, k, k + 1].some((x) => fixed.has(`${r.target}|${x}`));
   });
+  merged.sort((x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : 0));
 
   return (
     <>
-      <PageHeader title="Admin Logs" description="Everything your staff did — moderation and panel actions. Automatic anti-cheat actions are under Events." />
-      {merged.length === 0 ? (
-        <EmptyState icon="history" title="No admin activity yet" description="When an admin kicks, bans, warns or changes config, it is recorded here." />
-      ) : (
-        <Card className="p-0">
-          <ul className="divide-y divide-white/5">
-            {merged.map((r) => (
-              <li key={r.id} className="flex items-center gap-3 px-4 py-3 hover:bg-white/[0.02]">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-500/10 text-brand-300">
-                  <Icons.user size={16} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-slate-200">{r.text}</p>
-                  <p className="text-xs text-slate-500">
-                    <span className="text-slate-400">{r.who}</span> · {timeAgo(r.at)}
-                  </p>
-                </div>
-                <Badge tone={r.tone}>{r.kind}</Badge>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
+      <PageHeader
+        eyebrow="Logs"
+        title="Admin Logs"
+        description="Everything your staff did — bans, kicks, warnings, unbans, configuration changes, resource actions and console commands. Automatic CoreAC actions are under Detections."
+      />
+      <AdminLogsView rows={merged.slice(0, 400)} />
     </>
   );
 }

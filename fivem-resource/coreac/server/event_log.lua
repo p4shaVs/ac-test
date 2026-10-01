@@ -20,7 +20,7 @@
 
 CAC = CAC or {}
 
-local KIND_CAP = { spawn = 25, damage = 30, kill = 20, explosion = 20, particle = 10, event = 40, join = 20, leave = 20 }
+local KIND_CAP = { spawn = 25, remove = 20, damage = 30, kill = 20, explosion = 20, particle = 10, event = 40, join = 20, leave = 20 }
 local buffer, index, counts, dropped = {}, {}, {}, {}
 
 local function nameOf(src)
@@ -46,7 +46,25 @@ local function weaponName(hash)
   return '#' .. unsigned(hash)   -- panel katalogdan çözer (addon silahsa hash kalır)
 end
 
-local function push(kind, src, detail)
+local function r1(v) v = tonumber(v) return v and math.floor(v * 10 + 0.5) / 10 or nil end
+local function xyz(x, y, z)
+  if not x then return nil end
+  return { x = r1(x), y = r1(y), z = r1(z) }
+end
+local function entityCoords(handle)
+  local ok, c = pcall(GetEntityCoords, handle)
+  if ok and c then return xyz(c.x, c.y, c.z) end
+  return nil
+end
+local function netIdOf(handle)
+  if not NetworkGetNetworkIdFromEntity then return nil end
+  local ok, n = pcall(NetworkGetNetworkIdFromEntity, handle)
+  return ok and tonumber(n) or nil
+end
+
+--- detail: tek satırlık özet (akış listesi). data: panelde "JSON" olarak açılan
+--- yapılandırılmış ayrıntı (yalnız sayı/metin/bool ve düz tablolar).
+local function push(kind, src, detail, data)
   if not on() then return end
   local player = nameOf(src)
   detail = tostring(detail or ''):sub(1, 200)
@@ -58,7 +76,7 @@ local function push(kind, src, detail)
     dropped[kind] = (dropped[kind] or 0) + 1
     return
   end
-  local e = { kind = kind, player = player, src = tonumber(src) or 0, detail = detail, count = 1 }
+  local e = { kind = kind, player = player, src = tonumber(src) or 0, detail = detail, count = 1, data = data }
   buffer[#buffer + 1] = e
   index[key] = e
 end
@@ -67,23 +85,35 @@ end
 AddEventHandler('explosionEvent', function(sender, ev)
   if not on() or not ev then return end
   local name = CoreAC.GetExplosionName and CoreAC.GetExplosionName(ev.explosionType) or tostring(ev.explosionType)
-  push('explosion', sender, name:lower() .. (ev.f210 and ev.f210 ~= 0 and ' · vehicle' or ''))
+  local isVeh = (ev.f210 and ev.f210 ~= 0) and true or false
+  push('explosion', sender, name:lower() .. (isVeh and ' · vehicle' or ''), {
+    explosion = name:lower(), type = tonumber(ev.explosionType), vehicle = isVeh,
+    damageScale = r1(ev.damageScale), invisible = ev.isInvisible == true, audible = ev.isAudible ~= false,
+    coords = xyz(ev.posX, ev.posY, ev.posZ),
+  })
 end)
 
 AddEventHandler('weaponDamageEvent', function(sender, data)
   if not on() or not data then return end
-  local victim = ''
+  local victim, victimSrc = '', nil
   local nid = data.hitGlobalId or (data.hitGlobalIds and data.hitGlobalIds[1])
   local ent = nid and NetworkGetEntityFromNetworkId(nid) or 0
   if ent and ent ~= 0 and DoesEntityExist(ent) and GetEntityType(ent) == 1 and IsPedAPlayer(ent) then
     local owner = NetworkGetEntityOwner(ent)
-    if owner and owner > 0 then victim = ' → ' .. nameOf(owner) end
+    if owner and owner > 0 then victim, victimSrc = ' → ' .. nameOf(owner), owner end
   end
-  local zone = (data.hitComponent == 20 or data.hitComponent == 19) and ' · head' or ''
+  local head = data.hitComponent == 20 or data.hitComponent == 19
+  local zone = head and ' · head' or ''
+  local weapon = weaponName(data.weaponType)
+  local info = {
+    weapon = weapon, weaponHash = unsigned(data.weaponType), damage = math.floor(tonumber(data.weaponDamage) or 0),
+    headshot = head, hitComponent = tonumber(data.hitComponent), willKill = data.willKill == true,
+    victim = victimSrc and nameOf(victimSrc) or nil, victimId = victimSrc, victimNetId = tonumber(nid),
+  }
   if data.willKill then
-    push('kill', sender, weaponName(data.weaponType) .. zone .. victim)
+    push('kill', sender, weapon .. zone .. victim, info)
   else
-    push('damage', sender, ('%s · %d dmg%s%s'):format(weaponName(data.weaponType), math.floor(data.weaponDamage or 0), zone, victim))
+    push('damage', sender, ('%s · %d dmg%s%s'):format(weapon, info.damage, zone, victim), info)
   end
 end)
 
@@ -96,12 +126,35 @@ AddEventHandler('entityCreating', function(handle)
   local owner = NetworkGetEntityOwner(handle)
   if not owner or owner <= 0 then return end
   local kind = ETYPE[GetEntityType(handle)] or 'entity'
-  push('spawn', owner, ('%s #%d'):format(kind, unsigned(GetEntityModel(handle))))
+  local model = unsigned(GetEntityModel(handle))
+  push('spawn', owner, ('%s #%d'):format(kind, model), {
+    entity = kind, model = model, netId = netIdOf(handle), coords = entityCoords(handle),
+  })
+end)
+
+-- Oyuncunun oluşturduğu bir varlık silindiğinde (menüyle temizleme, spawn-sil döngüleri).
+AddEventHandler('entityRemoved', function(handle)
+  if not on() then return end
+  local okPop, pop = pcall(GetEntityPopulationType, handle)
+  if not okPop or pop ~= 7 then return end
+  local owner = NetworkGetEntityOwner(handle)
+  if (not owner or owner <= 0) and NetworkGetFirstEntityOwner then owner = NetworkGetFirstEntityOwner(handle) end
+  if not owner or owner <= 0 then return end
+  local kind = ETYPE[GetEntityType(handle)] or 'entity'
+  local model = unsigned(GetEntityModel(handle))
+  push('remove', owner, ('%s #%d'):format(kind, model), {
+    entity = kind, model = model, netId = netIdOf(handle), coords = entityCoords(handle),
+  })
 end)
 
 AddEventHandler('ptFxEvent', function(sender, data)
   if not on() then return end
-  push('particle', sender, data and data.effectHash and ('fx #' .. unsigned(data.effectHash)) or 'particle fx')
+  local info = data and {
+    effect = data.effectHash and unsigned(data.effectHash) or nil, asset = data.assetHash and unsigned(data.assetHash) or nil,
+    scale = r1(data.scale), onEntity = data.isOnEntity == true, entityNetId = tonumber(data.entityNetId),
+    coords = xyz(data.posX, data.posY, data.posZ),
+  } or nil
+  push('particle', sender, data and data.effectHash and ('fx #' .. unsigned(data.effectHash)) or 'particle fx', info)
 end)
 
 AddEventHandler('playerJoining', function()
@@ -109,7 +162,7 @@ AddEventHandler('playerJoining', function()
 end)
 
 AddEventHandler('playerDropped', function(reason)
-  push('leave', source, tostring(reason or ''))
+  push('leave', source, tostring(reason or ''), { reason = tostring(reason or ''):sub(1, 120) })
 end)
 
 -- ------------------------------------------------------ izlenen script olayları
@@ -142,7 +195,7 @@ local function onWatched(name, ...)
   local args, n = {}, select('#', ...)
   for i = 1, math.min(n, 4) do args[#args + 1] = preview((select(i, ...))) end
   if n > 4 then args[#args + 1] = '…' end
-  push('event', src, name .. '(' .. table.concat(args, ', ') .. ')')
+  push('event', src, name .. '(' .. table.concat(args, ', ') .. ')', { event = name, argCount = n, args = args })
 end
 
 --- server/main.lua heartbeat'ten çağırır.

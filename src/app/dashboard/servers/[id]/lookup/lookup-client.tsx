@@ -23,8 +23,8 @@ interface Result {
   altAccounts: number;
 }
 
-export function LookupClient({ serverId }: { serverId: string }) {
-  const [q, setQ] = useState("");
+export function LookupClient({ serverId, initialQuery = "" }: { serverId: string; initialQuery?: string }) {
+  const [q, setQ] = useState(initialQuery);
   const [results, setResults] = useState<Result[] | null>(null);
   const [loading, setLoading] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>();

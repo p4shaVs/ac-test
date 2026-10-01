@@ -100,9 +100,8 @@ export default async function DashboardHome() {
   return (
     <>
       {/* ------------------------------------------------------------ hero */}
-      <section className="relative mb-6 overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-brand-600/25 via-base-850 to-purple-600/15 p-6 sm:p-8">
-        <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-brand-500/25 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-28 left-1/3 h-64 w-64 rounded-full bg-purple-500/15 blur-3xl" />
+      <section className="relative mb-6 overflow-hidden rounded-3xl border border-white/[0.08] bg-[#0e0e10] bg-gradient-to-br from-white/[0.05] via-transparent to-transparent p-6 sm:p-8">
+        <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-white/[0.05] blur-3xl" />
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-sm font-medium text-brand-200/80">{greeting()},</p>

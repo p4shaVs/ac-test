@@ -55,6 +55,7 @@ server_scripts {
   'server/vehicle_guard.lua',
   'server/staff_tools.lua',   -- yetkili tanıma + txAdmin/qb-adminmenu araç muafiyeti
   'server/entity_guard.lua',  -- fırlatılan araç, ses/megafon trolü, sunucu tuzak olayları
+  'server/crash_guard.lua',   -- anti-crash: çökerten modeller, oyuncuya yapıştırma, sel kalkanı, çökertme olayları
   'server/session_guard.lua',
   'server/liveness_guard.lua',
   'server/event_guard.lua',
@@ -111,6 +112,9 @@ client_scripts {
 
   -- 4b. Meşru ışınlanma (ekran kararması / admin olayları) + çatışma durumu
   'client/legit_moves.lua',
+
+  -- 4c. Anti-tamper: AC'nin kendi ortamına enjekte edilen kancaları yakalar
+  'client/integrity.lua',
 
   -- 5. CAC kendi tespit modülleri (client/detections/*) — DEVRE DIŞI.
   -- Tek tespit sistemi artık CoreAC modülleri (client/*.lua, vehicles/, weapons/).

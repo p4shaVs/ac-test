@@ -22,7 +22,7 @@ export default function AuthLayout({
         <div className="relative">
           <h2 className="max-w-md text-3xl font-bold leading-tight text-white">
             Sunucunuzu hilecilerden koruyan{" "}
-            <span className="bg-gradient-to-r from-brand-400 to-accent-violet bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-brand-400 to-white bg-clip-text text-transparent">
               server-side protection
             </span>
           </h2>

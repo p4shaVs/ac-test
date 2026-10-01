@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { getOwnedServer } from "@/lib/guards";
 import { db } from "@/lib/db";
-import { PageHeader } from "@/components/ui";
+import { JsonView, PageHeader } from "@/components/ui";
 import { Icons } from "@/components/icons";
-import { cn } from "@/lib/utils";
+import { cn, parseJson } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,7 @@ const LEVEL_STYLE: Record<string, string> = {
   INFO: "text-slate-400 ring-white/10",
   WARN: "text-amber-300 ring-amber-500/30",
   ERROR: "text-rose-300 ring-rose-500/30",
-  DETECTION: "text-brand-300 ring-brand-500/30",
+  DETECTION: "text-fuchsia-300 ring-fuchsia-400/25",
 };
 const LEVEL_LABEL: Record<string, string> = { ALL: "All", DETECTION: "Detections", WARN: "Warnings", ERROR: "Errors", INFO: "Info" };
 
@@ -84,8 +84,9 @@ export default async function LogsPage({ params, searchParams }: { params: { id:
   return (
     <>
       <PageHeader
+        eyebrow="Logs"
         title="Server Logs"
-        description="Connections, admin actions and anti-cheat events from your server. Counts cover the last 7 days."
+        description="Connections, admin actions and anti-cheat events from your server. Click a line for its full record as JSON. Counts cover the last 7 days."
       />
 
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -95,12 +96,12 @@ export default async function LogsPage({ params, searchParams }: { params: { id:
               key={l}
               href={href({ level: l, before: undefined })}
               className={cn(
-                "flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition",
-                level === l ? "border-brand-500/50 bg-brand-500/15 text-white" : "border-white/10 text-slate-400 hover:bg-white/5"
+                "flex h-8 items-center gap-1.5 rounded-full border px-3 text-[12px] font-medium transition",
+                level === l ? "border-white/80 bg-white text-[#0a0a0b]" : "border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20 hover:text-slate-200"
               )}
             >
               {LEVEL_LABEL[l]}
-              <span className="font-mono text-[10px] text-slate-500">{counts[l] ?? 0}</span>
+              <span className={cn("tabular-nums", level === l ? "text-black/50" : "text-slate-600")}>{counts[l] ?? 0}</span>
             </Link>
           ))}
         </div>
@@ -109,7 +110,7 @@ export default async function LogsPage({ params, searchParams }: { params: { id:
           <select
             name="source"
             defaultValue={source}
-            className="rounded-lg border border-white/10 bg-base-900/60 px-2.5 py-1.5 text-sm text-slate-200 outline-none focus:border-brand-500/50"
+            className="h-9 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 text-[12.5px] text-slate-200 outline-none focus:border-white/30"
           >
             <option value="">All sources</option>
             {sources.map((s) => (
@@ -124,14 +125,14 @@ export default async function LogsPage({ params, searchParams }: { params: { id:
               name="q"
               defaultValue={q}
               placeholder="Search messages…"
-              className="w-56 rounded-lg border border-white/10 bg-base-900/60 py-1.5 pl-9 pr-3 text-sm text-slate-200 outline-none focus:border-brand-500/50"
+              className="input h-9 w-56 pl-9 text-[13px]"
             />
           </div>
-          <button className="btn-secondary text-xs">Filter</button>
+          <button className="btn-secondary h-9 px-3 text-xs">Filter</button>
         </form>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-base-900/40">
+      <div className="overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0e0e10]">
         {rows.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
             <Icons.logs size={22} className="text-slate-500" />
@@ -141,24 +142,45 @@ export default async function LogsPage({ params, searchParams }: { params: { id:
         ) : (
           groups.map((g) => (
             <section key={g.label}>
-              <h3 className="border-y border-white/5 bg-base-950/60 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 first:border-t-0">
+              <h3 className="sticky top-0 z-[1] border-y border-white/[0.05] bg-[#0b0b0c] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 first:border-t-0">
                 {g.label} <span className="ml-1 font-mono normal-case tracking-normal text-slate-600">{g.items.length}</span>
               </h3>
               <ul className="divide-y divide-white/[0.04]">
                 {g.items.map((l) => (
-                  <li key={l.id} className="grid grid-cols-[72px_96px_120px_1fr] items-start gap-3 px-4 py-2 text-sm hover:bg-white/[0.02]">
-                    <span className="pt-0.5 font-mono text-xs text-slate-500">
-                      {l.createdAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                    </span>
-                    <span>
-                      <span className={cn("inline-block rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ring-1 ring-inset", LEVEL_STYLE[l.level] ?? LEVEL_STYLE.INFO)}>
-                        {l.level === "DETECTION" ? "Detection" : l.level.toLowerCase()}
-                      </span>
-                    </span>
-                    <Link href={href({ source: l.source, before: undefined })} className="truncate pt-0.5 font-mono text-xs text-slate-500 hover:text-slate-300">
-                      {l.source}
-                    </Link>
-                    <span className="break-words text-slate-300">{l.message}</span>
+                  <li key={l.id}>
+                    <details className="group">
+                      <summary className="grid cursor-pointer list-none grid-cols-[64px_84px_minmax(0,1fr)_14px] items-start gap-3 px-4 py-2 text-sm transition hover:bg-white/[0.025] sm:grid-cols-[72px_96px_120px_minmax(0,1fr)_14px] [&::-webkit-details-marker]:hidden">
+                        <span className="pt-0.5 font-mono text-xs text-slate-500">
+                          {l.createdAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                        </span>
+                        <span>
+                          <span className={cn("inline-block rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ring-1 ring-inset", LEVEL_STYLE[l.level] ?? LEVEL_STYLE.INFO)}>
+                            {l.level === "DETECTION" ? "Detection" : l.level.toLowerCase()}
+                          </span>
+                        </span>
+                        <span className="hidden truncate pt-0.5 font-mono text-xs text-slate-500 sm:block">{l.source}</span>
+                        <span className="break-words text-slate-300">{l.message}</span>
+                        <Icons.chevronDown size={13} className="mt-1 text-slate-600 transition group-open:rotate-180" />
+                      </summary>
+                      <div className="space-y-2 border-t border-white/[0.04] bg-black/20 px-4 py-3">
+                        <div className="flex items-center gap-3 text-[11.5px] text-slate-500">
+                          <Link href={href({ source: l.source, before: undefined })} className="hover:text-slate-200">
+                            Only show <span className="font-mono text-slate-300">{l.source}</span>
+                          </Link>
+                        </div>
+                        <JsonView
+                          maxHeight={280}
+                          value={{
+                            id: l.id,
+                            level: l.level,
+                            source: l.source,
+                            message: l.message,
+                            createdAt: l.createdAt.toISOString(),
+                            meta: parseJson<Record<string, unknown>>(l.meta, {}),
+                          }}
+                        />
+                      </div>
+                    </details>
                   </li>
                 ))}
               </ul>
@@ -169,7 +191,7 @@ export default async function LogsPage({ params, searchParams }: { params: { id:
 
       {hasMore && (
         <div className="mt-4 flex justify-center">
-          <Link href={href({ before: rows[rows.length - 1].createdAt.toISOString() })} className="btn-secondary text-xs">
+          <Link href={href({ before: rows[rows.length - 1].createdAt.toISOString() })} className="btn-secondary h-9 px-4 text-xs">
             Older entries
           </Link>
         </div>

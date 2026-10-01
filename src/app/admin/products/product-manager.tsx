@@ -248,7 +248,7 @@ export function ProductManager({ products }: { products: ProductRow[] }) {
                             on ? "border-brand-500/50 bg-brand-500/10 text-white" : "border-white/10 text-slate-400 hover:bg-white/5"
                           )}
                         >
-                          <span className={cn("grid h-4 w-4 place-items-center rounded border", on ? "border-brand-400 bg-brand-500 text-white" : "border-white/20")}>
+                          <span className={cn("grid h-4 w-4 place-items-center rounded border", on ? "border-white bg-white text-[#0a0a0b]" : "border-white/20")}>
                             {on && <Icons.check size={11} />}
                           </span>
                           {f.label}

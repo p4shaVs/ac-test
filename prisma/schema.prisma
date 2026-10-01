@@ -343,6 +343,11 @@ model Ban {
   unbannedAt  DateTime?
   unbannedBy  String?
 
+  // Panel → ban detayı: personel notları (JSON dizi: {by, at, text}) ve bu banın
+  // yanlış pozitif olarak işaretlenip kaldırıldığı ("Fix False Ban").
+  notes         String   @default("[]")
+  falsePositive Boolean  @default(false)
+
   // Bu banı tetikleyen tespit — "neden banlandık" replay'i izlemek için.
   detectionId String?     @unique
   detection   Detection?  @relation(fields: [detectionId], references: [id])

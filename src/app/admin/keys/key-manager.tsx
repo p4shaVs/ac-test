@@ -366,7 +366,7 @@ export function KeyManager({ keys, products }: { keys: KeyRow[]; products: Produ
                             )}
                             title={f.description}
                           >
-                            <span className={cn("grid h-4 w-4 shrink-0 place-items-center rounded border", on ? "border-brand-400 bg-brand-500 text-white" : "border-white/20")}>
+                            <span className={cn("grid h-4 w-4 shrink-0 place-items-center rounded border", on ? "border-white bg-white text-[#0a0a0b]" : "border-white/20")}>
                               {on && <Icons.check size={11} />}
                             </span>
                             {f.label}

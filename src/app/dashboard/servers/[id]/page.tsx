@@ -157,10 +157,10 @@ export default async function ServerOverview({ params }: { params: { id: string 
 
       {/* ------------------------------------------------------------ KPI strip */}
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi label="Detections" value={overview.detections24h} prev={detsPrev.length} series={detSeries} tone="#8b90ff" />
+        <Kpi label="Detections" value={overview.detections24h} prev={detsPrev.length} series={detSeries} tone="#ececef" />
         <Kpi label="Bans" value={bans24} prev={bansPrev} series={banSeries} tone="#f0605d" />
         <Kpi label="Kicks" value={kicks24} prev={kicksPrev} tone="#f2b33d" />
-        <Kpi label="Flagged players" value={flagged.size} prev={flaggedPrev} tone="#5aa9f5" />
+        <Kpi label="Flagged players" value={flagged.size} prev={flaggedPrev} tone="#a8a8b0" />
       </section>
 
       {/* --------------------------------------------------- activity + threat */}
@@ -170,7 +170,7 @@ export default async function ServerOverview({ params }: { params: { id: string 
           <AreaTrend data={overview.series} />
           <div className="mt-2 flex items-center justify-center gap-5 text-xs text-slate-400">
             <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-brand-500" /> Detections</span>
-            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500" /> Bans</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-400" /> Bans</span>
           </div>
         </Card>
         <Card>
@@ -201,7 +201,7 @@ export default async function ServerOverview({ params }: { params: { id: string 
           <SectionTitle
             icon="activity"
             title="Latest detections"
-            action={<Link href={`${base}/logs?level=DETECTION`} className="text-xs font-medium text-brand-300 hover:text-brand-200">All detections →</Link>}
+            action={<Link href={`${base}/detections`} className="text-xs font-medium text-slate-300 hover:text-white">All detections →</Link>}
           />
           {feed.length ? (
             <ul className="-mx-2 divide-y divide-white/5">

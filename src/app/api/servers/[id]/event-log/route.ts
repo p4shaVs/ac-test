@@ -14,8 +14,14 @@ export const dynamic = "force-dynamic";
 // has no model names). Resolve the ones the catalog knows so the feed reads
 // "vehicle adder" instead of "vehicle #3078201489".
 function resolveHashes(e: LiveEvent): LiveEvent {
-  if (!e.detail.includes("#")) return e;
-  return { ...e, detail: e.detail.replace(/#(\d{4,10})\b/g, (m, h) => {
+  let data = e.data;
+  // The JSON view gets the readable model name next to the hash.
+  if (data && (typeof data.model === "number" || typeof data.model === "string")) {
+    const name = modelNameForHash(String(data.model));
+    if (name !== String(data.model)) data = { ...data, modelName: name };
+  }
+  if (!e.detail.includes("#")) return data === e.data ? e : { ...e, data };
+  return { ...e, data, detail: e.detail.replace(/#(\d{4,10})\b/g, (m, h) => {
     const name = modelNameForHash(h);
     return name === h ? m : name.replace(/^weapon_/, "");
   }) };

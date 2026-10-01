@@ -17,8 +17,9 @@ import {
 // page can import it too — see the note there.
 import { DONUT_PALETTE as DONUT_COLORS } from "@/lib/palette";
 
-const BRAND = "#6366f1";
-const VIOLET = "#a855f7";
+const BRAND = "#ececef";
+const TICK = "#6b6b73";
+const TOOLTIP = { background: "#141416", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#ececef" };
 
 export interface SeriesPoint {
   label: string;
@@ -33,7 +34,7 @@ export function AreaTrend({ data }: { data: SeriesPoint[] }) {
       <AreaChart data={data} margin={{ top: 10, right: 8, left: -18, bottom: 0 }}>
         <defs>
           <linearGradient id="gPlayers" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={BRAND} stopOpacity={0.5} />
+            <stop offset="0%" stopColor={BRAND} stopOpacity={0.22} />
             <stop offset="100%" stopColor={BRAND} stopOpacity={0} />
           </linearGradient>
           <linearGradient id="gBans" x1="0" y1="0" x2="0" y2="1">
@@ -43,20 +44,20 @@ export function AreaTrend({ data }: { data: SeriesPoint[] }) {
         </defs>
         <XAxis
           dataKey="label"
-          tick={{ fill: "#64748b", fontSize: 11 }}
+          tick={{ fill: TICK, fontSize: 11 }}
           axisLine={false}
           tickLine={false}
           minTickGap={24}
         />
         <YAxis
-          tick={{ fill: "#64748b", fontSize: 11 }}
+          tick={{ fill: TICK, fontSize: 11 }}
           axisLine={false}
           tickLine={false}
           width={40}
         />
         <Tooltip
-          contentStyle={{ background: "#0d1019", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12 }}
-          labelStyle={{ color: "#94a3b8" }}
+          contentStyle={TOOLTIP}
+          labelStyle={{ color: "#a8a8b0" }}
         />
         <Area
           type="monotone"
@@ -113,7 +114,7 @@ export function DonutChart({
             ))}
           </Pie>
           <Tooltip
-            contentStyle={{ background: "#0d1019", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12 }}
+            contentStyle={TOOLTIP}
           />
         </PieChart>
       </ResponsiveContainer>
@@ -142,15 +143,15 @@ export function MoneyBars({ data, currency = "EUR" }: { data: MoneyPoint[]; curr
   return (
     <ResponsiveContainer width="100%" height={220}>
       <BarChart data={data} margin={{ top: 8, right: 4, left: -6, bottom: 0 }}>
-        <XAxis dataKey="label" tick={{ fill: "#64748b", fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={18} />
-        <YAxis tick={{ fill: "#64748b", fontSize: 11 }} axisLine={false} tickLine={false} width={52} tickFormatter={fmt} allowDecimals={false} />
+        <XAxis dataKey="label" tick={{ fill: TICK, fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={18} />
+        <YAxis tick={{ fill: TICK, fontSize: 11 }} axisLine={false} tickLine={false} width={52} tickFormatter={fmt} allowDecimals={false} />
         <Tooltip
           cursor={{ fill: "rgba(255,255,255,0.04)" }}
-          contentStyle={{ background: "#0d1019", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12 }}
-          labelStyle={{ color: "#94a3b8" }}
+          contentStyle={TOOLTIP}
+          labelStyle={{ color: "#a8a8b0" }}
           formatter={(v: number) => [fmt(v), "Revenue"]}
         />
-        <Bar dataKey="amount" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={18} />
+        <Bar dataKey="amount" fill="#ececef" radius={[4, 4, 0, 0]} maxBarSize={18} />
       </BarChart>
     </ResponsiveContainer>
   );

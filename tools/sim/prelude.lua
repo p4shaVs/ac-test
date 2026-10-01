@@ -101,7 +101,9 @@ SIM.resources = {}
 function GetVehiclePedIsIn(ped) local p = byPed(ped); return p and p.veh or 0 end
 function GetSelectedPedWeapon(ped) local p = byPed(ped); return p and p.weapon or 0 end
 function RemoveWeaponFromPed(ped, w) local p = byPed(ped); SIM.out(('RemoveWeaponFromPed(%s, %s)'):format(p and p.name or '?', tostring(w))); if p then p.weapon = 0 end end
-function GetEntityAttachedTo() return 0 end
+function GetEntityAttachedTo(e) local x = SIM.entities[e]; return x and x.attachedTo or 0 end
+function GetAllObjects() local t = {} for id, x in pairs(SIM.entities) do if x.type == 3 then t[#t + 1] = id end end table.sort(t) return t end
+function GetAllPeds() local t = {} for id, x in pairs(SIM.entities) do if x.type == 1 then t[#t + 1] = id end end table.sort(t) return t end
 function GetPedArmour() return 0 end
 function GetEntityHealth() return 200 end
 function GetPlayerMaxArmour() return 100 end

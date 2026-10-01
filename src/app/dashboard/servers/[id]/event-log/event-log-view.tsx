@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Card, PageHeader } from "@/components/ui";
+import { PageHeader } from "@/components/ui";
 import { Icons } from "@/components/icons";
+import { DetailShell, Field, FilterChips, JsonBlock, ListItem, ListShell, SearchBox, SplitView } from "@/components/log-ui";
 import { cn } from "@/lib/utils";
 
 interface LiveEvent {
@@ -13,23 +14,28 @@ interface LiveEvent {
   src?: number;
   detail: string;
   count?: number;
+  data?: Record<string, unknown>;
 }
 
-// Kind → short label + colour. Colours follow meaning: red = harm, amber =
-// damage, green = entity spawn, sky = script events you watch, slate = session.
-const KINDS: Record<string, { label: string; cls: string }> = {
-  event: { label: "EVENT", cls: "text-sky-300 bg-sky-500/10 ring-sky-500/25" },
-  kill: { label: "KILL", cls: "text-rose-300 bg-rose-500/10 ring-rose-500/25" },
-  damage: { label: "DAMAGE", cls: "text-amber-300 bg-amber-500/10 ring-amber-500/25" },
-  explosion: { label: "EXPLOSION", cls: "text-orange-300 bg-orange-500/10 ring-orange-500/25" },
-  spawn: { label: "SPAWN", cls: "text-emerald-300 bg-emerald-500/10 ring-emerald-500/25" },
-  particle: { label: "PARTICLE", cls: "text-purple-300 bg-purple-500/10 ring-purple-500/25" },
-  join: { label: "JOIN", cls: "text-slate-300 bg-white/5 ring-white/10" },
-  leave: { label: "LEAVE", cls: "text-slate-400 bg-white/5 ring-white/10" },
-  remove: { label: "REMOVE", cls: "text-slate-400 bg-white/5 ring-white/10" },
-  other: { label: "OTHER", cls: "text-slate-400 bg-white/5 ring-white/10" },
+// Kind → label + colour. Colour carries meaning only: red = harm, amber =
+// damage, green = something was created, neutral = everything else.
+const KINDS: Record<string, { label: string; tag: string; dot: string; help: string }> = {
+  spawn: { label: "Spawn", tag: "text-emerald-300 bg-emerald-400/10 ring-emerald-400/20", dot: "bg-emerald-400", help: "A player created a vehicle, ped or object (traffic is left out)." },
+  remove: { label: "Remove", tag: "text-slate-300 bg-white/[0.05] ring-white/10", dot: "bg-slate-400", help: "A player-created entity was deleted." },
+  explosion: { label: "Explosion", tag: "text-orange-300 bg-orange-400/10 ring-orange-400/20", dot: "bg-orange-400", help: "An explosion, with its type and whether a vehicle blew up." },
+  damage: { label: "Damage", tag: "text-amber-300 bg-amber-400/10 ring-amber-400/20", dot: "bg-amber-400", help: "Weapon damage: weapon, amount, head hits and the player who was hit." },
+  particle: { label: "Particle", tag: "text-violet-200 bg-violet-300/10 ring-violet-300/20", dot: "bg-violet-300", help: "A networked particle effect, with its scale and position." },
+  kill: { label: "Kill", tag: "text-rose-300 bg-rose-400/10 ring-rose-400/20", dot: "bg-rose-400", help: "A hit that killed: weapon and victim." },
+  event: { label: "Event", tag: "text-sky-200 bg-sky-300/10 ring-sky-300/20", dot: "bg-sky-300", help: "A script event from your watch list, with its arguments." },
+  join: { label: "Join", tag: "text-slate-200 bg-white/[0.05] ring-white/10", dot: "bg-slate-300", help: "A player connected." },
+  leave: { label: "Leave", tag: "text-slate-400 bg-white/[0.04] ring-white/10", dot: "bg-slate-500", help: "A player left, with the reason." },
+  other: { label: "Other", tag: "text-slate-400 bg-white/[0.04] ring-white/10", dot: "bg-slate-500", help: "" },
 };
-const FILTER_ORDER = ["event", "kill", "damage", "explosion", "spawn", "particle", "join", "leave"];
+const FILTER_ORDER = ["spawn", "remove", "explosion", "damage", "particle", "kill", "event", "join", "leave"];
+
+function fmtTime(t: number): string {
+  return new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
 
 export function EventLogView({ serverId, initialEnabled }: { serverId: string; initialEnabled: boolean }) {
   const [enabled, setEnabled] = useState(initialEnabled);
@@ -40,6 +46,8 @@ export function EventLogView({ serverId, initialEnabled }: { serverId: string; i
   const [paused, setPaused] = useState(false);
   const [busy, setBusy] = useState(false);
   const [newEvent, setNewEvent] = useState("");
+  const [sel, setSel] = useState<string | null>(null);
+  const [watchOpen, setWatchOpen] = useState(false);
   const sinceRef = useRef<string | undefined>(undefined);
 
   const poll = useCallback(async () => {
@@ -59,8 +67,10 @@ export function EventLogView({ serverId, initialEnabled }: { serverId: string; i
     }
   }, [serverId]);
 
-  // Watched list is useful even while logging is off.
-  useEffect(() => { poll(); }, [poll]);
+  // The watch list is useful even while logging is off.
+  useEffect(() => {
+    poll();
+  }, [poll]);
 
   useEffect(() => {
     if (!enabled || paused) return;
@@ -82,6 +92,7 @@ export function EventLogView({ serverId, initialEnabled }: { serverId: string; i
         setWatch(json.data.watchEvents ?? []);
         if (!json.data.enabled) {
           setEvents([]);
+          setSel(null);
           sinceRef.current = undefined;
         }
       }
@@ -102,182 +113,217 @@ export function EventLogView({ serverId, initialEnabled }: { serverId: string; i
     for (const e of events) c[e.kind] = (c[e.kind] ?? 0) + (e.count ?? 1);
     return c;
   }, [events]);
+  const total = useMemo(() => events.reduce((s, e) => s + (e.count ?? 1), 0), [events]);
 
   const needle = q.trim().toLowerCase();
-  const shown = events
-    .filter((e) => (filter === "all" || e.kind === filter) &&
-      (!needle || e.player.toLowerCase().includes(needle) || e.detail.toLowerCase().includes(needle) || String(e.src ?? "").includes(needle)))
-    .slice(-300)
-    .reverse();
+  const shown = useMemo(
+    () =>
+      events
+        .filter(
+          (e) =>
+            (filter === "all" || e.kind === filter) &&
+            (!needle || e.player.toLowerCase().includes(needle) || e.detail.toLowerCase().includes(needle) || String(e.src ?? "").includes(needle))
+        )
+        .slice(-300)
+        .reverse(),
+    [events, filter, needle]
+  );
+  const selected = events.find((e) => e.id === sel) ?? null;
 
   return (
     <>
       <PageHeader
+        eyebrow="Logs"
         title="Event Log"
-        description="Live feed of what players do: script events you watch, kills, damage, explosions and spawns. Turn it on while you watch, off when you are done."
-      />
-
-      <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
-        <Card className="flex min-w-0 flex-col" style={{ minHeight: "64vh" }}>
-          {/* toolbar */}
-          <div className="mb-3 flex flex-wrap items-center gap-2">
+        description="A live feed of what players do — spawns, removals, explosions, damage, particles, kills and the script events you watch. Select a line for its full JSON."
+        actions={
+          <>
             <button
+              type="button"
               onClick={() => patch({ enabled: !enabled })}
               disabled={busy}
               className={cn(
-                "flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition",
-                enabled ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-inset ring-emerald-500/30" : "btn-primary"
+                "flex h-9 items-center gap-2 rounded-lg px-3.5 text-xs font-semibold transition",
+                enabled ? "border border-emerald-400/25 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/15" : "btn-primary"
               )}
             >
-              <span className={cn("h-2 w-2 rounded-full", enabled ? (paused ? "bg-amber-400" : "animate-pulse bg-emerald-400") : "bg-white/70")} />
-              {enabled ? (paused ? "Paused" : "Live") : "Enable"}
+              <span className={cn("h-2 w-2 rounded-full", enabled ? (paused ? "bg-amber-300" : "animate-pulse bg-emerald-400") : "bg-black/60")} />
+              {enabled ? (paused ? "Paused" : "Live — turn off") : "Turn on"}
             </button>
-            <button onClick={() => setPaused((p) => !p)} disabled={!enabled} className="btn-ghost text-xs disabled:opacity-40">
-              {paused ? <><Icons.play size={13} /> Resume</> : <><Icons.pause size={13} /> Pause</>}
+            <button type="button" onClick={() => setPaused((p) => !p)} disabled={!enabled} className="btn-secondary h-9 px-3 text-xs disabled:opacity-40">
+              {paused ? <Icons.play size={13} /> : <Icons.pause size={13} />}
+              {paused ? "Resume" : "Pause"}
             </button>
-            <button onClick={() => { setEvents([]); sinceRef.current = undefined; patch({ clear: true }); }} disabled={!enabled} className="btn-ghost text-xs disabled:opacity-40">
-              Clear
+            <button
+              type="button"
+              onClick={() => {
+                setEvents([]);
+                setSel(null);
+                sinceRef.current = undefined;
+                patch({ clear: true });
+              }}
+              disabled={!enabled}
+              className="btn-secondary h-9 px-3 text-xs disabled:opacity-40"
+            >
+              <Icons.trash size={13} /> Clear
             </button>
-            <div className="relative ml-auto">
-              <Icons.search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Player, ID or event…"
-                className="w-56 rounded-lg border border-white/10 bg-base-900/60 py-1.5 pl-9 pr-3 text-sm text-slate-200 outline-none focus:border-brand-500/50"
-              />
-            </div>
-          </div>
+          </>
+        }
+      />
 
-          {/* kind filter */}
-          <div className="mb-3 flex flex-wrap gap-1.5 border-b border-white/5 pb-3">
-            {["all", ...FILTER_ORDER].map((f) => {
-              const n = f === "all" ? events.reduce((s, e) => s + (e.count ?? 1), 0) : counts[f] ?? 0;
-              return (
-                <button
-                  key={f}
-                  onClick={() => setFilter(f)}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide transition",
-                    filter === f ? "border-brand-500/50 bg-brand-500/15 text-white" : "border-white/10 text-slate-400 hover:bg-white/5"
-                  )}
-                >
-                  {f}
-                  <span className="font-mono text-[10px] text-slate-500">{n}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {!enabled ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center">
-              <span className="grid h-12 w-12 place-items-center rounded-xl bg-white/5 text-slate-400 ring-1 ring-inset ring-white/10">
-                <Icons.pause size={22} />
-              </span>
-              <h3 className="text-sm font-semibold text-slate-200">Event logging is off</h3>
-              <p className="max-w-sm text-sm text-slate-500">
-                It starts streaming within ~5 seconds of enabling. The server does no extra work while it is off.
-              </p>
-              <button onClick={() => patch({ enabled: true })} disabled={busy} className="btn-primary mt-1">
-                {busy ? "…" : "Enable Event Log"}
-              </button>
-            </div>
-          ) : shown.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center text-slate-500">
-              <span className="h-6 w-6 animate-spin rounded-full border-2 border-brand-500/20 border-t-brand-400" />
-              <p className="text-sm">{paused ? "Paused." : "Waiting for events… play in-game to see them here."}</p>
-            </div>
-          ) : (
-            <div className="-mx-2 flex-1 overflow-auto">
-              <table className="w-full table-fixed text-sm">
-                <thead>
-                  <tr className="text-left text-[10px] font-semibold uppercase tracking-wider text-slate-600">
-                    <th className="w-20 px-2 pb-2">Time</th>
-                    <th className="w-24 px-2 pb-2">Kind</th>
-                    <th className="w-44 px-2 pb-2">Player</th>
-                    <th className="px-2 pb-2">Detail</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/[0.04]">
-                  {shown.map((e) => {
-                    const k = KINDS[e.kind] ?? KINDS.other;
-                    return (
-                      <tr key={e.id} className="hover:bg-white/[0.02]">
-                        <td className="px-2 py-1.5 font-mono text-[11px] text-slate-500">{fmtTime(e.t)}</td>
-                        <td className="px-2 py-1.5">
-                          <span className={cn("inline-block rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wide ring-1 ring-inset", k.cls)}>{k.label}</span>
-                        </td>
-                        <td className="truncate px-2 py-1.5">
-                          <span className="font-medium text-slate-200">{e.player}</span>
-                          {e.src ? <span className="ml-1.5 font-mono text-[11px] text-slate-500">#{e.src}</span> : null}
-                        </td>
-                        <td className="truncate px-2 py-1.5 font-mono text-xs text-slate-400" title={e.detail}>
-                          {e.detail}
-                          {(e.count ?? 1) > 1 && (
-                            <span className="ml-2 rounded bg-white/10 px-1.5 py-px text-[10px] font-bold text-slate-200">×{e.count}</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
-
-        <div className="space-y-4">
-          <Card>
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
-              <Icons.activity size={15} className="text-sky-300" /> Watched events
-            </h3>
-            <p className="mt-1 text-xs leading-relaxed text-slate-500">
-              FiveM has no way to see every script event, so add the ones you care about (money, jobs, admin actions). When a
-              player sends one it shows up as <b className="text-sky-300">EVENT</b> with who sent it and the arguments.
-            </p>
-            <div className="mt-3 flex gap-2">
+      {/* Watched events */}
+      <div className="mb-4 rounded-2xl border border-white/[0.07] bg-[#0e0e10]">
+        <button type="button" onClick={() => setWatchOpen((o) => !o)} className="flex w-full items-center gap-3 px-5 py-3.5 text-left">
+          <Icons.activity size={15} className="text-slate-400" />
+          <span className="text-[13px] font-medium text-slate-100">Watched script events</span>
+          <span className="rounded-full bg-white/[0.06] px-2 text-[11px] tabular-nums text-slate-400">{watch.length}</span>
+          <span className="ml-auto hidden truncate text-[12px] text-slate-500 sm:block">
+            FiveM cannot see every script event — add the ones you care about (money, jobs, admin actions).
+          </span>
+          <Icons.chevronDown size={14} className={cn("shrink-0 text-slate-500 transition", watchOpen && "rotate-180")} />
+        </button>
+        {watchOpen && (
+          <div className="border-t border-white/[0.06] px-5 py-4">
+            <div className="flex gap-2">
               <input
                 value={newEvent}
                 onChange={(e) => setNewEvent(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && addWatch()}
                 placeholder="qb-bankrobbery:server:setBankState"
-                className="input min-w-0 flex-1 font-mono text-xs"
+                className="input h-9 min-w-0 flex-1 font-mono text-xs"
+                maxLength={100}
               />
-              <button className="btn-primary text-xs" disabled={busy || !newEvent.trim()} onClick={addWatch}>Watch</button>
+              <button type="button" className="btn-primary h-9 px-4 text-xs" disabled={busy || !newEvent.trim()} onClick={addWatch}>
+                Watch
+              </button>
             </div>
-            <ul className="mt-3 space-y-1.5">
-              {watch.length === 0 && <li className="text-xs text-slate-600">Nothing watched yet.</li>}
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {watch.length === 0 && <span className="text-xs text-slate-600">Nothing watched yet.</span>}
               {watch.map((w) => (
-                <li key={w} className="flex items-center gap-2 rounded-lg border border-white/5 bg-base-900/50 px-2.5 py-1.5">
-                  <code className="min-w-0 flex-1 truncate font-mono text-xs text-slate-300">{w}</code>
-                  <button
-                    title="Stop watching"
-                    disabled={busy}
-                    onClick={() => patch({ watchEvents: watch.filter((x) => x !== w) })}
-                    className="text-slate-500 transition hover:text-rose-300"
-                  >
-                    <Icons.x size={13} />
+                <span key={w} className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] py-1 pl-2.5 pr-1.5 font-mono text-[11.5px] text-slate-300">
+                  {w}
+                  <button type="button" title="Stop watching" disabled={busy} onClick={() => patch({ watchEvents: watch.filter((x) => x !== w) })} className="text-slate-500 transition hover:text-rose-300">
+                    <Icons.x size={12} />
                   </button>
-                </li>
+                </span>
               ))}
-            </ul>
-          </Card>
-
-          <Card>
-            <h3 className="text-sm font-semibold text-white">What is logged</h3>
-            <ul className="mt-2 space-y-1.5 text-xs text-slate-400">
-              <li><b className="text-slate-300">Spawn</b> — only vehicles, peds and objects a player created (traffic is left out).</li>
-              <li><b className="text-slate-300">Damage / Kill</b> — weapon, damage and the player who was hit.</li>
-              <li><b className="text-slate-300">Explosion</b> — explosion type; “vehicle” when a car blew up.</li>
-              <li>Identical lines inside two seconds are merged as <b className="text-slate-300">×N</b>. Busy kinds are capped so one type can never drown the rest.</li>
-            </ul>
-          </Card>
-        </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <FilterChips
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { key: "all", label: "All", count: total },
+            ...FILTER_ORDER.map((k) => ({ key: k, label: KINDS[k].label, count: counts[k] ?? 0, dot: KINDS[k].dot })),
+          ]}
+        />
+        <SearchBox value={q} onChange={setQ} placeholder="Player, server ID or detail…" className="w-full xl:w-72" />
+      </div>
+
+      {!enabled ? (
+        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-white/[0.08] py-20 text-center">
+          <span className="grid h-12 w-12 place-items-center rounded-xl border border-white/10 bg-white/[0.03] text-slate-400">
+            <Icons.pause size={20} />
+          </span>
+          <h3 className="text-sm font-semibold text-slate-100">The event log is off</h3>
+          <p className="max-w-sm text-sm text-slate-500">It starts streaming within about five seconds of turning it on. The game server does no extra work while it is off.</p>
+          <button type="button" onClick={() => patch({ enabled: true })} disabled={busy} className="btn-primary mt-1">
+            {busy ? "…" : "Turn on the event log"}
+          </button>
+        </div>
+      ) : (
+        <SplitView
+          hasSelection={!!selected}
+          onBack={() => setSel(null)}
+          list={
+            <ListShell footer={paused ? "Paused — new events are held until you resume." : `${shown.length} shown · updates every 2 s`}>
+              {shown.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-3 py-16 text-center text-slate-500">
+                  {!paused && <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/10 border-t-white/60" />}
+                  <p className="text-[13px]">{paused ? "Paused." : events.length ? "Nothing matches this filter." : "Waiting for events — play in game to see them here."}</p>
+                </div>
+              ) : (
+                shown.map((e) => {
+                  const k = KINDS[e.kind] ?? KINDS.other;
+                  return (
+                    <ListItem key={e.id} active={e.id === sel} onClick={() => setSel(e.id)}>
+                      <span className={cn("w-[76px] shrink-0 rounded-md py-1 text-center text-[10px] font-bold uppercase tracking-wide ring-1 ring-inset", k.tag)}>{k.label}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate text-[13px] font-medium text-slate-100">{e.player}</span>
+                          {e.src ? <span className="font-mono text-[11px] text-slate-500">#{e.src}</span> : null}
+                          {(e.count ?? 1) > 1 && <span className="rounded bg-white/10 px-1.5 text-[10px] font-bold text-slate-200">×{e.count}</span>}
+                        </span>
+                        <span className="block truncate font-mono text-[11.5px] text-slate-400">{e.detail}</span>
+                      </span>
+                      <span className="shrink-0 font-mono text-[11px] text-slate-500">{fmtTime(e.t)}</span>
+                    </ListItem>
+                  );
+                })
+              )}
+            </ListShell>
+          }
+          detail={
+            selected ? (
+              <DetailShell>
+                <div className="flex items-center gap-3 border-b border-white/[0.06] px-5 py-4">
+                  <span className={cn("rounded-md px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ring-1 ring-inset", (KINDS[selected.kind] ?? KINDS.other).tag)}>
+                    {(KINDS[selected.kind] ?? KINDS.other).label}
+                  </span>
+                  <span className="min-w-0 truncate text-[15px] font-semibold text-white">{selected.player}</span>
+                  <span className="ml-auto font-mono text-[12px] text-slate-500">{fmtTime(selected.t)}</span>
+                </div>
+                <div className="space-y-5 px-5 py-5">
+                  <Field label="Description" mono>
+                    {selected.detail}
+                  </Field>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+                    <Field label="Player">{selected.player}</Field>
+                    <Field label="Server ID" mono>
+                      {selected.src || "—"}
+                    </Field>
+                    <Field label="Repeated">{(selected.count ?? 1) > 1 ? `×${selected.count} in 2 s` : "once"}</Field>
+                    <Field label="Time">{new Date(selected.t).toLocaleString("en-GB")}</Field>
+                  </div>
+                  <JsonBlock
+                    title="Event details"
+                    value={{
+                      kind: selected.kind,
+                      player: selected.player,
+                      serverId: selected.src ?? 0,
+                      time: new Date(selected.t).toISOString(),
+                      count: selected.count ?? 1,
+                      summary: selected.detail,
+                      ...(selected.data ? { data: selected.data } : {}),
+                    }}
+                  />
+                  {KINDS[selected.kind]?.help && <p className="text-[12px] text-slate-500">{KINDS[selected.kind].help}</p>}
+                </div>
+              </DetailShell>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-white/[0.08] p-6">
+                <p className="text-[13px] font-medium text-slate-200">Select an event</p>
+                <p className="mt-1 text-[12.5px] text-slate-500">Its full record opens here as JSON — weapon, damage, victim, model, coordinates or script arguments.</p>
+                <ul className="mt-4 space-y-2">
+                  {FILTER_ORDER.map((k) => (
+                    <li key={k} className="flex gap-2.5 text-[12px] text-slate-400">
+                      <span className={cn("mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full", KINDS[k].dot)} />
+                      <span>
+                        <b className="font-medium text-slate-200">{KINDS[k].label}</b> — {KINDS[k].help}
+                      </span>
+                    </li>
+                  ))}
+                  <li className="pt-1 text-[11.5px] text-slate-600">Identical lines inside two seconds are merged as ×N; busy kinds are capped so one type never drowns the rest.</li>
+                </ul>
+              </div>
+            )
+          }
+        />
+      )}
     </>
   );
-}
-
-function fmtTime(t: number): string {
-  return new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }

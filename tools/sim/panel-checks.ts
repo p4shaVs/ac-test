@@ -25,6 +25,9 @@ import {
   type DetectionAction,
 } from "../../src/lib/detection-actions";
 import { readFileSync } from "node:fs";
+import { AC_TABS } from "../../src/lib/ac-config";
+import { RULE_GROUPS } from "../../src/lib/rules";
+import { buildCatalog, catalogAcFields, catalogRules } from "../../src/lib/config-catalog";
 import { resolve } from "node:path";
 
 let failed = 0;
@@ -137,6 +140,37 @@ check("a dedicated channel wins over the legacy webhook", t(JSON.stringify({ dis
 check("legacy webhook never receives Admin Logs", t(JSON.stringify({ discordWebhook: HOOK3, webhookEvents: { admin: true } }), "admin").length === 0);
 check("same URL on two channels is posted once", t(cfg({ BanWebhook: HOOK, AdminLogsWebhook: HOOK }), "unban").length === 1);
 
+console.log("\n== configuration page: every switch, guard and detection is on it ==");
+{
+  const cats = buildCatalog();
+  const shownAc = catalogAcFields(cats);
+  const missingAc: string[] = [];
+  for (const t of AC_TABS) {
+    for (const c of t.cards) {
+      for (const fl of c.fields) {
+        const id = fl.section + "." + fl.key;
+        // The Settings tab is rendered as its own cards (except Backdoor Protection, which is a protection row).
+        const asSetting = t.id === "settings" && c.title !== "Backdoor Protection";
+        if (!asSetting && !shownAc.has(id)) missingAc.push(id);
+      }
+    }
+  }
+  check("every protection switch and parameter has a row on the page", missingAc.length === 0, missingAc);
+  const shownRules = catalogRules(cats);
+  const missingRules = RULE_GROUPS.flatMap((g) => g.rules.map((r) => r.key)).filter((k) => !shownRules.has(k));
+  check("every server guard has a row", missingRules.length === 0, missingRules);
+  const covered = new Set(cats.flatMap((c) => c.items.flatMap((i) => i.types)));
+  const missingTypes = DETECTION_TYPES.map((d) => d.type).filter((t) => !covered.has(t));
+  check("every detection type can be given a punishment on the page", missingTypes.length === 0, missingTypes);
+  const known = new Set(DETECTION_TYPES.map((d) => d.type));
+  const unknown = cats.flatMap((c) => c.items.flatMap((i) => i.types)).filter((t) => !known.has(t));
+  check("no row points at a detection type the registry does not know", unknown.length === 0, unknown);
+  const ids = cats.flatMap((c) => c.items.map((i) => i.id));
+  check("row ids are unique", new Set(ids).size === ids.length);
+  const utilWithTypes = cats.flatMap((c) => c.items).filter((i) => i.utility && i.types.length);
+  check("server options (gameplay / console logging) carry no punishment", utilWithTypes.length === 0);
+}
+
 console.log("\n== punishments: the action you pick is the action that runs ==");
 {
   const ACTIONS: DetectionAction[] = ["LOG", "KICK", "BAN"];
@@ -223,9 +257,29 @@ console.log("\n== punishments: the action you pick is the action that runs ==");
   }
 
   // Every route that lifts a ban by hand must post the line, or the switch would only cover part of them.
-  for (const f of ["src/app/api/servers/[id]/unban/route.ts", "src/app/api/servers/[id]/bans/route.ts", "src/app/api/v1/ingame/unban/route.ts"]) {
+  // The panel's Unban and "Fix false ban" go through liftBan() in src/lib/ban-ops.ts.
+  const liftSrc = readFileSync(resolve(process.cwd(), "src/lib/ban-ops.ts"), "utf8");
+  check("liftBan() posts the unban webhook", /sendWebhook\(\s*server\.config,\s*"unban"/.test(liftSrc));
+  check("liftBan() lifts the linked evasion bans and withdraws the network report", /evasionOf: ban\.code/.test(liftSrc) && /revokeNetworkBan\(/.test(liftSrc));
+  for (const f of ["src/app/api/servers/[id]/unban/route.ts", "src/app/api/servers/[id]/bans/[banId]/route.ts"]) {
+    const src = readFileSync(resolve(process.cwd(), f), "utf8");
+    check(`${f} lifts bans through liftBan()`, /liftBan\(\s*server,/.test(src));
+  }
+  for (const f of ["src/app/api/servers/[id]/bans/route.ts", "src/app/api/v1/ingame/unban/route.ts"]) {
     const src = readFileSync(resolve(process.cwd(), f), "utf8");
     check(`${f} posts the unban webhook`, /sendWebhook\(\s*server\.config,\s*"unban"/.test(src));
+  }
+
+  // Ban notes are stored as JSON on the ban; anything malformed must be dropped, not crash the page.
+  {
+    const { parseBanNotes, NOTES_MAX } = await import("../../src/lib/ban-ops");
+    check("ban notes: malformed JSON → empty list", parseBanNotes("{nope").length === 0 && parseBanNotes(null).length === 0);
+    check(
+      "ban notes: entries missing fields are dropped",
+      parseBanNotes(JSON.stringify([{ id: "a", by: "x", at: "2026-01-01", text: "ok" }, { id: 1, text: "bad" }, "str"])).length === 1
+    );
+    const many = Array.from({ length: NOTES_MAX + 10 }, (_, i) => ({ id: String(i), by: "x", at: "t", text: "n" }));
+    check("ban notes: capped at NOTES_MAX", parseBanNotes(JSON.stringify(many)).length === NOTES_MAX);
   }
 
   console.log(`\n${total - failed}/${total} checks passed${failed ? `  —  ${failed} FAILED` : ""}`);

@@ -46,7 +46,7 @@ function Hero() {
         <div>
           <h1 className="animate-slide-up text-5xl font-extrabold leading-[1.05] tracking-tight text-white sm:text-6xl">
             {BRAND.name}{" "}
-            <span className="bg-gradient-to-r from-brand-400 via-brand-300 to-accent-violet bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-brand-400 via-brand-300 to-white bg-clip-text text-transparent">
               Anti-Cheat
             </span>
           </h1>

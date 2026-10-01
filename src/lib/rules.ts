@@ -56,6 +56,18 @@ export const RULE_GROUPS: RuleGroup[] = [
     ],
   },
   {
+    id: "crash",
+    label: "Anti-Crash",
+    icon: "shield",
+    description: "Stops a cheater from crashing other players — blocked before it reaches them",
+    rules: [
+      { key: "anti_crash_models", label: "Block Crash Models", description: "Cancels the spawn of models that crash every game that loads them (the slod_* skeleton peds and known crash props). A slod ped is reported on the first try — no script uses one; a crash prop after two tries in 10 seconds. Giant troll props are left to the Models page, because some map scripts use them.", default: true },
+      { key: "anti_crash_attach", label: "Block Attaching to Other Players", description: "Every 2 seconds the server removes vehicles and NPCs that one player attached to ANOTHER player's character (the 'car on the head' crash), and props when 3 or more are stuck to someone else. Your own phone, box or bike, and carry / drag scripts that attach players, are never touched.", default: true },
+      { key: "anti_crash_flood", label: "Flood Shield", description: "One player creating 60+ script entities in 2 seconds, 25+ particle effects in 2 seconds or 25+ projectiles in 3 seconds is cut off for 5 seconds and reported once. Particles larger than scale 50 — no real effect is that big — are always dropped. Traffic and ambient peds never count, and Safe Scripts are ignored.", default: true },
+      { key: "anti_crash_events", label: "Block Crash Events", description: "Cancels the phone-explosion request and kick votes (no FiveM script uses either) and a flood of scripted tasks on other players (more than 6 in 10 seconds — single tasks from police or tackle scripts pass).", default: true },
+    ],
+  },
+  {
     id: "session",
     label: "Session",
     icon: "users",

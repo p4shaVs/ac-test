@@ -7,13 +7,15 @@
 // ("Cannot access length.valueOf on the server. You cannot dot into a client
 // module from a server component."). Keeping the constant here lets both the
 // server page and the client chart import it freely.
+// Monochrome first (the panel is black/off-white); status colours only after
+// the greys run out, so a busy donut still stays readable.
 export const DONUT_PALETTE = [
-  "#6366f1",
-  "#a855f7",
-  "#22d3ee",
-  "#10b981",
-  "#f59e0b",
-  "#f43f5e",
-  "#818cf8",
-  "#e879f9",
+  "#ececef",
+  "#a8a8b0",
+  "#6e6e76",
+  "#46464c",
+  "#f0605d",
+  "#f2b33d",
+  "#34d399",
+  "#c4b5fd",
 ] as const;
