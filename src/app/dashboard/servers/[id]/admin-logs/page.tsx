@@ -130,7 +130,7 @@ export default async function AdminLogsPage({ params }: { params: { id: string }
         title="Admin Logs"
         description="Everything your staff did — bans, kicks, warnings, unbans, configuration changes, resource actions and console commands. Automatic CoreAC actions are under Detections."
       />
-      <AdminLogsView rows={merged.slice(0, 400)} />
+      <AdminLogsView serverId={server.id} rows={merged.slice(0, 400)} />
     </>
   );
 }

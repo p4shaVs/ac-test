@@ -56,7 +56,7 @@ export function DownloadCenter({ appUrl, servers }: { appUrl: string; servers: S
               className={cn(
                 "flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium transition",
                 s.id === active.id
-                  ? "border-brand-500/50 bg-brand-500/10 text-white"
+                  ? "border-white/40 bg-white/[0.06] text-white"
                   : "border-white/10 text-slate-400 hover:bg-white/5"
               )}
             >
@@ -73,11 +73,11 @@ export function DownloadCenter({ appUrl, servers }: { appUrl: string; servers: S
           <Card>
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <span className="grid h-12 w-12 place-items-center rounded-2xl bg-brand-gradient text-white shadow-glow">
-                  <Icons.download size={22} />
+                <span className="grid h-11 w-11 place-items-center rounded-xl border border-white/10 bg-white/[0.04] text-slate-300">
+                  <Icons.terminal size={19} />
                 </span>
                 <div>
-                  <h3 className="text-base font-semibold text-white">One-click installer</h3>
+                  <h3 className="text-base font-semibold text-white">Script installer (.bat)</h3>
                   <p className="text-xs text-slate-500">for {active.name}</p>
                 </div>
               </div>
@@ -131,7 +131,7 @@ export function DownloadCenter({ appUrl, servers }: { appUrl: string; servers: S
             </ol>
 
             <div className="mt-5 rounded-xl border border-white/10 bg-base-900/50 px-4 py-3 text-xs text-slate-400">
-              <Icons.shieldCheck size={14} className="mr-1.5 inline text-brand-400" />
+              <Icons.shieldCheck size={14} className="mr-1.5 inline text-slate-400" />
               Windows may warn about an unknown script — it&apos;s your own installer from your own panel. Choose{" "}
               <span className="text-slate-300">More info → Run anyway</span> if SmartScreen prompts.
             </div>

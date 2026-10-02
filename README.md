@@ -92,19 +92,40 @@ Tespitlerin **etrafındaki** kurallar. Her ayar gerçek Lua koduna ya da panel r
 
 ## Moderasyon ve log ekranları
 
-Hepsi aynı düzende: solda filtrelenebilir liste, sağda seçilen kayıt ve **tam kaydın JSON'u** (kopyalanabilir).
+Kayıtların hepsinde **tam kaydın JSON'u** (kopyalanabilir) bir tık uzaktadır.
 
 | Sayfa | İçerik |
 |---|---|
+| **Lookup** | Ad, licence, Discord, Steam, IP ya da Ban ID ile arama → oyuncu dosyası: güven puanı, risk özetleri (aktif ban, son 30 gün tespit, bağlı hesap, CoreAC ağı — diğer müşterilerin sunucuları **adıyla asla** gösterilmez, yalnız sayı), **sahibin tüm sunucularında oynama süresi** (dağılım çubuğu, kullanılan isim, ilk/son görülme), sicil zaman çizelgesi (tüm sunuculardaki banlar, kick/uyarılar), tespit türleri, bağlı hesaplar (IP / cihaz işareti / ≥2 donanım token'ı), kullanılan isimler, kimlikler, tek tıkla Ban. `?q=…&p=<oyuncu>` ile paylaşılabilir. |
+| **Offline Ban** (Bans → Offline ban, Lookup → Ban) | Sunucuda olmayan (hiç gelmemiş de olabilir) birini banlar: licence / Discord / Steam (SteamID64 otomatik hex'e çevrilir) / IP yapıştırılır, anında çip olarak tanınır (license2, fivem, xbl kullanılmadığı söylenir); bilinen oyuncuyla eşleşirse adı ve geçmişi gösterilir; kalıcı ya da süreli (dakika/saat/gün/hafta + hazır seçenekler), bitiş tarihi önizlemesi. Aynı kimlikte aktif ban varsa reddeder; oyuncu o an çevrimiçiyse sunucudan düşürülür; oyun sunucusu ≤60 sn'de kapıda reddeder. |
 | **Bans** | Özet (aktif / CoreAC / yetkili / yanlış pozitif), filtre çipleri, arama, CSV. Bir ban açılınca: kanıt (ölçülen değerler, ekran görüntüleri, replay), kayıt (sebep, Ban ID, modül, tarih, süre), banlayan, oyuncu (güven puanı, oynama süresi), kimlikler (License/Discord/Steam/IP/cihaz, tıkla-kopyala), bağlı ban-kaçırma banları. Sekmeler: **Details / History / Notes / JSON**. *This ban is a false positive* yalnızca işaretler; **Fix false ban** banı (ve ona bağlı kaçırma banlarını) kaldırır, oyuncunun güven puanını 100'e çeker, ağ-ban katkısını geri alır. `?ban=<id>` ile doğrudan açılır. |
 | **Detections** | Her tespit: oyuncu, tespit adı, uygulanan aksiyon; kanıt, ekran görüntüleri, replay, ilgili bana bağlantı, JSON. Aksiyon / kategori / önem filtreleri. |
 | **Kicks / Warnings** | CoreAC ya da yetkili; otomatik kick'te o anki tespit ve kanıtı, oyuncu kimlikleri, teslim durumu, JSON. |
-| **Admin Logs** | Yetkililerin yaptığı her şey (ban/kick/uyarı/unban, yanlış ban düzeltme, ban notu, ayar değişikliği, resource işlemi, konsol komutu). Aksiyon ve yetkili filtreleri; Description / Actor / Action / Target / When + JSON. |
+| **Admin Logs** | Yetkililerin yaptığı her şey (ban/offline ban/kick/uyarı/unban, yanlış ban düzeltme, ban notu, ayar değişikliği, resource işlemi, konsol komutu, Windows kurulumu) — gün gün gruplu bir **aktivite akışı**, cümle olarak ("admin, X'i banladı"); satıra tıklayınca yerinde açılan ayrıntı + JSON + "Lookup" kısayolu. Sağda 24 sa / 7 gün sayaçları, tür ve yetkili filtreleri (yetkili başına işlem çubuğu); filtrelenmiş kayıtlar JSON olarak dışa aktarılır. |
 | **Event Log** | Canlı akış (açıkken): Spawn, Remove, Explosion, Damage, Particle, Kill, izlenen script olayları, Join/Leave. Her satırın JSON'unda silah, hasar, kafa vuruşu, kurban, model (adıyla), netId, koordinat ya da olay argümanları. |
 | **Console** | Terminal: renkli seviye/kaynak, komut geçmişi (↑/↓), Refresh / Clear / Live / Auto-scroll, 3 sn'de bir yenilenir. |
 | **Server Logs** | Gün gün gruplu; satıra tıklayınca JSON. |
 
-### Oyun sunucusu HTTP API'si
+## Windows kurulum programı (`installer-win/`)
+
+Müşteri panelde **Download → Download CoreAC-Setup.exe** ile indirir (yalnız giriş yapmış ve lisanslı sunucusu olan hesaplar).
+Exe herkes için aynıdır; panelin adresi indirme sırasında dosyanın sonuna eklenir (`/api/account/installer`, PE görüntüsünden sonraki veri Windows için önemsizdir).
+
+1. **Lisans anahtarı** → `POST /api/v1/install/key`: anahtar geçerli mi, hangi sunucu(lar) için (birden çoksa seçtirir). Gizli bir şey dönmez.
+2. **Sunucu klasörü** — otomatik: exe'nin yanı (5 üst / 3 alt klasör), çalışan `FXServer.exe` ve bulunan FXServer klasörlerinin **txAdmin profilleri** (`txData/*/config.json` → server data / cfg yolu), kullanıcı klasörleri ve sabit disklerin kökü (süre sınırlı tarama). Bulunamazsa *Browse…* (klasör ya da doğrudan `server.cfg`). CoreAC kurulu olan / txAdmin'den gelen / exe'nin yanındaki öne alınır.
+3. **Kurulum** — kaynak anahtarla indirilir (`GET /api/v1/install/resource`, `X-CoreAC-Key`), açılır, `resources/<klasör>`e kopyalanır; **ancak dosyalar yerindeyken** `POST /api/v1/install/claim` yeni sunucu token'ını verir (indirme yarıda kalırsa çalışan sunucunun token'ı iptal olmaz); sonra `server.cfg` yazılır ve eski Aeigs kurulumu temizlenir. Davranış `.bat` kurulumuyla birebir aynıdır (gizli klasör adı, yerinde güncelleme, yönetilen blok diğer resource'lardan önce, tek seferlik yedek, BOM'suz UTF-8) — ikisi birbirinin kurulumunu güncelleyebilir; `panel-checks` blok işaretlerinin aynı kaldığını denetler.
+
+Teknik: .NET Framework 4.x üzerinde WinForms (Windows'la gelen C# 5 derleyicisi — SDK gerekmez; exe ~110 KB, Windows 10/11 / Server 2016+ üzerinde ek kurulum istemez). Uzun yollar (`\\?\`), yetki hatasında *Run as administrator*, dosya kullanımda / disk dolu için anlaşılır mesajlar.
+
+```
+npm run build:installer             # installer-win/CoreAC-Setup.exe'yi yeniden üretir (Windows)
+npm run build:installer -- --render # ayrıca ekran görüntüleri: installer-win/obj/screens
+CoreAC-Setup.exe --selftest cfg.json out.log   # pencere açmadan uçtan uca kurulum (test)
+```
+
+Exe repoya **derlenmiş hâliyle** girer (Linux'taki paneller de sunabilsin); `installer-win/src` değişince yeniden derleyip commit edin — `panel-checks` sürüm damgasını kontrol eder. İmzasız olduğu için SmartScreen "Daha fazla bilgi → Yine de çalıştır" isteyebilir.
+
+## Oyun sunucusu HTTP API'si
 
 `http://SUNUCU:30120/<resource-klasörü>/<uç>` — `Authorization: Bearer <coreac_token>` şart, dakikada 60 istek/adres, `X-Forwarded-For` yok sayılır.
 `GET /status`, `GET /players`, `GET /bans` her zaman; `POST /unban`, `/screenshot`, `/reload` yalnızca **Allow Write Endpoints açıkken VE Allowed IPs doluyken VE çağıran o listedeyken**.
@@ -115,7 +136,7 @@ curl -H "Authorization: Bearer $COREAC_TOKEN" http://SUNUCU:30120/coreac/status
 curl -X POST -H "Authorization: Bearer $COREAC_TOKEN" -d '{"code":"AC-7K3QP9"}' http://SUNUCU:30120/coreac/unban
 ```
 
-### Testler (`tools/sim`)
+## Testler (`tools/sim`)
 
 `npm run test:sim` hepsini tek seferde çalıştırır: gerçek Lua 5.4 derleyicisiyle derleme, `check:ac`, gerçek resource script'lerini taklit FiveM içinde
 çalıştıran senaryolar (bağlantı kapıları, ban & kanıt, Safe Guard, config/log/framework/önek, HTTP API, anti-crash, event log, silent aim & hasar,

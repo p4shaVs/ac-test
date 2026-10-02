@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { authenticateServer } from "@/lib/server-auth";
 import { buildResourceZip } from "@/lib/install-package";
 import { rateLimit } from "@/lib/ratelimit";
+import { pickServer, resolveInstallKey } from "@/lib/install-key";
 
 // Installer bu ucu `Authorization: Bearer coreac_srv_...` ile çağırır ve korumalı
 // kaynağı .zip olarak indirir. Token/lisans geçersizse authenticateServer 401/403
@@ -9,9 +10,17 @@ import { rateLimit } from "@/lib/ratelimit";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  let server;
+  let server: { id: string };
   try {
-    server = await authenticateServer(req);
+    // The Windows installer downloads with the licence key (it gets a server
+    // token only after the files are in place); the .bat uses the token.
+    const key = req.headers.get("x-coreac-key");
+    if (key) {
+      const lic = await resolveInstallKey(key);
+      server = pickServer(lic, req.headers.get("x-coreac-server"));
+    } else {
+      server = await authenticateServer(req);
+    }
   } catch (err: unknown) {
     const status =
       err && typeof err === "object" && "status" in err

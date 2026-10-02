@@ -43,3 +43,6 @@ yarn-error.log*
 
 # dev-only simulation harness deps
 /tools/sim/node_modules
+
+# Windows installer build output (the exe itself is committed)
+installer-win/obj/

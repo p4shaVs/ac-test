@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/ui";
 import { Icons } from "@/components/icons";
 import { Avatar, FilterChips, SearchBox } from "@/components/log-ui";
 import { formatDateTime, cn } from "@/lib/utils";
+import { OfflineBanDialog } from "@/components/offline-ban";
 import { BanDetail } from "./ban-detail";
 import { AUTO_BANNERS, StatusPill } from "./ban-status";
 
@@ -39,6 +40,7 @@ export function BansManager({ serverId, bans, initialOpen }: { serverId: string;
   const [busy, setBusy] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(initialOpen);
   const [menu, setMenu] = useState(false);
+  const [offline, setOffline] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -109,8 +111,24 @@ export function BansManager({ serverId, bans, initialOpen }: { serverId: string;
     }
   }
 
+  const dialog = offline && <OfflineBanDialog serverId={serverId} onClose={() => setOffline(false)} onDone={() => router.refresh()} />;
+
   if (bans.length === 0) {
-    return <EmptyState icon="ban" title="No bans yet" description="Bans issued from the Players page, in game or by automatic detections appear here." />;
+    return (
+      <>
+        <EmptyState
+          icon="ban"
+          title="No bans yet"
+          description="Bans issued from the Players page, in game or by automatic detections appear here."
+          action={
+            <button type="button" onClick={() => setOffline(true)} className="btn-primary h-9 px-4 text-xs">
+              <Icons.plus size={14} /> Ban someone offline
+            </button>
+          }
+        />
+        {dialog}
+      </>
+    );
   }
 
   return (
@@ -147,6 +165,9 @@ export function BansManager({ serverId, bans, initialOpen }: { serverId: string;
         />
         <div className="flex items-center gap-2">
           <SearchBox value={query} onChange={setQuery} placeholder="Name, ban ID, licence, Discord, reason…" className="w-full xl:w-80" />
+          <button type="button" onClick={() => setOffline(true)} className="btn-primary h-9 shrink-0 px-3 text-xs">
+            <Icons.plus size={14} /> Offline ban
+          </button>
           <a href={`/api/servers/${serverId}/bans/export`} className="btn-secondary h-9 shrink-0 px-3 text-xs">
             <Icons.download size={14} /> CSV
           </a>
@@ -242,6 +263,7 @@ export function BansManager({ serverId, bans, initialOpen }: { serverId: string;
         </div>
       )}
 
+      {dialog}
       {open && (
         <BanDetail
           serverId={serverId}

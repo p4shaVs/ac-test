@@ -8,6 +8,7 @@ import { formatDateTime, relativeDays, safeMediaUrl, timeAgo, cn } from "@/lib/u
 import type { BanHistoryEntry, BanNote } from "@/lib/ban-ops";
 import { AUTO_BANNERS, StatusPill } from "./ban-status";
 import { ReplayViewer } from "./replay-viewer";
+import { Portal } from "@/components/portal";
 
 interface Shot {
   id: string;
@@ -199,6 +200,7 @@ export function BanDetail({
   const shots = (d?.screenshots ?? []).map((s) => ({ ...s, safe: safeMediaUrl(s.url) })).filter((s) => s.safe);
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/75 px-3 py-6 sm:py-10" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="animate-rise relative flex w-full max-w-[860px] flex-col rounded-2xl border border-white/10 bg-[#0c0c0e] shadow-pop" role="dialog" aria-modal="true" aria-label="Ban details">
         {/* Header */}
@@ -537,5 +539,6 @@ export function BanDetail({
         </div>
       )}
     </div>
+    </Portal>
   );
 }

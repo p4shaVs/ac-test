@@ -282,6 +282,52 @@ console.log("\n== punishments: the action you pick is the action that runs ==");
     check("ban notes: capped at NOTES_MAX", parseBanNotes(JSON.stringify(many)).length === NOTES_MAX);
   }
 
+  console.log("\n== offline ban: identifiers staff paste ==");
+  {
+    const { parseIdentifiers, identityFrom, steam64ToHex } = await import("../../src/lib/identifiers");
+    const lic = "0123456789abcdef0123456789abcdef01234567";
+    const p = parseIdentifiers(`license:${lic.toUpperCase()}, 1263439606020313099\n76561198000000000 85.10.20.30:30120 license2:abc fivem:12 nonsense`);
+    const by = (k: string) => p.find((x) => x.kind === k);
+    check("licence is normalised to lower case with its prefix", by("license")?.value === `license:${lic}`);
+    check("a bare 17–20 digit number is a Discord ID", by("discord")?.value === "discord:1263439606020313099");
+    check("a SteamID64 becomes the FiveM steam: hex id", by("steam")?.value === "steam:1100001025e4c00" && steam64ToHex("76561197960265728") === "110000100000000");
+    check("an endpoint copied from a log loses its port", by("ip")?.value === "85.10.20.30");
+    check("license2 / fivem / junk are listed but never used", p.filter((x) => !x.usable).map((x) => x.kind).sort().join(",") === "fivem,license2,unknown");
+    check("IPv6 is not mistaken for a prefixed id", parseIdentifiers("2001:db8::1")[0]?.kind === "ip");
+    const id = identityFrom(p);
+    check("the ban stores licence, Steam, Discord and IP", "identity" in id && !!id.identity.license && !!id.identity.steam && !!id.identity.discord && id.identity.ip === "85.10.20.30");
+    const two = identityFrom(parseIdentifiers(`discord:1263439606020313099 discord:1263439606020313100`));
+    check("two Discord IDs are refused (two accounts = two bans)", "error" in two);
+    check("only unusable ids → refused", "error" in identityFrom(parseIdentifiers("license2:abc fivem:1")));
+  }
+
+  console.log("\n== Windows installer ==");
+  {
+    const { normaliseKey, publicApiBase } = await import("../../src/lib/install-key");
+    check("licence keys are trimmed and upper-cased", normaliseKey("  coreac-ab12-cd34 ") === "COREAC-AB12-CD34");
+    const h = (o: Record<string, string>) => new Headers(o);
+    check("APP_URL wins when it is a real address", publicApiBase("https://panel.example.com/", h({ host: "1.2.3.4:3000" })) === "https://panel.example.com");
+    check("localhost APP_URL falls back to the address the installer used", publicApiBase("http://localhost:3000", h({ host: "203.0.113.5:3000" })) === "http://203.0.113.5:3000");
+    check("…and to the proxy's https host", publicApiBase("http://localhost:3000", h({ host: "127.0.0.1:3000", "x-forwarded-host": "panel.example.com", "x-forwarded-proto": "https" })) === "https://panel.example.com");
+    check("local request keeps the local address", publicApiBase("http://localhost:3000", h({ host: "localhost:3000" })) === "http://localhost:3000");
+
+    // The exe and the .bat must recognise each other's server.cfg block, or one would add a second copy.
+    const bat = readFileSync(resolve(process.cwd(), "src/lib/installer-script.ts"), "utf8");
+    const cs = readFileSync(resolve(process.cwd(), "installer-win/src/InstallEngine.cs"), "utf8");
+    const marker = (src: string, re: RegExp) => (re.exec(src) ?? [])[1];
+    check(
+      "exe and .bat write the same managed-block markers",
+      marker(bat, /\$Begin = '([^']+)'/) === marker(cs, /Begin = "([^"]+)"/) && marker(bat, /\$End\s+= '([^']+)'/) === marker(cs, /End = "([^"]+)"/)
+    );
+    check("exe writes coreac_api / coreac_token / add_ace / ensure", ["set coreac_api", "set coreac_token", "add_ace resource.", '"ensure "'].every((s) => cs.includes(s)));
+
+    // The committed exe must be the build of the committed source (npm run build:installer).
+    const version = marker(readFileSync(resolve(process.cwd(), "installer-win/src/Program.cs"), "utf8"), /const string Version = "([^"]+)"/);
+    const exe = readFileSync(resolve(process.cwd(), "installer-win/CoreAC-Setup.exe"));
+    check("installer-win/CoreAC-Setup.exe is a Windows executable", exe[0] === 0x4d && exe[1] === 0x5a);
+    check(`the committed exe is version ${version} (rebuild with npm run build:installer)`, !!version && exe.includes(Buffer.from(`CoreAC Setup ${version}`, "utf16le")));
+  }
+
   console.log(`\n${total - failed}/${total} checks passed${failed ? `  —  ${failed} FAILED` : ""}`);
   process.exit(failed ? 1 : 0);
 })();

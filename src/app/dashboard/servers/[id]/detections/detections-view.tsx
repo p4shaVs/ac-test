@@ -8,6 +8,7 @@ import { Ago, Avatar, DetailEmpty, DetailShell, Field, FilterChips, JsonBlock, L
 import { evidenceEntries } from "@/lib/evidence";
 import { formatDateTime, safeMediaUrl, cn } from "@/lib/utils";
 import { ReplayViewer } from "../bans/replay-viewer";
+import { Portal } from "@/components/portal";
 
 export interface DetectionRow {
   id: string;
@@ -310,10 +311,12 @@ export function DetectionsView({
 
       {replay && selected && <ReplayViewer serverId={serverId} detectionId={selected.id} onClose={() => setReplay(false)} />}
       {shot && (
+        <Portal>
         <div className="fixed inset-0 z-[60] grid place-items-center bg-black/90 p-6" onMouseDown={() => setShot(null)}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={shot} alt="Screenshot" className="max-h-full max-w-full rounded-xl border border-white/10" referrerPolicy="no-referrer" />
         </div>
+        </Portal>
       )}
     </div>
   );

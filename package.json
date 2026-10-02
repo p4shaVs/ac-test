@@ -10,6 +10,7 @@
     "lint": "next lint",
     "check:ac": "node scripts/check-ac-consistency.js",
     "test:sim": "node tools/sim/run-all.cjs",
+    "build:installer": "node installer-win/build.cjs",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",

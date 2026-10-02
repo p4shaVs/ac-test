@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icons } from "@/components/icons";
 import { safeMediaUrl } from "@/lib/utils";
+import { Portal } from "@/components/portal";
 
 interface ReplayFrame {
   t: number;
@@ -138,6 +139,7 @@ export function ReplayViewer({
   const shots = data?.screenshots ?? [];
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
       <div
         className="w-full max-w-2xl rounded-2xl border border-white/10 bg-base-900 p-5 shadow-2xl"
@@ -233,6 +235,7 @@ export function ReplayViewer({
         )}
       </div>
     </div>
+    </Portal>
   );
 }
 

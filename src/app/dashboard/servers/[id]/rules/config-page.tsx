@@ -23,6 +23,7 @@ import {
 import { acField, buildCatalog, type CatalogCategory, type CatalogItem } from "@/lib/config-catalog";
 import { cn } from "@/lib/utils";
 import { ACTION_STYLE, ActionSelect, InfoTip, ListControl, NumberInput, SettingRow, TextInput, Toggle, type Value } from "./config-fields";
+import { Portal } from "@/components/portal";
 
 const CATALOG = buildCatalog();
 const TYPE_DEF = new Map(DETECTION_TYPES.map((d) => [d.type, d]));
@@ -572,6 +573,7 @@ function Drawer({
   }, [onClose]);
   const params = item.params.map((p) => acField(p)).filter(Boolean) as ACField[];
   return (
+    <Portal>
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <aside className="absolute right-0 top-0 flex h-full w-full max-w-[460px] flex-col border-l border-white/10 bg-[#0e0e10] shadow-pop">
@@ -667,5 +669,6 @@ function Drawer({
         </div>
       </aside>
     </div>
+    </Portal>
   );
 }

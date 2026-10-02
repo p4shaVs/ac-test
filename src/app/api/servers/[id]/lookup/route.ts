@@ -11,10 +11,16 @@ export const GET = handler(
     const q = (new URL(req.url).searchParams.get("q") ?? "").trim();
     if (q.length < 2) return ok({ results: [] });
 
+    // A Ban ID ("AC-7K3QP9") finds the banned player too.
+    const byCode = /^[a-z]{2,6}-[a-z0-9]{4,10}$/i.test(q)
+      ? await db.ban.findFirst({ where: { serverId: server.id, code: q.toUpperCase(), playerId: { not: null } }, select: { playerId: true } })
+      : null;
+
     const players = await db.player.findMany({
       where: {
         serverId: server.id,
         OR: [
+          ...(byCode?.playerId ? [{ id: byCode.playerId }] : []),
           { name: { contains: q } },
           { license: { contains: q } },
           { steam: { contains: q } },
