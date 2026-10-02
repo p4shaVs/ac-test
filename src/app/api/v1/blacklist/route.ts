@@ -20,7 +20,7 @@ export const GET = handler(async (req: NextRequest) => {
       enabled: true,
       kind: { in: ["vehicle", "ped", "object", "weapon"] },
     },
-    select: { kind: true, model: true, action: true },
+    select: { kind: true, model: true, label: true, action: true },
     take: 5000,
   });
   return ok({ blacklist: rows });

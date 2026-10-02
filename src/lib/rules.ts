@@ -1,7 +1,7 @@
 // Server-authoritative guards (Configuration → "Server Guards" tab).
 //
 // These toggles drive the checks that run entirely on the SERVER, reading
-// Aeigs.getRules() in the FiveM resource (protection.lua, vehicle_guard.lua,
+// CAC.getRules() in the FiveM resource (protection.lua, vehicle_guard.lua,
 // session_guard.lua, live.lua). They are separate from the "Protections" tab,
 // which configures the CoreAC client modules via CoreAC.Config.* (ac-config.ts).
 //
@@ -31,8 +31,9 @@ export const RULE_GROUPS: RuleGroup[] = [
     icon: "bolt",
     description: "Server-side weapon and damage checks",
     rules: [
-      { key: "anti_silent_aim", label: "Anti Silent Aim", description: "Compares the shooter's real aim vector against the victim on the server — a hit while not aiming at the target is impossible.", default: true },
-      { key: "anti_damage_multiplier", label: "Anti Damage Multiplier", description: "Flags single hits above a sane weapon-damage ceiling.", default: true },
+      { key: "anti_silent_aim", label: "Anti Silent Aim", description: "Compares where the shooter's crosshair was at the moment of the shot with where the victim really was (body size, lag and target speed allowed for). Firearms on foot only, add-on guns included. Two tiers, each with its own Log / Kick / Ban under Punishments: obvious silent aim (the crosshair more than 35° off, three hits in 12 seconds) and a subtle pattern (most of the last 16 hits at 12 m or more land 4° or more outside the allowance — the 'small FOV' magic bullet). Each hit is tried against every aim sample within 200 ms, so flicks never count; a gamepad gets a wider margin, fire from cover and shotgun spread are not measured by the subtle tier. A player who keeps hitting others while their game sends no usable aim data is flagged as anti-cheat tampering.", default: true },
+      { key: "anti_damage_multiplier", label: "Anti Damage Multiplier", description: "Catches damage boosts four ways: single hits above the weapon's ceiling; a player whose weapon stats are higher than every other player's copy of the same gun; hits that are 1.5x stronger than what other players deal with that gun (5 of the last 8 hits, or two hits at 3x — measured by the server from real hits, so add-on guns and your own weapon tuning never count, and it needs at least two other players to compare with); and repeated one-shot BODY kills on fully armoured players. Head shots and shotgun pellets are never counted.", default: true },
+      { key: "anti_headshot_rate", label: "Headshot Rate Review", description: "Report-only. Flags a player whose last 10 kills include 9 single head shots from 15 m or more, for staff to review. Never kicks or bans — good players in a one-tap meta can get there too.", default: true },
       { key: "anti_explosive_bullets", label: "Anti Explosive Bullets", description: "Detects bullet-type explosions fired in quick succession.", default: true },
       { key: "anti_illegal_weapon", label: "Anti Illegal Weapon Damage", description: "Flags weapon damage far beyond any real weapon.", default: true },
       { key: "anti_rapid_fire", label: "Anti Rapid Fire", description: "Report-only. Notes fire rates no real weapon can reach; never bans on its own.", default: true },
@@ -46,11 +47,24 @@ export const RULE_GROUPS: RuleGroup[] = [
     icon: "cube",
     description: "Server checks on vehicles, health and position",
     rules: [
+      { key: "anti_vehicle_speed", label: "Anti Vehicle Speed Hack", description: "The server reads every driven vehicle's real speed itself — the player's game cannot fake it. Held for 3 seconds above a ceiling no real vehicle reaches (cars 450 km/h, bikes 396, boats 270, helicopters 396, planes 720) = speed hack. Teleports never count; kicks at most.", default: true },
       { key: "anti_vehicle_godmode", label: "Anti Vehicle Godmode", description: "Detects a vehicle that takes real damage but never loses body health. Blames the driver.", default: true },
       { key: "anti_out_of_bounds", label: "Anti Out of Bounds", description: "Flags teleporting far outside the world bounds (under the map / into objects).", default: true },
       { key: "anti_explosion_spam", label: "Anti Explosion Spam", description: "Report-only. Notes players creating explosions unusually fast.", default: true },
       { key: "anti_armor_regen", label: "Anti Armor Regeneration", description: "Report-only. Notes armour rising sharply without a pickup, outside revives.", default: false },
       { key: "anti_instant_repair", label: "Anti Instant Repair", description: "Report-only. Notes a wrecked vehicle jumping to full health; legit mechanics do this too.", default: false },
+    ],
+  },
+  {
+    id: "crash",
+    label: "Anti-Crash",
+    icon: "shield",
+    description: "Stops a cheater from crashing other players — blocked before it reaches them",
+    rules: [
+      { key: "anti_crash_models", label: "Block Crash Models", description: "Cancels the spawn of models that crash every game that loads them (the slod_* skeleton peds and known crash props). A slod ped is reported on the first try — no script uses one; a crash prop after two tries in 10 seconds. Giant troll props are left to the Models page, because some map scripts use them.", default: true },
+      { key: "anti_crash_attach", label: "Block Attaching to Other Players", description: "Every 2 seconds the server removes vehicles and NPCs that one player attached to ANOTHER player's character (the 'car on the head' crash), and props when 3 or more are stuck to someone else. Your own phone, box or bike, and carry / drag scripts that attach players, are never touched.", default: true },
+      { key: "anti_crash_flood", label: "Flood Shield", description: "One player creating 60+ script entities in 2 seconds, 25+ particle effects in 2 seconds or 25+ projectiles in 3 seconds is cut off for 5 seconds and reported once. Particles larger than scale 50 — no real effect is that big — are always dropped. Traffic and ambient peds never count, and Safe Scripts are ignored.", default: true },
+      { key: "anti_crash_events", label: "Block Crash Events", description: "Cancels the phone-explosion request and kick votes (no FiveM script uses either) and a flood of scripted tasks on other players (more than 6 in 10 seconds — single tasks from police or tackle scripts pass).", default: true },
     ],
   },
   {
@@ -61,6 +75,7 @@ export const RULE_GROUPS: RuleGroup[] = [
     rules: [
       { key: "anti_chat_flood", label: "Anti Chat Flood", description: "Blocks chat spam (only if a resource fires the chatMessage event).", default: true },
       { key: "anti_event_flood", label: "Anti Event Flood", description: "Flags a player spamming the anti-cheat's own control events far past any legitimate rate (crash / exploit tools). Ignores per-shot, position and join events, so normal play never trips it; kicks at most, never bans.", default: true },
+      { key: "anti_ban_evasion", label: "Ban Evasion Block", description: "Remembers the computer of every banned player (FiveM hardware tokens plus a hidden marker saved on their PC). A banned player who comes back on a new Steam/Discord/Rockstar account is blocked at connect and the new account is banned too, linked to the original Ban ID. Two players sharing one PC count as the same computer — add the innocent one to the Trust Whitelist.", default: true },
       { key: "anti_reconnect_spam", label: "Anti Reconnect Spam", description: "Report-only. Flags the same identifier reconnecting many times in two minutes.", default: true },
       { key: "anti_resource_mismatch", label: "Anti Resource Mismatch", description: "Warns when a resource outside your allowlist starts. Requires Config.AllowedResources to be set in config.lua, otherwise it does nothing.", default: false },
     ],

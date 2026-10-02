@@ -8,49 +8,70 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Core dark surface palette (referans panellerdeki koyu lacivert/siyah tonlar)
+        // ---------------------------------------------------------------------
+        // Monochrome design system (2026-10): near-black surfaces, off-white text,
+        // colour only where it means something (online / kick / ban / danger).
+        // ---------------------------------------------------------------------
+        // Surfaces, darkest first.
         base: {
-          950: "#05060a",
-          900: "#0a0c14",
-          850: "#0d1019",
-          800: "#111420",
-          750: "#151a29",
-          700: "#1b2233",
-          600: "#232c42",
-          500: "#2e3852",
+          950: "#070708",
+          900: "#0b0b0c",
+          850: "#0f0f11",
+          800: "#131315",
+          750: "#18181a",
+          700: "#1f1f22",
+          600: "#2a2a2e",
+          500: "#38383d",
         },
-        // Brand accent (mavi -> mor gradient vurgu)
+        // "Brand" is the neutral highlight: tints (bg-brand-500/10, border-brand-500/40),
+        // light accent text (text-brand-300) and graphite gradients (brand-800/900).
         brand: {
-          50: "#eef2ff",
-          100: "#e0e7ff",
-          200: "#c7d2fe",
-          300: "#a5b4fc",
-          400: "#818cf8",
-          500: "#6366f1",
-          600: "#4f46e5",
-          700: "#4338ca",
-          800: "#3730a3",
-          900: "#312e81",
+          50: "#ffffff",
+          100: "#fafafa",
+          200: "#f0f0f2",
+          300: "#dcdce0",
+          400: "#a8a8b0",
+          500: "#ececef",
+          600: "#c4c4ca",
+          700: "#8a8a92",
+          800: "#46464c",
+          900: "#28282c",
+        },
+        // Neutral text scale instead of the blue-tinted slate (all text-slate-* in the app).
+        slate: {
+          50: "#fafafa",
+          100: "#f2f2f3",
+          200: "#e4e4e7",
+          300: "#cfcfd4",
+          400: "#a3a3aa",
+          500: "#7c7c84",
+          600: "#55555c",
+          700: "#3c3c42",
+          800: "#26262a",
+          900: "#17171a",
+          950: "#0c0c0e",
         },
         accent: {
-          cyan: "#22d3ee",
-          violet: "#a855f7",
-          emerald: "#10b981",
-          amber: "#f59e0b",
-          rose: "#f43f5e",
+          cyan: "#7dd3fc",
+          violet: "#c4b5fd",
+          emerald: "#34d399",
+          amber: "#fbbf24",
+          rose: "#fb7185",
         },
       },
       fontFamily: {
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        mono: ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "Liberation Mono", "monospace"],
       },
       boxShadow: {
-        glow: "0 0 0 1px rgba(99,102,241,0.25), 0 8px 40px -12px rgba(99,102,241,0.45)",
-        card: "0 1px 0 0 rgba(255,255,255,0.04) inset, 0 12px 40px -20px rgba(0,0,0,0.9)",
+        glow: "0 0 0 1px rgba(255,255,255,0.10), 0 12px 32px -14px rgba(0,0,0,0.9)",
+        card: "0 1px 0 0 rgba(255,255,255,0.035) inset, 0 16px 40px -24px rgba(0,0,0,0.95)",
+        pop: "0 0 0 1px rgba(255,255,255,0.08), 0 24px 60px -20px rgba(0,0,0,0.95)",
       },
       backgroundImage: {
-        "brand-gradient": "linear-gradient(135deg, #6366f1 0%, #a855f7 100%)",
+        "brand-gradient": "linear-gradient(180deg, #2c2c31 0%, #1a1a1d 100%)",
         "grid-faint":
-          "linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px)",
+          "linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)",
       },
       keyframes: {
         "fade-in": {
@@ -81,9 +102,9 @@ const config: Config = {
           "100%": { transform: "translateX(100%)" },
         },
         "pulse-ring": {
-          "0%": { boxShadow: "0 0 0 0 rgba(99,102,241,0.4)" },
-          "70%": { boxShadow: "0 0 0 10px rgba(99,102,241,0)" },
-          "100%": { boxShadow: "0 0 0 0 rgba(99,102,241,0)" },
+          "0%": { boxShadow: "0 0 0 0 rgba(255,255,255,0.25)" },
+          "70%": { boxShadow: "0 0 0 10px rgba(255,255,255,0)" },
+          "100%": { boxShadow: "0 0 0 0 rgba(255,255,255,0)" },
         },
         marquee: {
           from: { transform: "translateX(0)" },
@@ -99,7 +120,7 @@ const config: Config = {
         "slide-up": "slide-up 0.6s cubic-bezier(0.22,1,0.36,1) both",
         "slide-in": "slide-in 0.5s cubic-bezier(0.22,1,0.36,1) both",
         "scale-in": "scale-in 0.4s cubic-bezier(0.22,1,0.36,1) both",
-        "page-enter": "page-enter 0.5s cubic-bezier(0.22,1,0.36,1) both",
+        "page-enter": "page-enter 0.5s cubic-bezier(0.22,1,0.36,1) backwards",
         float: "float 5s ease-in-out infinite",
         shimmer: "shimmer 1.6s infinite",
         "pulse-ring": "pulse-ring 2s ease-out infinite",

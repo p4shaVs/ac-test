@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { handler, ok, ApiError } from "@/lib/api";
 import { authenticateServer } from "@/lib/server-auth";
 import { rateLimit } from "@/lib/ratelimit";
+import { parseScope } from "@/lib/bypass";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +15,10 @@ export const GET = handler(async (req: NextRequest) => {
   if (!_rl.success) throw new ApiError(429, "Rate limit");
   const rows = await db.whitelist.findMany({
     where: { serverId: server.id },
-    select: { kind: true, value: true },
+    select: { kind: true, value: true, scope: true },
     take: 5000,
   });
-  return ok({ whitelist: rows });
+  // full = exempt from everything. Scoped entries are NOT skipped in-game: the
+  // checks still run and the panel decides per detection type.
+  return ok({ whitelist: rows.map((r) => ({ kind: r.kind, value: r.value, full: parseScope(r.scope).length === 0 })) });
 });

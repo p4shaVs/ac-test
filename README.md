@@ -1,405 +1,150 @@
-# Core Shield Anti-Cheat
+# CoreAC
 
-FiveM için **SaaS anti-cheat** platformu: web panel (Next.js) + lisans/key sistemi +
-FiveM Lua resource (client tespitleri + sunucu korumaları). Panelden kurallar açılır,
-key üretilir, sunucular yönetilir; oyun içinde hileler tespit edilip otomatik banlanır.
+FiveM için anti-cheat platformu: **web panel** (Next.js) + **lisans sistemi** + **FiveM resource** (Lua).
+Panelden kurallar ve aksiyonlar yönetilir, oyun sunucusu panele bağlanır, tespitler canlı akar.
 
-> **Kısa yol:** Kurulum için [Hızlı başlangıç](#4-hızlı-başlangıç-lokal) bölümü.
-> FiveM resource kurulumu için [FiveM Resource](#7-fivem-resource-kurulumu) bölümü.
-> Şu an **yerel/tek makine** kurulumu için yapılandırılmış (SQLite, `npm run dev`).
+> **Kurulum:** [KURULUM.md](KURULUM.md) — `kurulum.bat` → `baslat.bat`, hepsi çift tık.
 
 ---
 
-## İçindekiler
-1. [Mimari genel bakış](#1-mimari-genel-bakış)
-2. [Teknoloji yığını](#2-teknoloji-yığını)
-3. [Proje yapısı](#3-proje-yapısı)
-4. [Hızlı başlangıç (lokal)](#4-hızlı-başlangıç-lokal)
-5. [Ortam değişkenleri](#5-ortam-değişkenleri)
-6. [Veritabanı & seed](#6-veritabanı--seed)
-7. [FiveM resource kurulumu](#7-fivem-resource-kurulumu)
-8. [Key / lisans sistemi](#8-key--lisans-sistemi)
-9. [Roller ve sayfalar](#9-roller-ve-sayfalar)
-10. [Tespit sistemi (anti-cheat)](#10-tespit-sistemi-anti-cheat)
-11. [Hile test/kayıt modu](#11-hile-testkayıt-modu)
-12. [REST API (v1) referansı](#12-rest-api-v1-referansı)
-13. [Güvenlik notları](#13-güvenlik-notları)
-14. [Sık sorunlar](#14-sık-sorunlar)
+## Günlük komutlar (Windows)
+
+| Dosya | Ne yapar |
+|---|---|
+| `kurulum.bat` | İlk kurulum: paketler, `.env` (rastgele gizli anahtarlar), veritabanı, admin hesabı, derleme. Tekrar çalıştırmak güvenli. |
+| `baslat.bat` | Paneli üretim modunda başlatır (`next start`). |
+| `guncelle.bat` | Panel kapalıyken: `git pull` + paketler + veritabanı şeması + derleme. |
+| `admin-sifre.bat` | Admin şifresini sıfırlar ve yenisini yazar. |
+| `panel-adresi.bat` | Panelin dışarıdan erişilen adresini (`APP_URL`) ayarlar; installer bu adresi kullanır. |
+
+Aynı işler npm ile: `npm run setup`, `npm run panel`, `npm run panel:update`, `npm run admin:reset`.
+Arka planda hepsi `scripts/panel.mjs`'i çağırır.
+
+Geliştirici kontrolleri: `npm run check:ac` (panel ↔ Lua tutarlılığı), `npx tsc --noEmit`.
 
 ---
 
-## 1) Mimari genel bakış
+## Mimari
 
 ```
-┌──────────────────┐        HTTPS (Bearer aeigs_srv_…)      ┌─────────────────────┐
-│  FiveM Sunucusu  │  ─────────────────────────────────►    │   Web Panel (Next)  │
-│  aeigs-anticheat │   heartbeat / players / detections      │   /api/v1/*  (REST) │
-│  (Lua resource)  │  ◄─────────────────────────────────    │                     │
-│                  │   pending actions / commands / rules    │   Prisma ← SQLite   │
-└──────────────────┘                                         └─────────────────────┘
-        ▲                                                              ▲
-        │ oyun içi tespitler (client/detections/*.lua)                │ panel (owner/admin)
-        │ sunucu korumaları (server/*.lua)                            │ dashboard + admin
+FiveM sunucusu (resource: coreac, gizli klasör adıyla)          Web panel (Next.js, SQLite/Prisma)
+  client/*   oyuncunun oyununda çalışan kontroller   ──────►   /api/v1/*   (Bearer coreac_srv_…)
+  server/*   sunucunun kendi ölçtüğü kontroller      ◄──────   aksiyonlar, komutlar, kurallar
 ```
 
-- **Client Lua** her hileyi ayrı dosyada tespit eder → sunucuya raporlar.
-- **Server Lua** olay-tabanlı korumalar (silah/patlama/silent aim/godmode) + panele köprü.
-- **Web panel** kuralları/keyleri/banları yönetir; `/api/v1` üzerinden resource ile konuşur.
-- **DB (SQLite)** kullanıcı, lisans, sunucu, oyuncu, ban, tespit, log, denetim kayıtlarını tutar.
+- `fivem-resource/coreac/` — Lua resource. Panelin **Download** sayfasındaki installer bunu sunucuya kurar.
+- `src/app/api/v1/` — resource'un konuştuğu API (heartbeat, detections, bans, blacklist, whitelist, admins, positions, screenshot…).
+- `src/lib/detection-actions.ts` — **tüm tespit tiplerinin tek kaynağı**: ad, kategori, güven seviyesi, varsayılan aksiyon.
 
----
+## Tespit felsefesi — yanlış ban olmadan koruma
 
-## 2) Teknoloji yığını
+Her tespit tipinin bir güven seviyesi vardır. Seviye, **kutudan çıkan varsayılanı** ve panelde her satırın yanındaki "recommended up to" önerisini belirler:
 
-| Katman | Teknoloji |
-|--------|-----------|
-| Web framework | Next.js 14 (App Router) |
-| Dil | TypeScript, React 18 |
-| DB / ORM | SQLite + Prisma 5 |
-| Kimlik doğrulama | Kendi JWT'si (`jose`) + `bcryptjs` (parola) |
-| Doğrulama | `zod` |
-| Grafik/3D | `recharts`, `three` (3D harita) |
-| Stil | Tailwind CSS |
-| Oyun tarafı | FiveM Lua (client + server) |
-
----
-
-## 3) Proje yapısı
-
-```
-Aeigs-anticheat/
-├─ prisma/
-│  ├─ schema.prisma          # 18 model (User, Server, LicenseKey, Ban, Detection, …)
-│  └─ seed.ts                # admin + demo kullanıcı + örnek veri
-├─ src/
-│  ├─ app/
-│  │  ├─ (auth)/             # login / register
-│  │  ├─ dashboard/          # müşteri paneli (sunucular, banlar, harita, kurallar…)
-│  │  ├─ admin/              # admin paneli (keyler, ürünler, kullanıcılar, denetim)
-│  │  ├─ api/
-│  │  │  ├─ v1/…             # FiveM-facing REST API (Bearer token)
-│  │  │  └─ …                # panel API'leri (oturum tabanlı)
-│  │  ├─ pricing/ ban/ docs/ # public sayfalar
-│  │  └─ page.tsx            # landing
-│  └─ lib/                   # db, jwt, session, keys, features, rules, bypass, …
-├─ fivem-resource/aeigs-anticheat/
-│  ├─ fxmanifest.lua
-│  ├─ config.lua
-│  ├─ client/
-│  │  ├─ core.lua            # paylaşılan durum + yardımcılar (İLK yüklenir)
-│  │  ├─ detections/*.lua    # her hile ayrı dosya
-│  │  ├─ main.lua            # konum/ekran görüntüsü
-│  │  └─ admin.lua           # oyun içi yönetici: /ac komutları + görsel NUI menü (/acmenu, F6)
-│  ├─ html/                  # NUI admin menü (menu.html/.css/.js)
-│  └─ server/
-│     ├─ http.lua main.lua live.lua protection.lua
-│     ├─ godmode_guard.lua   # godmode 3. katman (server tarafı hasar-emilimi)
-│     └─ recorder.lua        # hile test kaydı
-└─ README.md
-```
-
----
-
-## 4) Hızlı başlangıç (lokal)
-
-> Proje **SQLite** kullanır — ekstra veritabanı sunucusu kurmaya gerek yok,
-> her şey `dev.db` dosyasında tutulur. Tamamen tek makinede (yerel) çalışır.
-
-```bash
-# 1. Bağımlılıklar
-npm install
-
-# 2. Ortam dosyası
-cp .env.example .env
-#   Windows PowerShell'de: copy .env.example .env
-#   AUTH_SECRET ve LICENSE_HMAC_SECRET'i rastgele, uzun bir değerle değiştir.
-
-# 3. Tabloları oluştur + örnek veri
-npm run db:push
-npm run db:seed
-
-# 4. Geliştirme sunucusu
-npm run dev        # http://localhost:3000
-```
-
-Seed sonrası giriş bilgileri:
-- **Admin:** `admin@aeigs.gg` — parola `SEED_ADMIN_PASSWORD` ortam değişkeninden alınır; verilmezse seed rastgele bir parola üretip **bir kez** konsola yazar. Sabit/bilinen bir admin parolası yoktur.
-- **Demo:** `/api/demo` adresi herkesi paylaşılan demo hesabına **salt-okunur** olarak sokar (tüm yazma istekleri 403). Demo hesabı normal giriş formundan açılsa bile salt-okunurdur.
-
-> ⚠️ Daha önce seed çalıştırdıysan eski `Admin1234` parolası veritabanında durur — ilk girişte değiştir.
-
-### npm script'leri
-| Script | Ne yapar |
-|--------|----------|
-| `npm run dev` | Geliştirme sunucusu |
-| `npm run build` | `prisma generate && next build` |
-| `npm start` | Prod sunucusu (build sonrası) |
-| `npm run db:push` | Şemayı DB'ye uygular |
-| `npm run db:seed` | Örnek veriyi ekler |
-| `npm run db:studio` | Prisma Studio (DB görüntüleyici) |
-| `npm run lint` | ESLint |
-
----
-
-## 5) Ortam değişkenleri
-
-`src/lib/env.ts` açılışta bunları **zod** ile doğrular; eksik/zayıfsa uygulama başlamaz.
-
-| Değişken | Zorunlu | Kural | Açıklama |
-|----------|:------:|-------|----------|
-| `DATABASE_URL` | ✅ | min 1 | SQLite dosya yolu, örn. `file:./dev.db` |
-| `AUTH_SECRET` | ✅ | **≥32 karakter** | Oturum JWT imzalama anahtarı. `openssl rand -base64 48` |
-| `LICENSE_HMAC_SECRET` | ✅ | **≥16 karakter** | Lisans/API token imzalama tuzu. Kurulumdan sonra DEĞİŞTİRME |
-| `APP_URL` | ⛔ (varsayılan localhost) | URL | Uygulama temel URL'i |
-| `NODE_ENV` | otomatik | enum | development/production/test |
-
-> `AUTH_SECRET` değişirse tüm oturumlar düşer. `LICENSE_HMAC_SECRET` değişirse
-> tüm sunucu API token'ları geçersiz olur (yeniden token üretmek gerekir).
-
----
-
-## 6) Veritabanı & seed
-
-Prisma şeması **18 model** içerir:
-
-`User`, `Session`, `Product`, `Order`, `LicenseKey`, `Server`, `Whitelist`,
-`Blacklist`, `ScreenshotRequest`, `ServerCommand`, `ServerAdmin`, `Player`,
-`Ban`, `ServerResource`, `Detection`, `PunishAction`, `ServerLog`, `AuditLog`.
-
-Öne çıkanlar:
-- **LicenseKey** — `AEIGS-XXXX-XXXX-XXXX-XXXX` formatı, durum (ACTIVE/REVOKED/SUSPENDED),
-  süre, ürün ilişkisi.
-- **Server** — sahibi, `apiTokenHash` (ham token saklanmaz), kurallar (JSON), heartbeat.
-- **Player** — lisans başına kimlik, `trustScore` (tespitlerle düşer).
-- **Ban** — ban kodu, sebep, kim/ne zaman, kalıcı/süreli.
-- **Detection** — tip, severity, detay (JSON), oyuncu.
-
-Şema değişince: `npm run db:push` (dev) veya migration akışın.
-
----
-
-## 7) FiveM resource kurulumu
-
-1. `fivem-resource/aeigs-anticheat` klasörünü sunucunun `resources/` dizinine kopyala.
-2. `server.cfg`'ye ekle (panelden **Ayarlar**'dan al):
-   ```cfg
-   set aeigs_api   "http://SUNUCU-IP-VEYA-DOMAIN:3000/api/v1"
-   set aeigs_token "aeigs_srv_xxxxxxxxxxxxxxxx"
-   ensure aeigs-anticheat
-   ```
-3. (Opsiyonel) Ekran görüntüsü için `screencapture` resource'unu kur ve **tek bir**
-   `ensure screencapture` satırı ekle. Yükleme adresi panelden otomatik türetilir.
-
-### Yükleme sırası (fxmanifest)
-`config → client/core.lua → detections/*.lua → main.lua → admin.lua`
-(server tarafı: `http → main → live → protection → godmode_guard → recorder`).
-**`core.lua` ilk yüklenmeli** — tüm tespitler onun paylaşılan durumunu kullanır.
-
-### `config.lua` başlıca ayarlar
-| Ayar | Varsayılan | Açıklama |
-|------|-----------|----------|
-| `aeigs_api` / `aeigs_token` | convar | Panel API adresi ve sunucu token'ı |
-| `MaxWeaponDamage` | 400 | Bilinmeyen/addon silahlar için tek atış hasar tavanı (vanilla silahlar sınıf bazlı tavan kullanır: pistol/smg 250, rifle 320, mg 380, shotgun 500, sniper 900 — `bridge/weapon_data.lua`) |
-| `GodmodeMinHits/MinDamage/Strikes` | 5/150/2 | Sunucu tarafı godmode (hasar-emilimi) eşikleri |
-| `HeartbeatInterval` vb. | saniye | Panel senkron aralıkları |
-
----
-
-## 7b) Ağ itibarı (global ban ağı)
-
-Bir müşterinin sunucusunda **kalıcı** banlanan oyuncu, ağdaki diğer sunuculara
-girişte sinyal olur. Rakiplerden ayrışma noktası; **false-ban üretmeyecek**
-şekilde tasarlandı:
-
-- **Gizlilik:** paylaşılan tabloda ham kimlik YOK — yalnızca keyed-HMAC hash
-  (license/steam/discord). **IP hiç paylaşılmaz.**
-- **Zehirlenmeye direnç:** oyuncu ancak **≥ 2 FARKLI sahip** (owner) tarafından
-  banlanınca "flag" olur (`NETWORK_MIN_OWNERS`, `src/lib/network-bans.ts`). Tek
-  bir müşteri masum oyuncuyu ağ-geneli damgalayamaz.
-- **Asla ban yok:** ağ bir sinyaldir, kanıt değil. Sunucunun kendi politikası
-  (Sunucu → Ayarlar → *Network reputation*) kararı verir: **Off / Log / Kick**.
-  Varsayılan **Log** (içeri alır, panelde + Discord'da işaretler).
-- **Adalet:** yerel **unban**, o sahibin ağ katkısını pasifleştirir — hatalı ban
-  oyuncuyu ağda kalıcı damgalamaz.
-- **Hataya dayanıklı:** panel yavaş/erişilemezse giriş **engellenmez** (fail-open).
-
-Kaynak, girişte (yerel ban kontrolü geçince) `POST /api/v1/network/check` çağırır;
-panel `{ flagged, action, distinctOwners }` döner. Flag'li tespit panelde
-`NETWORK_BAN` tipiyle görünür.
-
----
-
-## 7c) Oyun içi yönetim paneli (F6 / `/acmenu`)
-
-Ekranın ortasında açılan büyük NUI paneli — webde yapılanların çoğu oyunda:
-
-| Sekme | İçerik | Gerekli izin |
+| Seviye | Önerilen en fazla | Ne demek |
 |---|---|---|
-| **Players** | Canlı liste (arama, ping) + oyuncu kartı: can/zırh, güven puanı, oyun süresi, geçmiş, lisans/Discord (IP asla) | herhangi bir izin |
-| | Aksiyonlar: Spectate, Revive, Go to, Bring, Freeze/Unfreeze, Screenshot, Warn, Kick, **Ban (1 saat → kalıcı)** | ilgili izin |
-| **Bans** | Aktif banlar + **oyun içinden Unban** | `ban` / `unban` |
-| **Kicks / Warnings** | Son kick/uyarı kayıtları | `kick` / `warn` |
-| **Detections / Server Logs** | AC tespitleri ve sunucu logları | `logs` |
-| **Server** | Duyuru, yetkilerin, oturum bilgisi | `announce` (duyuru) |
+| **confirmed** | BAN | Sunucunun kendi ölçtüğü, kandırılamayan kanıt (vurulduğu hâlde canı düşmeyen oyuncu, fizik hızının açıklamadığı NoClip uçuşu, kara listedeki model, imkânsız isabet açısı…). |
+| **strong** | KICK | Belirgin ama oyuncunun kendi bilgisayarından gelen sinyal. Hile istemcisi bu süreci kontrol ettiği için kesin kanıt sayılmaz. |
+| **heuristic** | LOG | Zayıf sinyal; yalnızca incelemek için. |
 
-İzinler panelden verilir (Server → Admins). Yeni izinler: **`unban`**, **`logs`**.
-Güvenlik: panel sadece arayüzdür — her aksiyon ve her veri isteği sunucuda
-`Aeigs.hasPerm` + oran sınırından geçer; oyuncu adları/sebepler XSS'e karşı düz
-metin olarak basılır. Admin kendini kick/ban/spectate edemez (kendi satırında
-yalnızca Revive).
+- **Seçtiğin aksiyon aynen uygulanır** (Configuration sayfasında her korumanın yanındaki Log / Kick / Ban menüsü). Her tespit için Log / Kick / Ban seçilebilir; önerinin üstüne çıkarsan satır uyarı gösterir (meşru bir oyuncu o kontrole takılırsa cezalanır). Dokunmadığın tiplerde varsayılan güvenli davranış sürer: oyuncunun kendi oyunundan gelen "confirmed" rapor **strong**'a düşer (KICK), bazı tipler (ör. NoClip) sunucu kanıtıyla BAN'a, oyuncu raporuyla KICK'e gider (`serverConfidence`). Satırda Ban'a kendin tıklarsan sınır kalkar: o tipin her raporu banlar.
+- Seçimi yine de geçersiz kılanlar: Trust whitelist'teki oyuncu, sunucu yetkilileri (*Never punish server staff*), Log-Only Mode / Enable Bans kapalıyken ve lisansında **Auto Ban** özelliği yoksa (BAN → KICK; Configuration sayfası bunu en üstte yazar).
+- **Önce koru, sonra kanıtla cezalandır:** fırlatılan araç anında silinir, yasaklı obje hiç oluşmaz, patlama seli iptal edilir. Ceza ise ancak failin kim olduğu kesinse verilir.
+- Meşru durumlar otomatik tanınır: ekran karartılarak yapılan script ışınlamaları, framework ölü/yaralı durumu, txAdmin ve qb-adminmenu araçları. Sunucunun doğruladığı yetkililer (Settings → *Never punish server staff*) cezalandırılmaz, tespitleri "Staff" etiketiyle loglanır.
 
-İzleme artık düzgün: admin dondurulur (düşüp ölmez, noclip tespitine takılmaz),
-**Stop** ile sunucu onaylı ışınlanmayla eski konumuna döner. `/ac spectate 0` da çalışır.
+## Korumalar (özet)
 
----
+| Alan | Nasıl |
+|---|---|
+| NoClip / Teleport | Client: fizik hızı ile yer değiştirme karşılaştırması. Sunucu: 4 sn açıklanamayan hareket → NOCLIP (BAN), tek sıçrama → TELEPORT (varsayılan LOG). |
+| Godmode | Sunucu: vurulup canı düşmeyen oyuncu (BAN). Client: çatışma sırasında süren dokunulmazlık (KICK). |
+| Silent aim | Sunucu, her isabette atıcının o anki nişan ışınını kurbanın gerçek yeriyle karşılaştırır (gövde boyu, ağ gecikmesi ve kurban hızı payı düşülür). İki kademe, her birinin kendi Log/Kick/Ban ayarı var: **Silent Aim** (ışın 35°+ dışında, 12 sn'de 3 isabet) ve **Silent Aim (subtle)** — son 16 isabetin çoğu ışının 4°+ dışına (payın ötesine) düşüyorsa, yani "küçük FOV'lu sihirli mermi". Her isabet ±200 ms'deki tüm nişan örnekleriyle denenir (flick'ler suçlanmaz); gamepad için eşik 9°, siperden ateş ve pompalı saçması subtle kademede ölçülmez; atıcıdan 15 m'den uzak "kamera" örneği uydurma sayılır. |
+| Hasar hilesi | Dört yol: sınıf tavanı; oyuncuların bildirdiği silah istatistiği (başkalarından yüksekse); **diğer oyuncuların aynı silahla gerçek isabet hasarıyla kıyas** (`Damage Boost`: son 8 isabetin 5'i 1.5 katı ya da 3 katı iki isabet; referans, en az 2 başka oyuncunun en yüksek hasarlarının alt ortancası — tek hileci referansı kaldıramaz, eklenti silahlarda ve sunucunun kendi hasar ayarında yanlış alarm vermez); dolu zırhlı oyuncuya tekrarlanan gövde tek atışı. Kafa vuruşu ve pompalı saçması sayılmaz. |
+| FreeCam | Oyuncudan 80 m+ uzakta tutulan script kamerası (KICK); eski geometrik kontroller yalnızca log. |
+| Sınırsız mermi | Atış başına mermi düşmüyor, 10 sn'de iki doğrulama (KICK). |
+| Araç fırlatma / araç yağmuru | Sunucu: 250 km/h üstünde uçan sürücüsüz araç silinir; tekrar eden sahibi cezalandırılır. Dakikalık araç spawn sınırı. |
+| Patlama | Kara liste, görünmez/sessiz patlama, limit; 10 sn'de 8+ patlama (araç patlamaları dahil) iptal edilir. |
+| Ses / megafon trolü | interact-sound: herkese / dev yarıçapa / 1.0 üstü ses / spam (sunucu); 100 m+ ses menzili (client). |
+| Executor | AC durdurma (sunucu canlılık kontrolü), resource enjeksiyonu, overlay, Lua menü, tuzak olaylar (client + **sunucu**). |
+| AC'yi susturma (hook) | `client/integrity.lua`: yüklenirken `TriggerServerEvent`, `AddEventHandler`, `CreateThread`, `Wait`… ve CoreAC'nin kendi rapor fonksiyonlarının orijinalleri saklanır; 15 sn'de bir karşılaştırılır. Executor bunlardan birini değiştirirse (raporları yutmak için) orijinal kanaldan **AC_TAMPER** gider. Canlılık kontrolü de sürdüğü için resource'u durdurmak ayrıca yakalanır. |
+| Anti-crash | `server/crash_guard.lua` — dört ayrı anahtar (Configuration → Anti-Crash): **crash modelleri** (slod_* yayalar, bilinen crash propları — oluşmadan iptal), **başka oyuncuya bağlanan araç/NPC/prop** (2 sn'de bir taranır, silinir), **flood kalkanı** (2 sn'de 60 varlık, 25 parçacık, 3 sn'de 25 mermi; aşan oyuncunun o türü 5 sn kilitlenir, 50+ ölçekli parçacık iptal), **crash olayları** (telefon patlaması, sahte kick oylaması, başka oyuncunun yayasına görev seli). Güvenilen script'lerin (Safe Scripts) varlıklarına dokunulmaz. Tipler: CRASH_ATTEMPT (confirmed), ENTITY_FLOOD (strong → KICK). |
+| Model kara listesi | Araç/ped/obje/silah; sunucu `entityCreating` ile oluşumu iptal eder. Hazır **Troll & giant props** paketi (~300 dev obje). |
 
-## 8) Key / lisans sistemi
+## Configuration sayfası
 
-Akış:
+Tek sayfa: solda kategori dizini (Injection & Executors, Anti-Crash, Movement, Weapons & Aim, Damage, Health & Armor, Visual & Camera,
+Vehicles, Peds & Objects, Explosions & Particles, Session & Network), her korumada **ad · ⓘ açıklama · ✎ ayrıntı · Log/Kick/Ban · aç/kapa**.
+Kalem açılan çekmecede alt tespitlerin ayrı cezaları ve eşik değerleri durur. Sayfanın altında sunucu ayarları (aşağıda) yer alır;
+arama, içe/dışa aktarma (JSON) ve tek "Save" ile config + kurallar + cezalar birlikte kaydedilir. Satırların kaynağı
+`src/lib/config-catalog.ts`; `npm run test:sim` her anahtarın, kuralın ve tespit tipinin sayfada bir satırı olduğunu denetler.
 
-1. **Admin panel → Keyler** — key üretilir: `AEIGS-XXXX-XXXX-XXXX-XXXX`
-   (kriptografik rastgele; `0/O`, `1/I` gibi karışan karakterler yok).
-2. **Müşteri → Kod Kullan (Redeem)** — key'i hesabına tanımlar; bir **Server** oluşur.
-3. **Sunucu API token'ı** üretilir: `aeigs_srv_…`. Ham token **yalnızca bir kez**
-   gösterilir; DB'de sadece **HMAC hash** saklanır (sızarsa token kullanılamaz).
-4. FiveM resource bu token ile `Authorization: Bearer aeigs_srv_…` başlığıyla
-   `/api/v1`'e bağlanır.
-5. Her istekte lisans doğrulanır: **REVOKED/SUSPENDED** → 403, **süresi dolmuş** → 403.
+## Sunucu ayarları (Configuration sayfasının alt bölümü)
 
-İlgili kod: `src/lib/keys.ts` (üretim/hash), `src/lib/server-auth.ts` (token doğrulama).
+Tespitlerin **etrafındaki** kurallar. Her ayar gerçek Lua koduna ya da panel rotasına bağlıdır; `npm run check:ac` bunu denetler
+(ölü buton, panel ↔ Lua varsayılan farkı, sızıntı). Settings bölümü **oyunculara hiç gönderilmez**.
 
----
+| Kart | Ne işe yarar |
+|---|---|
+| **Safe Guard** | Kendi script'lerin yanlış pozitif yemesin: *Safe Events* (tuzak olay sistemi bu olayları kurmaz), *Safe Scripts* (güvenilen resource — spawn'ları kontrollere girmez, ışınlama/revive devri 15 sn tolerans alır), *Ignored Scripts* (CoreAC hiç dokunmaz), *Anti Resource Injection Safe List*. Sunucu tarafında uygulanır. |
+| **Connection & Identity** | Bağlanma kartında sırayla: isim kuralı (Türkçe harfler serbest), Steam/Discord şartı, çift bağlantı, VPN (proxycheck.io, 24 sa önbellek), ağ itibarı kapısı (diğer her sunucu sahibinin banı −35 puan), *Max Threat Score* (son 24 saatteki otomatik kick başına 40 puan). Yetkililer ve Trust whitelist muaf, banlar her zaman uygulanır. Panel/VPN servisi yanıt vermezse oyuncu alınır; *Block Joins When Verification Fails* açıksa reddedilir. |
+| **Bans & Evidence** | *Enable Bans* (kapalıysa tespitler yalnızca kaydedilir), *Ban Duration* (gün, 0 = kalıcı), *Ban Message*, *Ban Video URL* (banlı oyuncu düşmeden önce ≤15 sn tam ekran video), *Ban Ip Address* (varsayılan kapalı — ortak ağlarda masum oyuncuları da kilitler; yerel IP'ler hiç eşleşmez), ekran görüntüsü / *Gameplay Record* (video değil, 3–5 karelik seri; *Optimize* daha hafif kare). |
+| **Logs & Webhooks** | Olay başına ayrı Discord kanalı (ban, warn, kick, connect, disconnect, silent aim, admin) + konsol anahtarları. Webhook adresleri **yalnızca panelde** durur: Discord'a panel gönderir, oyun sunucusu hiç görmez (heartbeat'ten çıkarılır). |
+| **Framework & API** | ESX / QBCore / Qbox resource adları, txAdmin klasörü (`admins.json`'daki yöneticiler bağlanır bağlanmaz yetkili sayılır), komut öneki (yeniden başlatmadan değişir) ve oyun sunucusunun HTTP API'si. |
 
-## 9) Roller ve sayfalar
+## Moderasyon ve log ekranları
 
-### Public
-`/` landing · `/pricing` fiyatlar/satın alma · `/ban` ban kodu sorgulama · `/docs` dokümanlar
+Kayıtların hepsinde **tam kaydın JSON'u** (kopyalanabilir) bir tık uzaktadır.
 
-### Müşteri paneli (`/dashboard`)
-Sunucular listesi · yeni sunucu · **Kod Kullan** · sunucu başına:
-genel bakış (**Güvenlik Skoru** widget'ı ile), oyuncular, banlar (**ban replay**
-izleyici + **CSV dışa aktarma**), kick/uyarı, **bağlantılı hesaplar** (ban atlatma
-tespiti), **kurallar + aksiyonlar** (her hile için Log/Kick/Ban seçimi), whitelist
-(bypass), blacklist (araç/silah/model), **3D harita**, izleme, konsol, loglar,
-olaylar, **sorgulama (lookup)**, analytics, kaynaklar (start/stop/restart), ayarlar (token).
+| Sayfa | İçerik |
+|---|---|
+| **Lookup** | Ad, licence, Discord, Steam, IP ya da Ban ID ile arama → oyuncu dosyası: güven puanı, risk özetleri (aktif ban, son 30 gün tespit, bağlı hesap, CoreAC ağı — diğer müşterilerin sunucuları **adıyla asla** gösterilmez, yalnız sayı), **sahibin tüm sunucularında oynama süresi** (dağılım çubuğu, kullanılan isim, ilk/son görülme), sicil zaman çizelgesi (tüm sunuculardaki banlar, kick/uyarılar), tespit türleri, bağlı hesaplar (IP / cihaz işareti / ≥2 donanım token'ı), kullanılan isimler, kimlikler, tek tıkla Ban. `?q=…&p=<oyuncu>` ile paylaşılabilir. |
+| **Offline Ban** (Bans → Offline ban, Lookup → Ban) | Sunucuda olmayan (hiç gelmemiş de olabilir) birini banlar: licence / Discord / Steam (SteamID64 otomatik hex'e çevrilir) / IP yapıştırılır, anında çip olarak tanınır (license2, fivem, xbl kullanılmadığı söylenir); bilinen oyuncuyla eşleşirse adı ve geçmişi gösterilir; kalıcı ya da süreli (dakika/saat/gün/hafta + hazır seçenekler), bitiş tarihi önizlemesi. Aynı kimlikte aktif ban varsa reddeder; oyuncu o an çevrimiçiyse sunucudan düşürülür; oyun sunucusu ≤60 sn'de kapıda reddeder. |
+| **Bans** | Özet (aktif / CoreAC / yetkili / yanlış pozitif), filtre çipleri, arama, CSV. Bir ban açılınca: kanıt (ölçülen değerler, ekran görüntüleri, replay), kayıt (sebep, Ban ID, modül, tarih, süre), banlayan, oyuncu (güven puanı, oynama süresi), kimlikler (License/Discord/Steam/IP/cihaz, tıkla-kopyala), bağlı ban-kaçırma banları. Sekmeler: **Details / History / Notes / JSON**. *This ban is a false positive* yalnızca işaretler; **Fix false ban** banı (ve ona bağlı kaçırma banlarını) kaldırır, oyuncunun güven puanını 100'e çeker, ağ-ban katkısını geri alır. `?ban=<id>` ile doğrudan açılır. |
+| **Detections** | Her tespit: oyuncu, tespit adı, uygulanan aksiyon; kanıt, ekran görüntüleri, replay, ilgili bana bağlantı, JSON. Aksiyon / kategori / önem filtreleri. |
+| **Kicks / Warnings** | CoreAC ya da yetkili; otomatik kick'te o anki tespit ve kanıtı, oyuncu kimlikleri, teslim durumu, JSON. |
+| **Admin Logs** | Yetkililerin yaptığı her şey (ban/offline ban/kick/uyarı/unban, yanlış ban düzeltme, ban notu, ayar değişikliği, resource işlemi, konsol komutu, Windows kurulumu) — gün gün gruplu bir **aktivite akışı**, cümle olarak ("admin, X'i banladı"); satıra tıklayınca yerinde açılan ayrıntı + JSON + "Lookup" kısayolu. Sağda 24 sa / 7 gün sayaçları, tür ve yetkili filtreleri (yetkili başına işlem çubuğu); filtrelenmiş kayıtlar JSON olarak dışa aktarılır. |
+| **Event Log** | Canlı akış (açıkken): Spawn, Remove, Explosion, Damage, Particle, Kill, izlenen script olayları, Join/Leave. Her satırın JSON'unda silah, hasar, kafa vuruşu, kurban, model (adıyla), netId, koordinat ya da olay argümanları. |
+| **Console** | Terminal: renkli seviye/kaynak, komut geçmişi (↑/↓), Refresh / Clear / Live / Auto-scroll, 3 sn'de bir yenilenir. |
+| **Server Logs** | Gün gün gruplu; satıra tıklayınca JSON. |
 
-### Admin paneli (`/admin`)
-Genel bakış · **key üretici** · ürünler · kullanıcılar · sunucular · **denetim (audit) log**.
+## Windows kurulum programı (`installer-win/`)
 
-Yetkilendirme: panel API'leri **oturum tabanlı** (`requireUser` / `requireOwnedServer`),
-FiveM API'leri **Bearer token** tabanlı.
+Müşteri panelde **Download → Download CoreAC-Setup.exe** ile indirir (yalnız giriş yapmış ve lisanslı sunucusu olan hesaplar).
+Exe herkes için aynıdır; panelin adresi indirme sırasında dosyanın sonuna eklenir (`/api/account/installer`, PE görüntüsünden sonraki veri Windows için önemsizdir).
 
----
+1. **Lisans anahtarı** → `POST /api/v1/install/key`: anahtar geçerli mi, hangi sunucu(lar) için (birden çoksa seçtirir). Gizli bir şey dönmez.
+2. **Sunucu klasörü** — otomatik: exe'nin yanı (5 üst / 3 alt klasör), çalışan `FXServer.exe` ve bulunan FXServer klasörlerinin **txAdmin profilleri** (`txData/*/config.json` → server data / cfg yolu), kullanıcı klasörleri ve sabit disklerin kökü (süre sınırlı tarama). Bulunamazsa *Browse…* (klasör ya da doğrudan `server.cfg`). CoreAC kurulu olan / txAdmin'den gelen / exe'nin yanındaki öne alınır.
+3. **Kurulum** — kaynak anahtarla indirilir (`GET /api/v1/install/resource`, `X-CoreAC-Key`), açılır, `resources/<klasör>`e kopyalanır; **ancak dosyalar yerindeyken** `POST /api/v1/install/claim` yeni sunucu token'ını verir (indirme yarıda kalırsa çalışan sunucunun token'ı iptal olmaz); sonra `server.cfg` yazılır ve eski Aeigs kurulumu temizlenir. Davranış `.bat` kurulumuyla birebir aynıdır (gizli klasör adı, yerinde güncelleme, yönetilen blok diğer resource'lardan önce, tek seferlik yedek, BOM'suz UTF-8) — ikisi birbirinin kurulumunu güncelleyebilir; `panel-checks` blok işaretlerinin aynı kaldığını denetler.
 
-## 10) Tespit sistemi (anti-cheat)
-
-### Client tespitleri (her hile ayrı dosya — `client/detections/`)
-| Dosya | Yakaladığı | Yöntem |
-|-------|-----------|--------|
-| `noclip.lua` | NoClip (yaya + araç) | Çarpışma kapalı VEYA zemin altında hareket, ~600ms, iki bağımsız sinyal |
-| `flyhack.lua` | Fly Hack | Sürdürülebilir (~2.4 sn) yerçekimsiz uçuş/asılı kalma |
-| `godmode.lua` | Godmode (destekleyici) | Native bayrak taraması (invincible/proofs), rapor-only |
-| `superjump.lua` | Super Jump | Beast-jump native + dikey hız |
-| `speedhack.lua` | Speed hack | Yaya >18 m/s, araç >130 m/s |
-| `aimbot.lua` | Aimbot | Katman 1: ani "snap"; Katman 2: hareketli düşmana 4+ sn kesintisiz kilit |
-| `silentaim.lua` | Silent aim / magic bullet | Kamera yönünü sunucuya bildirir |
-| `weapons.lua` | Infinite ammo / no reload / kara liste silah | Mermi sabitliği + envanter |
-| `extras.lua` | Freecam/spectate/stamina/model/invisible/prop-disguise | Rapor-only |
-
-Ortak altyapı (`core.lua`): 200ms durum önbelleği, ped-değişim (multichar/respawn)
-otomatik algısı + sunucu çapa sıfırlama, ~8 sn'lik **replay tamponu** (CRITICAL
-raporlara otomatik eklenir), `Aeigs.rule()` (panel kuralı), `Aeigs.report()`
-(throttle'lı rapor), `Aeigs.strike()` (N vuruş/pencere), `Aeigs.active()` (spawn
-öncesi tespit çalışmaz), legit-muafiyet (spawn/tp/revive).
-
-### Server korumaları (`server/`) — ANA yöntem, client'tan bağımsız/kandırılamaz
-- `godmode_guard.lua` — **godmode/health-hack ana yöntemi**: biri gerçekten
-  vuruluyor (weaponDamageEvent) ama canı hiç düşmüyorsa → ban. Server kendi
-  `GetEntityHealth`'ini okur; client script'ler karışamaz.
-- `live.lua` — teleport taraması (koordinat sıçraması, ped-değişim/multichar'dan
-  muaf), NoClip ile Teleport ayrışması (`aeigs:collState`), armor>100,
-  konum/whitelist/blacklist/admin senkron, kendi event'lerimiz için oran
-  sınırlayıcı (`Aeigs.eventLimited`).
-- `protection.lua` — weaponDamageEvent (silent aim açı — aşırı sapmada tek
-  vuruşta ban, orta sapmada 2 doğrulama), illegal weapon, damage multiplier,
-  **rapid fire** ve **wallbang/ESP göstergesi** (ikisi de rapor-only, yumuşak
-  sinyal), explosionEvent (patlayıcı mermi), entityCreating (kara liste).
-
-### Ban akışı
-Client/Server tespit → `TriggerServerEvent('aeigs:report'/'aeigs:serverReport')` →
-`POST /api/v1/detections`. Severity **CRITICAL** + lisansta auto-ban açık + oyuncu
-whitelist değilse → `Ban` + `PunishAction` oluşur, oyuncu düşürülür (ban kodu ile).
-Her tespit oyuncunun **trustScore**'unu düşürür (CRITICAL −60, HIGH −30, diğer −10).
-
----
-
-## 11) Hile test/kayıt modu
-
-Kendi sunucunda hile açıp anti-cheat'in **ne gördüğünü** kaydetmek için:
+Teknik: .NET Framework 4.x üzerinde WinForms (Windows'la gelen C# 5 derleyicisi — SDK gerekmez; exe ~110 KB, Windows 10/11 / Server 2016+ üzerinde ek kurulum istemez). Uzun yollar (`\\?\`), yetki hatasında *Run as administrator*, dosya kullanımda / disk dolu için anlaşılır mesajlar.
 
 ```
-/acrec on          # kayıt başlar (her 200ms durum + ateş/nişan/kamera)
-/acrec mark <not>  # o ana etiket koy (ör. "silent açtım")
-/acrec off         # durur; JSON dosyaya yazılır
+npm run build:installer             # installer-win/CoreAC-Setup.exe'yi yeniden üretir (Windows)
+npm run build:installer -- --render # ayrıca ekran görüntüleri: installer-win/obj/screens
+CoreAC-Setup.exe --selftest cfg.json out.log   # pencere açmadan uçtan uca kurulum (test)
 ```
 
-Dosya: `resources/aeigs-anticheat/aeigs_rec_<oyuncu>_<zaman>.json`
-(sunucu konsolu tam yolu basar). Eşik ayarı ve false/kaçırma analizi için kullanılır.
+Exe repoya **derlenmiş hâliyle** girer (Linux'taki paneller de sunabilsin); `installer-win/src` değişince yeniden derleyip commit edin — `panel-checks` sürüm damgasını kontrol eder. İmzasız olduğu için SmartScreen "Daha fazla bilgi → Yine de çalıştır" isteyebilir.
 
----
+## Oyun sunucusu HTTP API'si
 
-## 12) REST API (v1) referansı
+`http://SUNUCU:30120/<resource-klasörü>/<uç>` — `Authorization: Bearer <coreac_token>` şart, dakikada 60 istek/adres, `X-Forwarded-For` yok sayılır.
+`GET /status`, `GET /players`, `GET /bans` her zaman; `POST /unban`, `/screenshot`, `/reload` yalnızca **Allow Write Endpoints açıkken VE Allowed IPs doluyken VE çağıran o listedeyken**.
+Oyuncu/ban IP'leri yalnızca yazma açıkken döner. Her yazma loglanır (Admin Logs webhook'unda "HTTP API").
 
-Tümü `Authorization: Bearer aeigs_srv_…` ister; rate-limit'lidir.
+```
+curl -H "Authorization: Bearer $COREAC_TOKEN" http://SUNUCU:30120/coreac/status
+curl -X POST -H "Authorization: Bearer $COREAC_TOKEN" -d '{"code":"AC-7K3QP9"}' http://SUNUCU:30120/coreac/unban
+```
 
-| Method & yol | Amaç |
-|--------------|------|
-| `POST /api/v1/heartbeat` | Sunucuyu çevrimiçi tutar, kuralları döndürür |
-| `POST /api/v1/players/sync` | Oyuncu listesi senkronu |
-| `POST /api/v1/positions` | Canlı konum/can/kalkan (harita) |
-| `POST /api/v1/detections` | Hile tespiti raporu (CRITICAL → oto-ban) |
-| `GET  /api/v1/bans` | Ban listesi (bağlantıda kontrol) |
-| `GET/POST /api/v1/actions/pending` · `/ack` | Panelden gelen cezalar |
-| `GET/POST /api/v1/commands/pending` · `/ack` | Konsol komutları |
-| `GET  /api/v1/whitelist` · `/blacklist` · `/admins` | Bypass/kara liste/yönetici |
-| `POST /api/v1/logs` | Log gönderimi |
-| `POST /api/v1/resources/sync` | Kaynak listesi |
-| `GET  /api/v1/screenshot/pending` · `POST /result` · `/upload` | Ekran görüntüsü |
-| `POST /api/v1/ingame-action` | Oyun içi yönetici aksiyonu |
+## Testler (`tools/sim`)
 
-Panel tarafı (oturum tabanlı) API'ler `src/app/api/…` altında (auth, servers,
-admin/keys, redeem, checkout, ban-lookup, vb.).
+`npm run test:sim` hepsini tek seferde çalıştırır: gerçek Lua 5.4 derleyicisiyle derleme, `check:ac`, gerçek resource script'lerini taklit FiveM içinde
+çalıştıran senaryolar (bağlantı kapıları, ban & kanıt, Safe Guard, config/log/framework/önek, HTTP API, anti-crash, event log, silent aim & hasar,
+istemci tarafı, AC bütünlüğü) ve panel doğrulamaları (SSRF/injection, oyun sunucusuna giden veri, Discord yönlendirmesi, Configuration sayfası kapsamı, ban notları). Tek senaryo için: `node tools/sim/run.cjs scenario_conn.lua`.
 
----
+## Güvenlik notları
 
-## 13) Güvenlik notları
-
-- **Sırlar:** `AUTH_SECRET`, `LICENSE_HMAC_SECRET`, `DATABASE_URL` yalnızca env'de;
-  repoya asla girmez. Ham API token DB'de tutulmaz (HMAC hash).
-- **Token doğrulama:** her `/api/v1` isteğinde lisans durumu + süresi kontrol edilir.
-- **Rate limit:** `src/lib/ratelimit.ts` (ör. detections 240/dk).
-- **Güvenlik başlıkları:** `next.config.mjs` (X-Frame-Options DENY, nosniff, vb.).
-- **Whitelist bypass:** admin/içerik üreticiler tespitlerden muaf (`src/lib/bypass.ts`).
-- **False-pozitif ilkesi:** tespitler yüksek eşik + strike + legit-muafiyet ile
-  tasarlandı; godmode aktif testi oyuncuya zarar vermeden (anında geri yükleyerek) çalışır.
-- ⚠️ Üçüncü parti/obfuscated hile modüllerini sunucuda **çalıştırma** (backdoor riski).
-
----
-
-## 14) Sık sorunlar
-
-| Belirti | Sebep / çözüm |
-|---------|---------------|
-| "Ortam değişkenleri doğrulanamadı" | `.env` eksik/kısa. `AUTH_SECRET`≥32, `LICENSE_HMAC_SECRET`≥16 karakter olmalı |
-| "Can't reach database" | `.env`'de `DATABASE_URL="file:./dev.db"` var mı; `npm run db:push` çalıştırıldı mı |
-| FiveM bağlanmıyor | `aeigs_api` sonu `/api/v1` mi, token doğru mu, panel (`npm run dev`/`start`) ayakta mı, FiveM sunucusu panele ağ üzerinden erişebiliyor mu |
-| 401 INVALID_TOKEN | Token `aeigs_srv_` ile başlamalı; panelde yeniden üret |
-| 403 LICENSE_INACTIVE/EXPIRED | Lisans askıda/iptal/süresi dolmuş |
-| Godmode banlanmıyor | `anti_invincibility` kuralı açık mı; native bayrak taraması 25 sn/6 doğrulama ister (hızlı ban için server/godmode_guard.lua PvP'de yakalar) |
-| Kayıt dosyası yok | `resources/aeigs-anticheat/` köküne bakılmalı (server/ değil) |
-
----
-
-**Lisans:** özel/ticari. **Katkı:** geliştirme dalı `claude/fivem-anticheat-web-rhfu06`.
-#   f i v e m a c f u l l  
- 
+- Gizli anahtarlar (`AUTH_SECRET`, `LICENSE_HMAC_SECRET`) yalnızca `.env`'de tutulur, repoya girmez. Sunucu token'ları DB'de yalnızca HMAC hash olarak saklanır.
+- Her `/api/v1` isteğinde lisans durumu doğrulanır ve istekler rate-limit'lidir.
+- Oyuncunun istemcisi saldırgan kabul edilir: client'ın gönderdiği hiçbir alan ceza muafiyeti ya da aksiyon isteği taşıyamaz.
+- Demo hesabı salt okunurdur. Varsayılan şifre yoktur; admin şifresi kurulumda rastgele üretilir.

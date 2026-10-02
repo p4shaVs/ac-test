@@ -6,6 +6,7 @@ import { handler, ok } from "@/lib/api";
 import { requireOwnedServer } from "@/lib/api-guards";
 import { audit } from "@/lib/audit";
 import { clientIp } from "@/lib/session";
+import { sendWebhook } from "@/lib/discord";
 
 const schema = z.object({
   action: z.enum(["clearInactive", "unbanAll"]),
@@ -32,5 +33,12 @@ export const POST = handler(async (req: NextRequest, ctx: { params: { id: string
     data: { serverId: server.id, level: "WARN", source: "panel", message: `All bans removed (${res.count}) — ${user.username}` },
   });
   await audit({ userId: user.id, action: "BANS_UNBAN_ALL", targetType: "Server", targetId: server.id, ip: clientIp(headers()) });
+  // Logs & Webhooks → Log Unbans To Discord: one line for the whole sweep, not one per ban.
+  if (res.count > 0) {
+    void sendWebhook(server.config, "unban", server.name, {
+      reason: `All active bans were removed (${res.count})`,
+      by: user.username,
+    });
+  }
   return ok({ unbanned: res.count });
 });

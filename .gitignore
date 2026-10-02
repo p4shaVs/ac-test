@@ -40,3 +40,9 @@ yarn-error.log*
 # Runtime screenshots (player screens / ban evidence — never commit)
 /public/shots/
 /storage/
+
+# dev-only simulation harness deps
+/tools/sim/node_modules
+
+# Windows installer build output (the exe itself is committed)
+installer-win/obj/

@@ -23,7 +23,7 @@ const ITEMS = [
   },
   {
     q: "How do you avoid false bans?",
-    a: "Every detection is graded by confidence. Only checks the server itself can verify may ban; detections reported by the player's own game client are capped at a kick, and noisy heuristics are recorded for review but can never punish — even if you set them to Ban. There is also a log-only mode that records everything and punishes nobody, so you can roll out on a live server first.",
+    a: "Every detection is graded by confidence, which sets the default: only checks the server itself can verify start at a ban, detections reported by the player's own game client start at a kick, and noisy heuristics start as log-only. You can set any detection to Log, Kick or Ban and the one you pick is the one that runs; the panel marks anything above what we recommend. There is also a log-only mode that records everything and punishes nobody, so you can roll out on a live server first.",
   },
   {
     q: "Which frameworks does it support?",

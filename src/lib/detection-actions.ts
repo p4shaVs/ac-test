@@ -3,16 +3,20 @@
 // report, what it is called in the panel, and how hard it may punish.
 //
 // Every type here must match a value produced by CoreAC.Detections (see
-// fivem-resource/aeigs-anticheat/bridge/shared.lua). A type that is NOT in this
+// fivem-resource/coreac/bridge/shared.lua). A type that is NOT in this
 // registry is treated as unknown and can only ever be logged — never enforced.
 //
 // CONFIDENCE is the safety mechanism that lets us ship with enforcement ON:
 //   confirmed  — server-authoritative or physically impossible. May BAN.
 //   strong     — a specific, low-noise client signal. May KICK at most.
 //   heuristic  — soft//noisy signal, useful for review. LOG only, never punishes.
-// The customer picks LOG/KICK/BAN per type in Configuration → Actions, but the
-// choice is capped by confidence. Setting "BAN" on a heuristic type therefore
-// cannot produce a false ban — it stays a log line.
+// The customer picks LOG/KICK/BAN per type in Configuration → Punishments. What
+// the customer picks IS what happens: a type the owner has touched is never
+// capped (see resolveAction). Confidence only drives
+//   * the shipped defaults, and
+//   * the "recommended up to" hint next to each row,
+// and it still caps a type the owner has NOT touched, so a fresh install keeps
+// its safe behaviour (a client-reported "confirmed" check starts at Kick).
 // =============================================================================
 
 export type DetectionAction = "LOG" | "KICK" | "BAN";
@@ -24,6 +28,14 @@ export interface DetectionTypeDef {
   category: string;
   confidence: DetectionConfidence;
   defaultAction: DetectionAction;
+  /**
+   * Confidence when the SERVER itself produced the evidence (origin=server).
+   * Used where the server measures something the client cannot fake — e.g.
+   * NoClip: the player's own position/velocity stream showing seconds of
+   * movement physics cannot explain. Client reports of the same type keep
+   * `confidence` (and client "confirmed" is still capped to strong).
+   */
+  serverConfidence?: DetectionConfidence;
 }
 
 export const DETECTION_CATEGORIES = [
@@ -42,27 +54,52 @@ const D = (
   label: string,
   category: string,
   confidence: DetectionConfidence,
-  defaultAction: DetectionAction
-): DetectionTypeDef => ({ type, label, category, confidence, defaultAction });
+  defaultAction: DetectionAction,
+  serverConfidence?: DetectionConfidence
+): DetectionTypeDef => ({ type, label, category, confidence, defaultAction, serverConfidence });
 
 export const DETECTION_TYPES: DetectionTypeDef[] = [
   // ------------------------------------------------------------- Movement
-  D("NOCLIP", "NoClip", "movement", "strong", "KICK"),
-  D("TELEPORT", "Teleport", "movement", "strong", "KICK"),
+  // Client NoClip reports cap at KICK. The server's own check (server/live.lua:
+  // 4+ seconds of on-foot movement the synced velocity cannot explain, riders
+  // and falls excluded) is physics evidence and may ban.
+  D("NOCLIP", "NoClip", "movement", "strong", "BAN", "confirmed"),
+  // Every garage/house/job script that moves a player looks like a teleport
+  // until it calls coreac:markTeleport. Kicking by default punished honest
+  // players on servers that had not wired that up yet, so it starts as LOG;
+  // owners raise it to KICK in Actions once their scripts are integrated.
+  D("TELEPORT", "Teleport", "movement", "strong", "LOG"),
   D("SUPER_JUMP", "Super Jump", "movement", "strong", "KICK"),
   D("FLYHACK", "Fly Hack", "movement", "strong", "KICK"),
   D("SPEED_HACK", "Speed Hack (on foot)", "movement", "strong", "KICK"),
   D("VEHICLE_NOCLIP", "NoClip (vehicle)", "movement", "strong", "KICK"),
+  // Measured on the SERVER from the vehicle's own velocity, held for 3 s
+  // above a per-type ceiling no real vehicle reaches (server/live.lua).
+  D("VEHICLE_SPEED_HACK", "Vehicle Speed Hack (server-verified)", "movement", "strong", "KICK"),
   D("VEHICLE_SPEED", "Vehicle Speed Modifier", "movement", "heuristic", "LOG"),
   D("VEHICLE_HANDLING", "Vehicle Handling Modifier", "movement", "heuristic", "LOG"),
   D("VEHICLE_HIJACK", "Instant Vehicle Entry", "movement", "heuristic", "LOG"),
 
   // --------------------------------------------------------------- Combat
   D("SILENT_AIM", "Silent Aim / Magic Bullet", "combat", "confirmed", "BAN"),
+  // The subtle tier of silent aim: the server measures, hit after hit, how far the shooter's
+  // crosshair ray misses the player who got hit (body size and lag already allowed for) and
+  // reports when most recent hits land well off the crosshair. A statistical call, so it kicks
+  // by default; raise it to Ban when you are happy with how it behaves on your server.
+  D("SILENT_AIM_SUBTLE", "Silent Aim (subtle pattern)", "combat", "strong", "KICK"),
   D("DAMAGE_MULTIPLIER", "Damage Multiplier", "combat", "confirmed", "BAN"),
+  // Damage boost seen by the server: hits stronger than the same weapon does for every other
+  // player (1.5x and up, repeatedly). Works for add-on weapons and for servers that tune damage.
+  D("DAMAGE_PEER_MISMATCH", "Damage Boost (vs other players)", "combat", "strong", "KICK"),
   D("EXPLOSIVE_BULLETS", "Explosive Bullets", "combat", "confirmed", "BAN"),
   D("SPOOFED_BULLETS", "Spoofed Bullets", "combat", "confirmed", "BAN"),
   D("KILL_EXPLOIT", "Kill Exploit", "combat", "confirmed", "BAN"),
+  // Server-measured: a full-health, armoured player (≥150 hp+armor) dropped by
+  // ONE body shot from a pistol/SMG/rifle/MG, three times in ten minutes, with
+  // a weapon nobody else on the server one-shots with. Head shots never count
+  // (FiveM kills on a head shot by default). Kicks by default; owners may raise
+  // it to BAN because the server's own health reading is the evidence.
+  D("ONE_SHOT_KILL", "One-Shot Body Kills (damage boost)", "combat", "strong", "KICK", "confirmed"),
   D("AIMBOT", "Aimbot", "combat", "strong", "KICK"),
   D("INFINITE_AMMO", "Infinite Ammo", "combat", "strong", "KICK"),
   D("AMMO_CHEAT", "Ammo Cheat", "combat", "strong", "KICK"),
@@ -79,6 +116,9 @@ export const DETECTION_TYPES: DetectionTypeDef[] = [
   D("NO_RELOAD", "No Reload", "combat", "heuristic", "LOG"),
   D("RAPID_FIRE", "Rapid Fire", "combat", "heuristic", "LOG"),
   D("WALLBANG", "Wallbang / ESP indicator", "combat", "heuristic", "LOG"),
+  // 9 of the last 10 kills were single head shots from range. Skilled players in
+  // a one-tap meta can get there too, so this is a review flag, never a penalty.
+  D("HEADSHOT_RATE", "Suspicious Headshot Rate", "combat", "heuristic", "LOG"),
   D("GIVE_WEAPON", "Weapon Given (event)", "combat", "heuristic", "LOG"),
   D("REMOVE_WEAPON", "Weapon Removed (event)", "combat", "heuristic", "LOG"),
 
@@ -96,11 +136,16 @@ export const DETECTION_TYPES: DetectionTypeDef[] = [
   // ------------------------------------------------------- Visual / Camera
   D("INVISIBLE", "Invisibility", "visual", "strong", "KICK"),
   D("SPECTATE", "Unauthorized Spectate", "visual", "strong", "KICK"),
-  D("FREECAM", "FreeCam", "visual", "heuristic", "LOG"),
+  // Script camera held far from the player with full control and no UI open
+  // (client/freecam.lua "Script Cam"). The older geometric checks report
+  // FREECAM_SUSPECTED instead and never punish.
+  D("FREECAM", "FreeCam", "visual", "strong", "KICK"),
+  D("FREECAM_SUSPECTED", "FreeCam (weak signal)", "visual", "heuristic", "LOG"),
   D("MODEL_CHANGE", "Ped Model Change", "visual", "heuristic", "LOG"),
   D("PROP_DISGUISE", "Prop Disguise", "visual", "heuristic", "LOG"),
   D("NIGHT_VISION", "Night / Thermal Vision", "visual", "heuristic", "LOG"),
-  D("VOICE_EXPLOIT", "Voice Range Exploit", "visual", "heuristic", "LOG"),
+  // Voice range held above 100 m — no voice system or megaphone script uses that.
+  D("VOICE_EXPLOIT", "Voice Range Exploit", "visual", "strong", "KICK"),
 
   // -------------------------------------------------------- Entity / Spawn
   D("BLACKLIST_VEHICLE", "Blacklisted Vehicle", "entity", "confirmed", "BAN"),
@@ -118,6 +163,10 @@ export const DETECTION_TYPES: DetectionTypeDef[] = [
   D("PED_LIMIT", "Ped Spawn Limit", "entity", "strong", "KICK"),
   D("OBJECT_LIMIT", "Object Spawn Limit", "entity", "strong", "KICK"),
   D("PROJECTILE_LIMIT", "Projectile Spawn Limit", "entity", "strong", "KICK"),
+  // Anti-crash flood shield (server/crash_guard.lua): 60+ script entities in 2 s, 25+ particle
+  // effects in 2 s, 25+ projectiles in 3 s, a burst of scripted tasks on other players, or 3+ props
+  // attached to another player. The extra is always blocked; this decides the punishment.
+  D("ENTITY_FLOOD", "Entity / Effect Flood (crash attempt)", "entity", "strong", "KICK"),
   D("ILLEGAL_OBJECT", "Illegal Object Spawn", "entity", "heuristic", "LOG"),
   D("ISOLATED_VEHICLE", "Isolated Vehicle Spawn", "entity", "heuristic", "LOG"),
   D("ATTACH_VEHICLE", "Vehicle Attach", "entity", "heuristic", "LOG"),
@@ -149,7 +198,7 @@ export const DETECTION_TYPES: DetectionTypeDef[] = [
   D("CHEAT_EVENT_HONEYPOT", "Cheat Menu Event (honeypot)", "integrity", "confirmed", "KICK"),
   D("CRASH_ATTEMPT", "Server Crash Attempt", "integrity", "confirmed", "BAN"),
   D("AC_TAMPER", "Anti-Cheat Disabled / Tampered", "integrity", "confirmed", "KICK"),
-  D("OVERLAY", "Executor Overlay", "integrity", "strong", "KICK"),
+  D("OVERLAY", "Cheat Menu Detected (Overlay)", "integrity", "strong", "KICK"),
   D("LUA_MENU", "Lua Cheat Menu", "integrity", "strong", "KICK"),
   D("RESOURCE_INJECT", "Resource Injection", "integrity", "strong", "KICK"),
   D("SPOOFER", "Identifier Spoofer", "integrity", "strong", "KICK"),
@@ -162,6 +211,9 @@ export const DETECTION_TYPES: DetectionTypeDef[] = [
   // LOG vs KICK from the server's own network policy (config.network.action).
   D("NETWORK_BAN", "Network Reputation Match", "other", "heuristic", "LOG"),
   D("CHAT_FLOOD", "Chat Flood", "other", "strong", "KICK"),
+  // interact-sound abuse seen by the server: sounds pushed to the whole server,
+  // to a huge radius, or spammed (the "megaphone / earrape" troll).
+  D("SOUND_EXPLOIT", "Sound / Megaphone Abuse", "other", "strong", "KICK"),
   D("RECONNECT_SPAM", "Reconnect Spam", "other", "heuristic", "LOG"),
   D("CHEAT_MENU_SUSPECTED", "Cheat Menu Suspected (weak signal)", "other", "heuristic", "LOG"),
   D("AFK_BYPASS", "AFK Bypass", "other", "heuristic", "LOG"),
@@ -228,9 +280,18 @@ export type DetectionOrigin = "server" | "client";
  * reaching entityCreating — can justify a ban.
  */
 function effectiveConfidence(type: string, origin: DetectionOrigin): DetectionConfidence {
+  const def = BY_TYPE.get(type);
+  if (origin === "server" && def?.serverConfidence) return def.serverConfidence;
   const c = detectionConfidence(type);
   if (origin === "client" && c === "confirmed") return "strong";
   return c;
+}
+
+/** Highest confidence this type can reach from any origin (for the Actions UI). */
+export function bestConfidence(def: DetectionTypeDef): DetectionConfidence {
+  const rank: Record<DetectionConfidence, number> = { heuristic: 0, strong: 1, confirmed: 2 };
+  const s = def.serverConfidence;
+  return s && rank[s] > rank[def.confidence] ? s : def.confidence;
 }
 
 /**
@@ -253,12 +314,50 @@ export function capByConfidence(
   return "LOG";
 }
 
-/** Final action for a detection: customer setting → type default → confidence cap. */
+/** Only known detection types can be marked as explicitly chosen. */
+export function sanitizeExplicit(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  return Array.from(new Set(input.filter((t): t is string => typeof t === "string" && ALL_TYPES.has(t))));
+}
+
+/**
+ * Did the owner choose this action, or is it just what ships? A value that differs
+ * from the shipped default is always a choice (older configs saved the whole map);
+ * a value equal to the default counts only if the owner clicked it (the editor
+ * records those in config.actionsExplicit).
+ */
+export function isExplicitChoice(
+  actions: Record<string, DetectionAction>,
+  type: string,
+  explicit?: ReadonlySet<string>
+): boolean {
+  const def = BY_TYPE.get(type);
+  const chosen = actions[type];
+  if (!def || chosen === undefined) return false;
+  return chosen !== def.defaultAction || (explicit?.has(type) ?? false);
+}
+
+/**
+ * Final action for a detection.
+ *   * unknown type            → LOG (nothing the panel does not know can punish)
+ *   * owner chose the action  → exactly that, for every origin
+ *   * shipped default         → default, capped by confidence/origin as before
+ */
 export function resolveAction(
   actions: Record<string, DetectionAction>,
   type: string,
-  origin: DetectionOrigin = "server"
+  origin: DetectionOrigin = "server",
+  explicit?: ReadonlySet<string>
 ): DetectionAction {
-  const chosen = actions[type] ?? BY_TYPE.get(type)?.defaultAction ?? "LOG";
+  const def = BY_TYPE.get(type);
+  if (!def) return "LOG";
+  const chosen = actions[type] ?? def.defaultAction;
+  if (isExplicitChoice(actions, type, explicit)) return chosen;
   return capByConfidence(chosen, type, origin);
+}
+
+/** Highest action that is safe to leave on for this type (the "recommended" hint). */
+export function recommendedMax(def: DetectionTypeDef): DetectionAction {
+  const c = bestConfidence(def);
+  return c === "confirmed" ? "BAN" : c === "strong" ? "KICK" : "LOG";
 }

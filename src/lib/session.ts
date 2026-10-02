@@ -3,14 +3,21 @@ import { randomUUID } from "crypto";
 import { db } from "./db";
 import { signSession, verifySession } from "./jwt";
 
-export const SESSION_COOKIE = "aeigs_session";
+import { SESSION_COOKIE } from "./session-cookie";
+export { SESSION_COOKIE };
 
 /**
  * The shared public demo account. Its sessions are always read-only, however
  * they were opened: its password ships in the seed, so a visitor could
  * otherwise sign in through the normal login form and get full write access.
+ *
+ * Databases seeded before the CoreAC rename hold the demo account under the old
+ * address; it must stay read-only too, so both are recognised.
  */
-export const DEMO_EMAIL = "demo@aeigs.gg";
+export const DEMO_EMAILS = ["demo@coreac.online", "demo@aeigs.gg"] as const;
+export function isDemoEmail(email: string): boolean {
+  return (DEMO_EMAILS as readonly string[]).includes(email.trim().toLowerCase());
+}
 const SESSION_DAYS = 7;
 
 export interface CurrentUser {
@@ -46,7 +53,7 @@ export async function createSession(userId: string, opts: { demo?: boolean } = {
       role: user.role === "ADMIN" ? "ADMIN" : "USER",
       username: user.username,
       jti,
-      demo: opts.demo === true || user.email === DEMO_EMAIL,
+      demo: opts.demo === true || isDemoEmail(user.email),
     },
     `${SESSION_DAYS}d`
   );

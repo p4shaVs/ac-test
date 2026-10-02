@@ -35,7 +35,7 @@ function Avatar({ url, name, online }: { url: string | null; name: string; onlin
         // eslint-disable-next-line @next/next/no-img-element
         <img src={url} alt="" width={32} height={32} className="h-8 w-8 rounded-lg object-cover ring-1 ring-white/10" />
       ) : (
-        <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-brand-500 to-purple-500 text-sm font-bold text-white">
+        <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/[0.06] text-sm font-semibold text-slate-200 ring-1 ring-inset ring-white/10">
           {(name.trim()[0] || "?").toUpperCase()}
         </span>
       )}

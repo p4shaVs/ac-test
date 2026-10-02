@@ -10,6 +10,30 @@ import { clientIp } from "@/lib/session";
 
 const schema = z.object({ command: z.string().trim().min(1).max(500) });
 
+// Console output: the latest server log lines, or only the ones after `since`
+// (an ISO time) so the terminal can poll without re-reading everything.
+export const GET = handler(async (req: NextRequest, ctx: { params: { id: string } }) => {
+  const { server } = await requireOwnedServer(ctx.params.id);
+  const sinceRaw = new URL(req.url).searchParams.get("since");
+  const since = sinceRaw ? new Date(sinceRaw) : null;
+  const logs = await db.serverLog.findMany({
+    where: { serverId: server.id, ...(since && !isNaN(since.getTime()) ? { createdAt: { gt: since } } : {}) },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+  const fresh = await db.server.findUnique({ where: { id: server.id }, select: { status: true } });
+  return ok({
+    online: fresh?.status === "ONLINE",
+    lines: logs.reverse().map((l) => ({
+      id: l.id,
+      level: l.level,
+      source: l.source,
+      message: l.message,
+      createdAt: l.createdAt.toISOString(),
+    })),
+  });
+});
+
 // Web konsolundan komut gönderir → kuyruğa alınır, FiveM kaynağı çalıştırır.
 export const POST = handler(
   async (req: NextRequest, ctx: { params: { id: string } }) => {

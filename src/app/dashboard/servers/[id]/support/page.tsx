@@ -6,6 +6,7 @@ import { Icons } from "@/components/icons";
 import { sanitizeRules } from "@/lib/rules";
 import { sanitizeActions } from "@/lib/detection-actions";
 import { parseJson, timeAgo } from "@/lib/utils";
+import { BRAND } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 
@@ -102,6 +103,18 @@ export default async function SupportPage({ params }: { params: { id: string } }
               <Icons.discord size={16} className="text-brand-400" /> Get help
             </h3>
             <div className="space-y-2">
+              <a
+                href={BRAND.discordUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 rounded-xl border border-[#5865F2]/25 bg-[#5865F2]/10 px-4 py-3 transition hover:bg-[#5865F2]/20"
+              >
+                <Icons.discord size={16} className="text-[#aab1fb]" />
+                <div>
+                  <p className="text-sm font-medium text-slate-200">Ask on Discord</p>
+                  <p className="text-xs text-slate-500">{BRAND.discordLabel} — open a support ticket</p>
+                </div>
+              </a>
               <Link href="/docs" className="flex items-center gap-3 rounded-xl border border-white/5 bg-base-900/40 px-4 py-3 transition hover:border-brand-500/20 hover:bg-base-900/70">
                 <Icons.book size={16} className="text-brand-300" />
                 <div>

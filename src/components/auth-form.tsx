@@ -5,10 +5,21 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Icons } from "./icons";
 
+/**
+ * Only same-site paths are allowed as the post-login destination. Without this
+ * check `/login?next=https://evil.example` (or `//evil.example`) sent a user to
+ * an attacker's page right after they typed their password — an open redirect.
+ */
+function safeNext(raw: string | null): string | null {
+  if (!raw) return null;
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return null;
+  return raw;
+}
+
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next");
+  const next = safeNext(params.get("next"));
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

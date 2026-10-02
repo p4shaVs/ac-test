@@ -1,17 +1,18 @@
 import { db } from "./db";
-import { hashToken } from "./keys";
+import { hashToken, looksLikeServerToken } from "./keys";
 import { ApiError } from "./api";
 import type { Server } from "@prisma/client";
 
 /**
  * FiveM kaynağından gelen istekleri doğrular.
- * Kaynak, `Authorization: Bearer aeigs_srv_...` başlığı gönderir.
+ * Kaynak, `Authorization: Bearer coreac_srv_...` başlığı gönderir (eski
+ * kurulumlarda `aeigs_srv_...` — ikisi de kabul edilir).
  * DB'de yalnızca token'ın HMAC hash'i saklanır.
  */
 export async function authenticateServer(req: Request): Promise<Server> {
   const auth = req.headers.get("authorization") ?? "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-  if (!token || !token.startsWith("aeigs_srv_")) {
+  if (!token || !looksLikeServerToken(token)) {
     throw new ApiError(401, "Invalid server token", "INVALID_TOKEN");
   }
 
@@ -24,15 +25,18 @@ export async function authenticateServer(req: Request): Promise<Server> {
     throw new ApiError(401, "Server not found or token invalid", "INVALID_TOKEN");
   }
 
-  // Lisans durumu kontrolü
+  // Lisans durumu kontrolü. Lisanssız sunucu (licenseKeyId null) da REDDEDİLİR:
+  // her sunucu bir anahtarla oluşturulur; bağlantısı kopmuş bir kayıt ücretsiz
+  // tam erişim anlamına gelmemeli.
   const lic = (server as any).licenseKey;
-  if (lic) {
-    if (lic.status === "REVOKED" || lic.status === "SUSPENDED") {
-      throw new ApiError(403, "Licence suspended or revoked", "LICENSE_INACTIVE");
-    }
-    if (lic.expiresAt && new Date(lic.expiresAt) < new Date()) {
-      throw new ApiError(403, "The licence has expired", "LICENSE_EXPIRED");
-    }
+  if (!lic) {
+    throw new ApiError(403, "This server has no licence attached", "LICENSE_INACTIVE");
+  }
+  if (lic.status === "REVOKED" || lic.status === "SUSPENDED") {
+    throw new ApiError(403, "Licence suspended or revoked", "LICENSE_INACTIVE");
+  }
+  if (lic.expiresAt && new Date(lic.expiresAt) < new Date()) {
+    throw new ApiError(403, "The licence has expired", "LICENSE_EXPIRED");
   }
 
   return server;

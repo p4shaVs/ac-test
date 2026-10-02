@@ -1,0 +1,1037 @@
+-- CoreAC Anti-Cheat — sunucu ana betiği
+-- Panelle konuşur: heartbeat, oyuncu senkronizasyonu, ban kontrolü,
+-- ceza/komut/kaynak kuyruğu tüketimi, log gönderimi.
+
+local ServerConfig = {}         -- heartbeat'ten dönen ayarlar (rules)
+local BanList = {}              -- aktif ban listesi (cache)
+local LogBuffer = {}            -- gönderilmeyi bekleyen loglar
+
+-- ---------------------------------------------------------------------------
+-- Yardımcılar
+-- ---------------------------------------------------------------------------
+
+local function getIdents(src)
+  local t = { license = nil, steam = nil, discord = nil, ip = nil }
+  for _, id in ipairs(GetPlayerIdentifiers(src)) do
+    if id:sub(1, 8) == 'license:' and not t.license then
+      t.license = id
+    elseif id:sub(1, 6) == 'steam:' then
+      t.steam = id
+    elseif id:sub(1, 8) == 'discord:' then
+      t.discord = id
+    elseif id:sub(1, 3) == 'ip:' then
+      t.ip = id:sub(4)
+    end
+  end
+  if not t.ip then t.ip = GetPlayerEndpoint(src) end
+  return t
+end
+
+local function findByLicense(license)
+  if not license then return nil end
+  for _, src in ipairs(GetPlayers()) do
+    if getIdents(src).license == license then return src end
+  end
+  return nil
+end
+
+--- Panele log satırı. `meta` (isteğe bağlı) yapılandırılmış bir olaydır:
+--- { event = 'connect' | 'disconnect' | 'admin', player, admin, action, reason, ids }.
+--- Panel bunları Discord'a (Logs & Webhooks kanalları) kendisi gönderir.
+function CAC.log(level, source, message, meta)
+  LogBuffer[#LogBuffer + 1] = { level = level or 'INFO', source = source or 'server', message = tostring(message), meta = meta }
+end
+
+function CAC.getRules()
+  return ServerConfig.rules or {}
+end
+
+--- Panelden gelen ham config (heartbeat). Diğer modüller (connection.lua) ağ
+--- politikası gibi alanları buradan okur.
+function CAC.getServerConfig()
+  return ServerConfig
+end
+
+--- Aktif ban listesi (yerel önbellek) — HTTP API okur. Salt-okunur kullanın.
+function CAC.getBans()
+  return BanList
+end
+
+--- Panel config'i en az bir kez geldi mi? (Bağlantı kapıları gelmeden uygulanamaz.)
+function CAC.configReady()
+  return ServerConfig.ac ~= nil
+end
+
+--- Tespitler ceza verebilir mi? Panel → Settings: "Log-Only Mode" (geçici deneme
+--- modu) VEYA "Enable Bans" kapalıysa HAYIR. /detections akışı bunu web tarafında
+--- zaten uyguluyor; bu yardımcı, KENDİ kararını veren yollar (kara liste
+--- zorlaması gibi) da anahtarlara uysun diye var. Aksi halde "asla kick/ban atma"
+--- sözü verilirken kara liste ban atardı. Elle verilen ban/kick etkilenmez.
+function CAC.isLogOnly()
+  local s = CoreAC.Config.Settings
+  return s.LogOnly == true or s.EnableBans == false
+end
+
+--- Panel'deki "Event Log" (canlı oyun-olayı akışı) açık mı? (server/event_log.lua)
+function CAC.eventLogEnabled()
+  return not not (ServerConfig and ServerConfig.eventLogEnabled == true)
+end
+
+-- ---------------------------------------------------------------------------
+-- Kendi network event'lerimiz için oran sınırlayıcı (sertleştirme).
+-- Amaç: bir hilecinin coreac:report/coreac:aim/coreac:pos gibi event'lerimizi
+-- spam edip anti-cheat'in kendisini (ve panel API'sini) yorması/DoS etmesini
+-- önlemek. Aşan istekler sessizce (hata basmadan) atlanır.
+-- ---------------------------------------------------------------------------
+local eventBuckets = {}
+function CAC.eventLimited(src, name, limit, windowMs)
+  local key = tostring(src) .. ':' .. name
+  local now = GetGameTimer()
+  local b = eventBuckets[key]
+  if not b or now > b.reset then
+    eventBuckets[key] = { count = 1, reset = now + windowMs }
+    return false
+  end
+  b.count = b.count + 1
+  return b.count > limit
+end
+AddEventHandler('playerDropped', function()
+  local s = tostring(source)
+  for k in pairs(eventBuckets) do
+    if k:sub(1, #s + 1) == s .. ':' then eventBuckets[k] = nil end
+  end
+end)
+
+-- Diğer modüllerin (live.lua, protection.lua) kullanabilmesi için köprüle.
+CAC.getIdents = getIdents
+CAC.findByLicense = findByLicense
+
+-- ---------------------------------------------------------------------------
+-- OYUNCU OYUNDA MI? (sunucu tarafı spawn kapısı)
+--
+-- Sunucu taraflı kontroller (zırh, harita dışı, teleport taraması) oyuncuyu
+-- ilk gördükleri andan itibaren çalışıyordu — yükleme ekranı ve karakter
+-- seçimi dahil. O ekranlarda ped gizli bir konuma taşınır ve değerleri
+-- framework yüklenene kadar tutarsızdır → oyuncu daha oyuna girmeden
+-- ARMOR_HACK / OUT_OF_BOUNDS yiyordu.
+--
+-- GÜVENİLİR SİNYAL: framework'ün SUNUCUDA tetiklediği "karakter yüklendi"
+-- olayları. Client'ın "oyundayım" demesine burada güvenilmez — hileci bu
+-- sinyali göndermeyerek sunucu kontrollerini kendisi için kapatabilirdi.
+--   * Framework varsa  → yalnızca sunucu olayı; özelleştirilmiş/yeniden
+--     adlandırılmış olaylar yüzünden kontroller sonsuza kadar kapalı kalmasın
+--     diye son giriş/çıkıştan NO_SIGNAL_TIMEOUT sonra yine de açılır.
+--   * Framework yoksa  → client kapısının ipucu, yoksa girişten 120 sn sonra.
+-- ---------------------------------------------------------------------------
+local NO_SIGNAL_TIMEOUT = 300000
+
+local joinedAt, loadedAt, unloadedAt, clientReadyAt = {}, {}, {}, {}
+
+local function hasFramework()
+  -- Adlar panelden değişebilir (Settings → Framework & API).
+  for _, r in ipairs({ CAC.fw('qb'), CAC.fw('qbx'), CAC.fw('esx'), 'ox_core', 'ND_Core' }) do
+    if GetResourceState(r) == 'started' then return true end
+  end
+  return false
+end
+
+local function markLoaded(src)
+  src = tonumber(src)
+  if src and src > 0 then loadedAt[src] = GetGameTimer(); unloadedAt[src] = nil end
+end
+local function markUnloaded(src)
+  src = tonumber(src)
+  -- Karakter değişimi: client kapısı da yeniden açılmalı (yeni spawn seçimi).
+  if src and src > 0 then loadedAt[src] = nil; unloadedAt[src] = GetGameTimer(); clientReadyAt[src] = nil end
+end
+
+AddEventHandler('playerJoining', function() joinedAt[source] = GetGameTimer() end)
+AddEventHandler('QBCore:Server:PlayerLoaded', function(Player)
+  markLoaded(Player and Player.PlayerData and Player.PlayerData.source)
+end)
+AddEventHandler('QBCore:Server:OnPlayerUnload', markUnloaded)
+AddEventHandler('esx:playerLoaded', function(src) markLoaded(src) end)
+AddEventHandler('esx:playerLogout', function(src) markUnloaded(src) end)
+
+-- Framework'süz sunucular için client ipucu (bridge/client.lua spawn kapısı).
+RegisterNetEvent('coreac:inGame', function()
+  local src = source
+  if CAC.noteEvent then CAC.noteEvent(src) end
+  if CAC.eventLimited(src, 'inGame', 3, 60000) then return end
+  clientReadyAt[src] = clientReadyAt[src] or GetGameTimer()
+end)
+
+AddEventHandler('playerDropped', function()
+  local s = source
+  joinedAt[s], loadedAt[s], unloadedAt[s], clientReadyAt[s] = nil, nil, nil, nil
+end)
+
+-- AC oyun sırasında yeniden başlatıldıysa mevcut oyuncular çoktan oyundadır.
+CreateThread(function()
+  local long_ago = GetGameTimer() - (NO_SIGNAL_TIMEOUT + 60000)
+  for _, sid in ipairs(GetPlayers()) do
+    joinedAt[tonumber(sid)] = joinedAt[tonumber(sid)] or long_ago
+  end
+end)
+
+--- Oyuncu karakteriyle oyunda mı ve en az settleMs'dir mi oyunda?
+function CAC.isInGame(src, settleMs)
+  src = tonumber(src)
+  if not src then return false end
+  local now = GetGameTimer()
+  settleMs = settleMs or 10000
+
+  -- 1) Client'ın spawn kapısı açıldı (framework'ün CLIENT "yüklendi" olayı +
+  --    yerleşme süresi — yani spawn noktası SEÇİLDİKTEN sonra). Bu sinyali
+  --    erken göndermek hileciye fayda sağlamaz (kontroller yalnızca erken
+  --    başlar); göndermemek en fazla aşağıdaki süreler kadar geciktirir.
+  if clientReadyAt[src] then return now - clientReadyAt[src] >= settleMs end
+
+  -- 2) Framework'ün SUNUCU olayı geldi ama client sinyali yok. QBCore bu olayı
+  --    KARAKTER SEÇİMİNDE atar; ardından spawn-konumu seçim ekranı gelir. Eskiden
+  --    15 sn sonra tarama başlıyordu → oyuncu spawn noktasını seçince bu
+  --    ışınlanma TELEPORT olarak düşüyordu. Artık en az 90 sn beklenir.
+  if loadedAt[src] then return now - loadedAt[src] >= math.max(settleMs, 90000) end
+
+  if hasFramework() then
+    local since = math.max(joinedAt[src] or 0, unloadedAt[src] or 0)
+    return since > 0 and now - since >= NO_SIGNAL_TIMEOUT
+  end
+  local since = joinedAt[src]
+  return since ~= nil and now - since >= 120000
+end
+
+-- ---------------------------------------------------------------------------
+-- MEŞRU IŞINLANMA BİLDİRİMİ — üretimdeki 1 NUMARALI yanlış-pozitif kaynağı.
+-- İş/ev/garaj/asansör/spawn/admin tp yapan HER script, oyuncuyu taşımadan
+-- hemen önce bunu çağırmalı; aksi halde 50 m+ sıçrama TELEPORT/NOCLIP olarak
+-- görünür. Sunucu tarafından (klasör adından bağımsız — önerilen):
+--     TriggerEvent('coreac:markTeleport', src)
+-- Client tarafından:
+--     TriggerEvent('coreac:markTeleport')
+-- (exports['<CoreAC klasörü>']:markTeleport(...) da çalışır.)
+-- ---------------------------------------------------------------------------
+-- Panel → Safe Guard → Safe Scripts: güvenilen bir resource ışınlama / revive
+-- devrini export ile yaptığında (GetInvokingResource ile tanınır) daha uzun
+-- tolerans verilir — interior/karakter yükleme 8 sn'yi aşabilir.
+local SAFE_HANDOFF_MS = 15000
+local function trustedCaller()
+  local caller = GetInvokingResource()
+  return caller ~= nil and CAC.isSafeScript ~= nil and CAC.isSafeScript(caller)
+end
+
+function CAC.markTeleport(src, graceMs)
+  src = tonumber(src)
+  if not src or src <= 0 or not GetPlayerName(src) then return end
+  -- HATA DÜZELTİLDİ: eskiden yalnızca client'a haber veriliyordu. Sunucunun
+  -- kendi teleport taraması (server/live.lua) SUNUCU tarafı muafiyete bakar;
+  -- bu yüzden entegrasyonu doğru yapmış sunucularda bile her meşru iş/garaj
+  -- ışınlanması TELEPORT (varsayılan KICK) olarak işaretleniyordu.
+  if CAC.grantTp then CAC.grantTp(src, graceMs) end
+  TriggerClientEvent('coreac:grantTp', src)
+end
+exports('markTeleport', function(src) CAC.markTeleport(src, trustedCaller() and SAFE_HANDOFF_MS or nil) end)
+AddEventHandler('coreac:markTeleport', function(src) CAC.markTeleport(src or source) end)
+
+function CAC.markRevive(src, graceMs)
+  src = tonumber(src)
+  if not src or src <= 0 or not GetPlayerName(src) then return end
+  if CAC.grantRevive then CAC.grantRevive(src, graceMs) end
+  TriggerClientEvent('coreac:grantRevive', src)
+  TriggerEvent('coreac:revived', src)
+end
+exports('markRevive', function(src) CAC.markRevive(src, trustedCaller() and SAFE_HANDOFF_MS or nil) end)
+AddEventHandler('coreac:markRevive', function(src) CAC.markRevive(src or source) end)
+
+-- Ürün "Aeigs" adıyla dağıtılırken yazılmış entegrasyonlar bozulmasın:
+-- eski olay adları yeni işlevlere yönlendirilir. (Yalnızca sunucu-içi
+-- AddEventHandler — client'lar bunları tetikleyemez.)
+AddEventHandler('aeigs:markTeleport', function(src) CAC.markTeleport(src or source) end)
+AddEventHandler('aeigs:markRevive', function(src) CAC.markRevive(src or source) end)
+
+-- ---------------------------------------------------------------------------
+-- Heartbeat — sunucuyu çevrimiçi tutar, ayarları (rules) alır
+-- ---------------------------------------------------------------------------
+
+local function heartbeat()
+  CAC.request('/heartbeat', 'POST', {
+    acVersion = Config.AcVersion,
+    maxSlots = GetConvarInt('sv_maxclients', 48),
+    onlineCount = #GetPlayers(),
+  }, function(ok, data)
+    if ok and data and data.config then
+      ServerConfig = data.config
+      CAC.lastHeartbeatOk = GetGameTimer()
+      -- Tam CoreAC config (panel Configuration sayfası) — CoreAC.Config'e uygula.
+      -- ÖNCE uygulanır: Safe Guard kümeleri (Safe Events…) aşağıdaki tuzak
+      -- listesi süzülmeden güncel olmalı.
+      if ServerConfig.ac and CAC.applyAcConfig then
+        CAC.applyAcConfig(ServerConfig.ac)
+      end
+      -- Client tespitleri (silah/ammo/noclip vb.) kuralları bilsin diye yayınla.
+      TriggerClientEvent('coreac:rules', -1, ServerConfig.rules or {})
+      -- Panelden yönetilen "Protected Events" honeypot listesi (client/events.lua).
+      -- Panel → Safe Guard → Safe Events'teki olaylar listeden çıkarılır.
+      local traps = CAC.withoutSafeEvents and CAC.withoutSafeEvents(ServerConfig.protectedEvents) or (ServerConfig.protectedEvents or {})
+      TriggerClientEvent('coreac:protectedEvents', -1, traps)
+      -- Aynı liste SUNUCU tarafında da tuzak: hile menüleri bu olayları çoğunlukla
+      -- TriggerServerEvent ile yollar; client tuzağı bunları hiç görmez.
+      if CAC.setProtectedServerEvents then CAC.setProtectedServerEvents(traps) end
+      -- Event Log'da izlenen script olayları (panel → Event Log → Watched events).
+      if CAC.setWatchedEvents then CAC.setWatchedEvents(ServerConfig.watchEvents or {}) end
+    end
+  end)
+end
+
+-- Konsoldaki "ac reload" komutu (server/commands.lua) config'i hemen çeker.
+CAC.heartbeat = heartbeat
+
+-- Yeni bağlanan client mevcut kuralları ister.
+RegisterNetEvent('coreac:requestRules', function()
+  if CAC.noteEvent then CAC.noteEvent(source) end
+  TriggerClientEvent('coreac:rules', source, ServerConfig.rules or {})
+  TriggerClientEvent('coreac:protectedEvents', source,
+    CAC.withoutSafeEvents and CAC.withoutSafeEvents(ServerConfig.protectedEvents) or (ServerConfig.protectedEvents or {}))
+end)
+
+-- ---------------------------------------------------------------------------
+-- Oyuncu senkronizasyonu — license / steam / discord / ip / isim
+-- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- CİHAZ İZİ (ban kaçırma engeli)
+--   * FiveM donanım token'ları: GetPlayerToken — bağlanma anında okunur,
+--     hileci hesabını değiştirse de bilgisayarı aynı kaldıkça aynıdır.
+--   * Cihaz işareti: client/device.lua oyuncunun bilgisayarına rastgele bir
+--     kimlik yazar (KVP) ve her girişte bildirir.
+-- ---------------------------------------------------------------------------
+local function getTokens(src)
+  local out = {}
+  local n = tonumber(GetNumPlayerTokens(src)) or 0
+  for i = 0, math.min(n, 16) - 1 do
+    local t = GetPlayerToken(src, i)
+    if t and t ~= '' then out[#out + 1] = t end
+  end
+  return out
+end
+
+local deviceBySrc = {}   -- [src] = 32 hex cihaz işareti
+
+local function syncPlayers()
+  local players = {}
+  for _, src in ipairs(GetPlayers()) do
+    local ids = getIdents(src)
+    local tokens = getTokens(src)
+    players[#players + 1] = {
+      name = GetPlayerName(src) or ('Player#' .. src),
+      license = ids.license,
+      steam = ids.steam,
+      discord = ids.discord,
+      ip = ids.ip,
+      tokens = #tokens > 0 and tokens or nil,
+      deviceId = deviceBySrc[tonumber(src)],
+    }
+  end
+  CAC.request('/players/sync', 'POST', { players = players }, nil)
+end
+
+-- ---------------------------------------------------------------------------
+-- Ban listesi — cache + girişte kontrol
+-- ---------------------------------------------------------------------------
+
+local banByToken, banByDevice = {}, {}
+
+local function refreshBans()
+  CAC.request('/bans', 'GET', nil, function(ok, data)
+    if ok and data and data.bans then
+      BanList = data.bans
+      local byToken, byDevice = {}, {}
+      for _, b in ipairs(BanList) do
+        for _, t in ipairs(type(b.tokens) == 'table' and b.tokens or {}) do byToken[t] = byToken[t] or b end
+        if type(b.deviceId) == 'string' and b.deviceId ~= '' then byDevice[b.deviceId] = byDevice[b.deviceId] or b end
+      end
+      banByToken, banByDevice = byToken, byDevice
+    end
+  end)
+end
+
+CAC.refreshBans = refreshBans
+
+--- Yerel / özel ağ adresi mi? (Bunlar asla IP eşleştirmesine ya da VPN sorgusuna girmez:
+--- test sunucusu, NAT arkasındaki LAN ve "gizli" uç noktalar hep aynı değeri verir.)
+local function isPrivateIp(ip)
+  if type(ip) ~= 'string' or ip == '' then return true end
+  ip = ip:lower()
+  if ip:find(':', 1, true) then
+    return ip == '::1' or ip:sub(1, 2) == 'fc' or ip:sub(1, 2) == 'fd' or ip:sub(1, 4) == 'fe80'
+  end
+  local a, b = ip:match('^(%d+)%.(%d+)%.%d+%.%d+')
+  a, b = tonumber(a), tonumber(b)
+  if not a then return true end   -- IP bile değil ("hidden" vb.)
+  return a == 10 or a == 127 or a == 0 or (a == 169 and b == 254)
+      or (a == 192 and b == 168) or (a == 172 and b >= 16 and b <= 31)
+end
+CAC.isPrivateIp = isPrivateIp
+
+--- `src` verilirse IP ile eşleştirme de yapılabilir (Ban Ip Address, varsayılan KAPALI).
+local function matchBan(ids, src)
+  -- Varsayılan olarak yalnızca BENZERSİZ kimliklerle eşleştir (license/steam/discord).
+  -- IP ile eşleştirme ancak sunucu sahibi "Ban Ip Address"i açarsa yapılır: aynı
+  -- ağdaki/routerdaki masum oyuncular yanlışlıkla banlanmasın ("banlar karışıyor"
+  -- sorununun başlıca sebebi buydu).
+  for _, b in ipairs(BanList) do
+    if (b.license and b.license == ids.license)
+        or (b.steam and b.steam == ids.steam)
+        or (b.discord and b.discord == ids.discord) then
+      return b
+    end
+  end
+  if src and CoreAC.Config.Settings.BanIpAddress == true and not isPrivateIp(ids.ip)
+      and not (CAC.isWhitelisted and CAC.isWhitelisted(src)) then
+    for _, b in ipairs(BanList) do
+      if type(b.ip) == 'string' and b.ip ~= '' and b.ip == ids.ip then return b, 'ip' end
+    end
+  end
+  return nil
+end
+
+local function evasionOn()
+  return CAC.getRules()['anti_ban_evasion'] == true
+end
+
+--- Banın kimliklerinden biri bu oyuncununkiyle aynı mı? (O zaman kaçırma
+--- değil, düz bandır — matchBan zaten yakalar.)
+local function sameIdentity(b, ids)
+  return (b.license and b.license == ids.license) or (b.steam and b.steam == ids.steam)
+      or (b.discord and b.discord == ids.discord)
+end
+
+--- Donanım token'larıyla ban kaçırma: aynı bana ait en az 2 token (oyuncunun
+--- tek token'ı varsa 1) eşleşmeli. Tek bir ortak token internet kafe / sanal
+--- makine gibi durumlarda tesadüf olabilir.
+local function matchEvasionByTokens(ids, tokens)
+  if #tokens == 0 then return nil end
+  local hits = {}
+  for _, t in ipairs(tokens) do
+    local b = banByToken[t]
+    if b and not sameIdentity(b, ids) then
+      hits[b] = (hits[b] or 0) + 1
+      if hits[b] >= math.min(2, #tokens) then return b end
+    end
+  end
+  return nil
+end
+
+--- Kaçırılan banı yeni hesaba bağlar (panel yeni hesabı da aynı süreyle banlar).
+local function reportEvasion(ban, name, ids, tokens, deviceId, via)
+  CAC.log('WARN', 'connect', ('Ban evasion: %s matches Ban ID %s (%s)'):format(name, ban.code or '-', via))
+  CAC.request('/bans/evasion', 'POST', {
+    banId = ban.id, playerName = name, license = ids.license, steam = ids.steam,
+    discord = ids.discord, ip = ids.ip, tokens = #tokens > 0 and tokens or nil,
+    deviceId = deviceId, via = via,
+  }, function() refreshBans() end)
+end
+
+--- Bir oyuncu (kaynak id) ban listesinde mi? bridge/server.lua'daki
+--- CoreAC.IsPlayerBanned köprüsü bunu kullanır.
+function CAC.isBanned(src)
+  src = tonumber(src)
+  if not src or not GetPlayerName(src) then return false end
+  return matchBan(getIdents(src), src) ~= nil
+end
+
+-- ---------------------------------------------------------------------------
+-- LOGO — iki kaynak: (1) Config.BrandLogoUrl (public URL), (2) resource içine
+-- konan logo.png/logo.jpg → açılışta base64 data URI'ye çevrilip karta gömülür
+-- (dış host gerekmez). Data URI'yi bir kez üretip saklıyoruz.
+-- ---------------------------------------------------------------------------
+local b64chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+local function base64(data)
+  return ((data:gsub('.', function(x)
+    local r, byte = '', x:byte()
+    for i = 8, 1, -1 do r = r .. (byte % 2 ^ i - byte % 2 ^ (i - 1) > 0 and '1' or '0') end
+    return r
+  end) .. '0000'):gsub('%d%d%d?%d?%d?%d?', function(x)
+    if #x < 6 then return '' end
+    local c = 0
+    for i = 1, 6 do c = c + (x:sub(i, i) == '1' and 2 ^ (6 - i) or 0) end
+    return b64chars:sub(c + 1, c + 1)
+  end) .. ({ '', '==', '=' })[#data % 3 + 1])
+end
+
+local logoDataUri = nil
+CreateThread(function()
+  local res = GetCurrentResourceName()
+  local candidates = { { 'logo.png', 'image/png' }, { 'logo.jpg', 'image/jpeg' }, { 'logo.jpeg', 'image/jpeg' } }
+  for _, c in ipairs(candidates) do
+    local raw = LoadResourceFile(res, c[1])
+    if raw and #raw > 0 then
+      logoDataUri = ('data:%s;base64,%s'):format(c[2], base64(raw))
+      print(('^2[CoreAC] Logo loaded (%s, %d KB) — embedded in the connection card.^7'):format(c[1], math.floor(#raw / 1024)))
+      break
+    end
+  end
+end)
+
+--- Kartta kullanılacak logo URL'i: önce panelden verilen public URL, yoksa
+--- resource içine gömülü logo (data URI). İkisi de yoksa nil (logosuz kart).
+local function logoUrl()
+  if Config.BrandLogoUrl and Config.BrandLogoUrl ~= '' then return Config.BrandLogoUrl end
+  return logoDataUri
+end
+
+-- CoreAC markalı bağlanma kartı (logo + durum metni + opsiyonel Ban ID / bitiş).
+--   tone: 'ban' (kırmızı — yalnızca ban), 'warn' (sarı — giriş reddi), aksi halde mavi.
+local function brandCard(status, tone, banId, expires)
+  local body = {}
+  local logo = logoUrl()
+  if logo then
+    body[#body + 1] = { type = 'Image', url = logo, size = 'Large', horizontalAlignment = 'Center' }
+  end
+  body[#body + 1] = {
+    type = 'TextBlock', text = (Config.BrandName or 'CoreAC') .. ' Anti-Cheat',
+    weight = 'Bolder', size = 'ExtraLarge', horizontalAlignment = 'Center', wrap = true,
+  }
+  body[#body + 1] = {
+    type = 'TextBlock', text = status or '', horizontalAlignment = 'Center', wrap = true,
+    spacing = 'Medium', size = 'Medium',
+    color = (tone == 'ban') and 'Attention' or (tone == 'warn') and 'Warning' or 'Accent',
+  }
+  if banId and banId ~= '' then
+    body[#body + 1] = {
+      type = 'TextBlock', text = 'Ban ID: ' .. tostring(banId),
+      horizontalAlignment = 'Center', weight = 'Bolder', size = 'Large',
+      spacing = 'Small', color = 'Warning',
+    }
+  end
+  if expires and expires ~= '' then
+    body[#body + 1] = {
+      type = 'TextBlock', text = tostring(expires), horizontalAlignment = 'Center',
+      spacing = 'Small', size = 'Medium', isSubtle = true,
+    }
+  end
+  return json.encode({
+    ['$schema'] = 'http://adaptivecards.io/schemas/adaptive-card.json',
+    type = 'AdaptiveCard', version = '1.5', body = body,
+  })
+end
+
+-- ---------------------------------------------------------------------------
+-- BAN EKRANI — panel → Settings → Bans & Evidence: Ban Message, Ban Video URL,
+-- Ban Duration (bitiş). Oyuncu sebebi GÖRMEZ (loglardan bakılır), yalnızca sunucu
+-- sahibinin yazdığı metni + Ban ID + (süreliyse) bitiş tarihini görür.
+-- ---------------------------------------------------------------------------
+local function banText()
+  local m = CoreAC.Config.Settings.BanMessage
+  if type(m) ~= 'string' or m == '' then m = 'You are banned from this server.' end
+  return m
+end
+
+--- Panelin ISO zaman damgasından ("2026-10-30T12:00:00.000Z") okunur bitiş metni.
+local function expiryLabel(expiresAt)
+  if type(expiresAt) ~= 'string' or #expiresAt < 16 then return nil end
+  return (expiresAt:sub(1, 16):gsub('T', ' ')) .. ' UTC'
+end
+
+--- Bağlanırken gösterilen ban kartı.
+local function banCard(ban)
+  local e = ban.permanent == false and expiryLabel(ban.expiresAt) or nil
+  return brandCard(banText(), 'ban', ban.code, e and ('Expires: ' .. e) or nil)
+end
+
+--- Oyun içinde DropPlayer ile gösterilen metin.
+local function banDropReason(code, expiresAt)
+  local parts = { '[CoreAC] ' .. banText(), 'Ban ID: ' .. tostring(code or '—') }
+  local e = expiryLabel(expiresAt)
+  if e then parts[#parts + 1] = 'Expires: ' .. e end
+  return table.concat(parts, ' | ')
+end
+CAC.banDropReason = banDropReason
+
+local BAN_VIDEO_MAX_MS = 15000
+local videoEnded = {}   -- [src] = true — client videonun bittiğini (ya da oynatılamadığını) bildirdi
+
+RegisterNetEvent('coreac:banVideoDone', function()
+  videoEnded[source] = true
+end)
+
+--- Geçerli bir https:// video adresi mi? (Panel de doğrular; burada ikinci kapı.)
+local function banVideoUrl()
+  local u = CoreAC.Config.Settings.BanVideoUrl
+  if type(u) ~= 'string' or #u < 12 or #u > 400 then return nil end
+  if not u:match('^https://[%w%.%-]+') then return nil end
+  if u:match('^https://[^/]*@') then return nil end          -- kullanıcı:şifre@ içeremez
+  if u:find('%s') or u:find('<', 1, true) or u:find('>', 1, true) or u:find('"', 1, true)
+      or u:find("'", 1, true) or u:find('`', 1, true) then return nil end
+  return u
+end
+
+--- Ban ekranını gösterip oyuncuyu düşürür. Ban Video URL ayarlıysa oyuncu DropPlayer'dan
+--- önce tam ekran videoyu (en çok 15 sn) izler. Süreyi SUNUCU sınırlar: hileci client
+--- videoyu uzatamaz, düşürmeyi engelleyemez; "bitti" demesi yalnızca beklemeyi kısaltır.
+function CAC.dropBanned(src, code, expiresAt)
+  src = tonumber(src)
+  if not src or not GetPlayerName(src) then return end
+  local reason = banDropReason(code, expiresAt)
+  local url = banVideoUrl()
+  if not url then
+    DropPlayer(src, reason)
+    return
+  end
+  videoEnded[src] = nil
+  TriggerClientEvent('coreac:banVideo', src, url, BAN_VIDEO_MAX_MS)
+  CreateThread(function()
+    local waited = 0
+    while waited < BAN_VIDEO_MAX_MS and GetPlayerName(src) and not videoEnded[src] do
+      Wait(250)
+      waited = waited + 250
+    end
+    videoEnded[src] = nil
+    if GetPlayerName(src) then DropPlayer(src, reason) end
+  end)
+end
+
+-- ---------------------------------------------------------------------------
+-- Bağlanma / ayrılma / ceza logları — panel → Settings → Logs & Webhooks
+--   Log On Connect / Log On Disconnect   satır hiç yazılsın mı (panel + konsol + Discord)
+--   Log Connections To Console           konsola da bas
+--   Log Connections To Discord           yapılandırılmış olay (meta) gönder → panel Discord'a yollar
+--   Log Punishments To Console           ban / kick / uyarıları konsola bas
+--   Show Ip Address                      IP'yi konsol ve Discord satırına ekle
+-- ---------------------------------------------------------------------------
+local function ipTag(ids)
+  if CoreAC.Config.Settings.ShowIpAddress == true and ids and ids.ip then
+    return (' [IP %s]'):format(ids.ip)
+  end
+  return ''
+end
+
+--- Panelin Discord'a göndereceği yapılandırılmış olay. IP yalnızca Show Ip Address açıkken
+--- gönderilir (gereksiz veri taşımayalım); alan uzunlukları panelin sınırlarına uyar.
+local function connMeta(event, name, ids, reason)
+  local meta = { event = event, player = name and tostring(name):sub(1, 80) or nil }
+  if reason then meta.reason = tostring(reason):sub(1, 190) end
+  if ids then
+    meta.ids = { license = ids.license, discord = ids.discord, steam = ids.steam }
+    if CoreAC.Config.Settings.ShowIpAddress == true then meta.ids.ip = ids.ip end
+  end
+  return meta
+end
+
+local function logConnection(kind, name, ids, reason)   -- kind: 'connect' | 'disconnect'
+  local s = CoreAC.Config.Settings
+  -- (Dikkat: "a and b or c" değer false olunca yanlış dala düşer — açık if kullan.)
+  local enabled
+  if kind == 'connect' then enabled = s.LogOnConnect else enabled = s.LogOnDisconnect end
+  if enabled == false then return end
+  local text
+  if kind == 'connect' then text = ('%s is connecting'):format(name)
+  else text = ('%s left (%s)'):format(name, reason or '') end
+  CAC.log('INFO', kind, text, (s.LogConnectionsToDiscord ~= false) and connMeta(kind, name, ids, reason) or nil)
+  if s.LogConnectionsToConsole ~= false then
+    print(('^5[CoreAC]^7 %s%s'):format(text, ipTag(ids)))
+  end
+end
+
+--- Ban / kick / uyarı satırını sunucu konsoluna basar (Log Punishments To Console).
+local function logPunishment(kind, name, ids, detail)
+  if CoreAC.Config.Settings.LogPunishmentsToConsole == false then return end
+  print(('^1[CoreAC]^7 %s %s%s%s'):format(kind, name or '?', ipTag(ids), detail and (' — ' .. detail) or ''))
+end
+CAC.logPunishment = logPunishment
+
+AddEventHandler('playerConnecting', function(name, setKickReason, deferrals)
+  local src = source
+  deferrals.defer()
+  Wait(0)
+  -- Kısa görsel "kontrol ediliyor" adımı
+  deferrals.presentCard(brandCard('Verifying your connection…', 'accent'))
+  Wait(1200)
+
+  -- Panel ayarları (kapıların kuralları) henüz gelmediyse kısa süre bekle: sunucu
+  -- yeni açıldığında ilk bağlananlar Require Discord / VPN gibi kapıları atlamasın.
+  local waitedCfg = 0
+  while not CAC.configReady() and waitedCfg < 8000 do Wait(250); waitedCfg = waitedCfg + 250 end
+
+  local ids = getIdents(src)
+  local ban, via = matchBan(ids, src)
+  if ban then
+    -- Logo + ban metni + Ban ID (+ bitiş). SEBEP YAZILMAZ — loglardan bakılır.
+    -- done() çağrılmaz: oyuncu kartta kalır, giriş engellenir.
+    deferrals.presentCard(banCard(ban))
+    CAC.log('WARN', 'connect', ('Blocked banned connection: %s (Ban ID: %s%s)')
+      :format(name, ban.code or '-', via == 'ip' and ', matched by IP' or ''))
+    logPunishment('BLOCKED', name, ids, ('banned, Ban ID %s%s'):format(ban.code or '-', via == 'ip' and ', matched by IP' or ''))
+    return
+  end
+
+  -- Ban kaçırma: kimlikler temiz ama bilgisayar banlı bir oyuncununki.
+  if evasionOn() and not (CAC.isWhitelisted and CAC.isWhitelisted(src)) then
+    local tokens = getTokens(src)
+    local evaded = matchEvasionByTokens(ids, tokens)
+    if evaded then
+      deferrals.presentCard(banCard(evaded))
+      reportEvasion(evaded, name, ids, tokens, nil, 'token')
+      return
+    end
+  end
+
+  -- Kimlik kapıları + panel kararı (server/connection.lua): isim, Steam/Discord,
+  -- çift bağlantı, VPN, ağ itibarı, tehdit puanı. Panel yanıt vermezse oyuncu
+  -- ALINIR (fail-open); "Block Joins When Verification Fails" açıksa reddedilir.
+  local verdict = CAC.connectionVerdict and CAC.connectionVerdict(src, name, ids) or nil
+  if verdict then
+    deferrals.presentCard(brandCard(verdict.message, 'warn'))
+    CAC.log('WARN', 'connect', ('Blocked connection (%s): %s'):format(verdict.kind, name))
+    logPunishment('BLOCKED', name, ids, verdict.kind)
+    return
+  end
+
+  deferrals.done()
+  logConnection('connect', name, ids)
+  -- Oyuncu tam katıldıktan sonra listeyi hemen güncelle (panelde anında görünsün)
+  CreateThread(function()
+    Wait(4000)
+    pcall(syncPlayers)
+  end)
+end)
+
+-- Cihaz işareti (client/device.lua). Banlı bir bilgisayardan yeni hesapla
+-- girilmişse oyuncu atılır ve yeni hesap asıl bana bağlanır.
+RegisterNetEvent('coreac:device', function(deviceId)
+  local src = tonumber(source)
+  if CAC.eventLimited(src, 'device', 3, 60000) then return end
+  if type(deviceId) ~= 'string' or not deviceId:match('^[a-f0-9]+$') or #deviceId ~= 32 then return end
+  deviceBySrc[src] = deviceId
+  if not evasionOn() then return end
+  if CAC.isWhitelisted and CAC.isWhitelisted(src) then return end
+  if CAC.staffBypass and CAC.staffBypass(src) then return end
+  local ban = banByDevice[deviceId]
+  local ids = getIdents(src)
+  if not ban or sameIdentity(ban, ids) then return end
+  local name = GetPlayerName(src) or ('Player#' .. src)
+  reportEvasion(ban, name, ids, getTokens(src), deviceId, 'device')
+  logPunishment('BLOCKED', name, ids, ('ban evasion, Ban ID %s'):format(ban.code or '-'))
+  CAC.dropBanned(src, ban.code, ban.permanent == false and ban.expiresAt or nil)
+end)
+
+AddEventHandler('playerDropped', function(reason)
+  local src = source
+  deviceBySrc[tonumber(src) or -1] = nil
+  videoEnded[tonumber(src) or -1] = nil
+  -- Log On Disconnect / Log Connections To Console / Discord (kimlikler bu noktada hâlâ okunabilir).
+  logConnection('disconnect', GetPlayerName(src) or tostring(src), getIdents(src), reason)
+  -- Ayrılınca listeyi hemen güncelle (panelden düşsün)
+  CreateThread(function()
+    Wait(1500)
+    pcall(syncPlayers)
+  end)
+end)
+
+-- ---------------------------------------------------------------------------
+-- Ceza kuyruğu — panelden gelen WARN / KICK / BAN / UNBAN
+-- ---------------------------------------------------------------------------
+
+local function applyAction(a)
+  local src = findByLicense(a.identifiers and a.identifiers.license or nil)
+  if a.type == 'WARN' then
+    if src then
+      -- Panelden verilen uyarı: oyun içinde duyuru gibi üst ortada gösterilir.
+      TriggerClientEvent('coreac:warned', src, a.reason or '', a.issuedBy or 'Staff')
+      logPunishment('WARN', GetPlayerName(src), getIdents(src), ('%s (by %s)'):format(a.reason or '', a.issuedBy or 'Staff'))
+    end
+  elseif a.type == 'KICK' then
+    if src then
+      logPunishment('KICK', GetPlayerName(src), getIdents(src), ('%s (by %s)'):format(a.reason or '', a.issuedBy or 'Staff'))
+      DropPlayer(src, '[CoreAC] You have been kicked from this server.')
+    end
+  elseif a.type == 'BAN' then
+    if src then
+      logPunishment('BAN', GetPlayerName(src), getIdents(src),
+        ('Ban ID %s (by %s)'):format(a.banCode or '-', a.issuedBy or 'Staff'))
+      CAC.dropBanned(src, a.banCode, a.expiresAt)
+    end
+    refreshBans()
+  elseif a.type == 'UNBAN' then
+    refreshBans()
+  end
+end
+
+local function pollActions()
+  CAC.request('/actions/pending', 'GET', nil, function(ok, data)
+    if not ok or not data or not data.actions then return end
+    local ids = {}
+    for _, a in ipairs(data.actions) do
+      local success = pcall(applyAction, a)
+      if success then ids[#ids + 1] = a.id end
+    end
+    if #ids > 0 then
+      CAC.request('/actions/ack', 'POST', { actionIds = ids }, nil)
+    end
+  end)
+end
+
+-- ---------------------------------------------------------------------------
+-- Konsol komut kuyruğu — panelden gelen komutlar + kaynak start/stop/restart
+-- ---------------------------------------------------------------------------
+
+local function pollCommands()
+  CAC.request('/commands/pending', 'GET', nil, function(ok, data)
+    if not ok or not data or not data.commands then return end
+    local ids = {}
+    for _, c in ipairs(data.commands) do
+      CAC.log('INFO', 'console', ('> %s'):format(c.command))
+      -- "ac …" komutlarının çıktısı bu bayrakla panele de loglanır (commands.lua).
+      CAC.commandFromPanel = true
+      local success = pcall(ExecuteCommand, c.command)
+      CAC.commandFromPanel = false
+      if success then ids[#ids + 1] = c.id end
+    end
+    if #ids > 0 then
+      CAC.request('/commands/ack', 'POST', { commandIds = ids }, nil)
+    end
+  end)
+end
+
+-- ---------------------------------------------------------------------------
+-- Kaynak (resource) senkronizasyonu
+-- ---------------------------------------------------------------------------
+
+local function syncResources()
+  local list = {}
+  local num = GetNumResources()
+  for i = 0, num - 1 do
+    local rname = GetResourceByFindIndex(i)
+    if rname then
+      local state = GetResourceState(rname)
+      list[#list + 1] = { name = rname, state = (state == 'started') and 'started' or 'stopped' }
+    end
+  end
+  CAC.request('/resources/sync', 'POST', { resources = list }, nil)
+end
+
+-- ---------------------------------------------------------------------------
+-- Log gönderimi
+-- ---------------------------------------------------------------------------
+
+local function flushLogs()
+  if #LogBuffer == 0 then return end
+  local batch = {}
+  for i = 1, math.min(#LogBuffer, 50) do batch[i] = LogBuffer[i] end
+  -- gönderilenleri çıkar
+  for _ = 1, #batch do table.remove(LogBuffer, 1) end
+  CAC.request('/logs', 'POST', { logs = batch }, nil)
+end
+
+-- ---------------------------------------------------------------------------
+-- Ban anının kanıtı: gerçek ekran görüntüsü serisi. /detections'ın döndürdüğü
+-- screenshotRequestIds'i, oyuncu DropPlayer ile atılmadan ÖNCE client'ın
+-- mevcut 'coreac:screenshot' handler'ına (client/main.lua) sırayla tetikler —
+-- screenshot-basic kurulu değilse client tarafı sessizce FAILED'a düşer.
+-- ---------------------------------------------------------------------------
+-- Not: DropPlayer'ı burst BİTENE kadar bekletiyoruz — aksi halde oyuncu
+-- ilk kareyi bile alamadan bağlantısı kesilir. onDone, burst sonunda
+-- (veya id yok/yüklenemiyorsa hemen) çağrılır.
+local function fireScreenshotBurst(src, ids, quality, onDone)
+  -- Kaç kare çekileceğine PANEL karar verir (Enable Gameplay Record / Optimize Record
+  -- Mode / Enable Screen Shots) ve ancak o kadar istek açar; burada yalnızca uygulanır.
+  local base = (type(ids) == 'table' and #ids > 0) and CAC.screenshotUploadBase and CAC.screenshotUploadBase() or nil
+  if not base then onDone() return end
+  -- Optimize Record Mode: panel daha düşük JPEG kalitesi ister (0.1-1).
+  quality = tonumber(quality)
+  if quality and (quality < 0.1 or quality > 1) then quality = nil end
+  CreateThread(function()
+    for _, rid in ipairs(ids) do
+      if not GetPlayerName(src) then break end
+      -- HATA DÜZELTİLDİ: yükleme adresine ?rid= eklenmiyordu. Upload ucu rid'siz
+      -- isteği 400 ile reddettiği için otomatik ban anındaki kanıt görüntülerinin
+      -- HİÇBİRİ kaydedilmiyordu (panelde "kanıt yok" görünüyordu).
+      if CAC.issueShot then CAC.issueShot(rid, src) end
+      TriggerClientEvent('coreac:screenshot', src, base .. '?rid=' .. rid, rid, nil, quality)
+      Wait(400)
+    end
+    onDone()
+  end)
+end
+
+--- Panelin /detections kararını uygular (hem client hem sunucu kaynaklı raporlar için):
+--- oyun içi yetkililere bildirim, konsol satırı, kanıt görüntüleri, sonra kick/ban.
+local function applyVerdict(src, dtype, data)
+  if not (data and GetPlayerName(src)) then return end
+  -- Oyundaki yetkili yöneticilere anlık uyarı (server/live.lua).
+  if CAC.notifyStaff then CAC.notifyStaff(src, dtype, data.action, data.label) end
+
+  local name, ids = GetPlayerName(src), getIdents(src)
+  local what = data.label or tostring(dtype)
+  if data.banned then
+    logPunishment('BAN', name, ids, ('%s, Ban ID %s'):format(what, data.banCode or '-'))
+  elseif data.kicked then
+    logPunishment('KICK', name, ids, what)
+  else
+    logPunishment('WARN', name, ids, what .. ' (recorded, no punishment)')
+  end
+
+  -- Aksiyon (LOG/KICK/BAN) panelden tespit tipi bazında seçilir; karar web
+  -- API'sinde verilir (server.config.actions), burada uygulanır. Ceza varsa
+  -- oyuncu kanıt kareleri alındıktan SONRA düşürülür.
+  if data.banned then
+    fireScreenshotBurst(src, data.screenshotRequestIds, data.screenshotQuality, function()
+      CAC.dropBanned(src, data.banCode, data.banExpiresAt)
+    end)
+    refreshBans()
+  elseif data.kicked then
+    fireScreenshotBurst(src, data.screenshotRequestIds, data.screenshotQuality, function()
+      if GetPlayerName(src) then DropPlayer(src, '[CoreAC] You have been kicked from this server.') end
+    end)
+  elseif type(data.screenshotRequestIds) == 'table' and #data.screenshotRequestIds > 0 then
+    -- Enable Screen Shots: ceza yok ama güçlü kanıt — tek kare, oyuncu oyunda kalır.
+    fireScreenshotBurst(src, data.screenshotRequestIds, data.screenshotQuality, function() end)
+  end
+end
+
+-- ---------------------------------------------------------------------------
+-- Aynı oyuncu + aynı tespit tipi için 20 sn'de bir rapor. Örn. godmode'lu bir
+-- oyuncu sürekli vuruluyorsa sunucu kontrolü her birkaç isabette tetiklenir ve
+-- panele saniyede bir kayıt düşüyordu. Cezayı etkilemez: ilk rapor ceza
+-- verdiyse oyuncu zaten atılmıştır; yalnızca log verdiyse tekrarlar da log olurdu.
+-- ---------------------------------------------------------------------------
+local reportGate = {}
+local function reportAllowed(src, dtype)
+  local key = tostring(src) .. ':' .. tostring(dtype)
+  local now = GetGameTimer()
+  if reportGate[key] and now - reportGate[key] < 20000 then return false end
+  reportGate[key] = now
+  return true
+end
+AddEventHandler('playerDropped', function()
+  local prefix = tostring(source) .. ':'
+  for k in pairs(reportGate) do
+    if k:sub(1, #prefix) == prefix then reportGate[k] = nil end
+  end
+end)
+
+-- ---------------------------------------------------------------------------
+-- Client tespit köprüsü — client 'coreac:report' ile bildirir → API'ye yaz
+-- ---------------------------------------------------------------------------
+
+RegisterNetEvent('coreac:report', function(dtype, severity, details)
+  local src = source
+  if Config.DetectionsEnabled == false then return end  -- tespitler geçici kapalı
+  if CAC.eventLimited(src, 'report', 30, 10000) then return end
+  local ntype = CoreAC.NormalizeDetection(dtype)
+  local det = type(details) == 'table' and details or { info = tostring(details or '') }
+  -- Safe Guard (panel → Safe Events / Safe Scripts / Ignored Scripts / Injection
+  -- Safe List): muaf bir olay ya da resource'a atfedilen rapor panele HİÇ gitmez.
+  -- Süzgeç 20 sn kapısından önce çalışır ki muaf rapor gerçek olanı bastırmasın.
+  if CAC.safeGuardDrops and CAC.safeGuardDrops(ntype, det) then return end
+  if not reportAllowed(src, ntype) then return end
+  -- Doğrulanmış admin aracı (txAdmin noclip/godmode…) bu tespiti açıklıyor.
+  if CAC.toolExempt and CAC.toolExempt(src, ntype) then return end
+  local ids = getIdents(src)
+  local pname = GetPlayerName(src) or ('Player#' .. src)
+  -- Client'ın gönderdiği ayrıntılara GÜVENİLMEZ: sunucunun kendi işaret
+  -- alanlarını (aksiyon isteği, köken, muafiyet) client taklit edemesin.
+  det.__action, det.__origin, det.bypass = nil, nil, nil
+  -- origin='client': rapor oyuncunun KENDİ oyun istemcisinden geldi. Hile
+  -- istemcisi o süreci kontrol ettiği için bu raporlar panelde asla "kesin"
+  -- sayılmaz — en fazla KICK'e kadar çıkabilir (bkz. detection-actions.ts).
+  CAC.request('/detections', 'POST', {
+    type = tostring(dtype or 'UNKNOWN'),
+    severity = tostring(severity or 'MEDIUM'),
+    playerName = pname,
+    license = ids.license,
+    ids = { license = ids.license, steam = ids.steam, discord = ids.discord, ip = ids.ip },
+    origin = 'client',
+    -- Yetkili (sunucunun doğruladığı admin): tespit loglanır, ceza verilmez.
+    bypass = (CAC.staffBypass and CAC.staffBypass(src)) and 'staff' or nil,
+    details = det,
+  }, function(ok, data)
+    if not ok then return end
+    applyVerdict(src, dtype, data)
+  end)
+end)
+
+-- ---------------------------------------------------------------------------
+-- CoreAC modülleri server-taraflı tespit köprüsü (bridge/server.lua'dan gelir)
+-- ---------------------------------------------------------------------------
+AddEventHandler('coreac:serverReport', function(src, dtype, severity, details)
+  src = tonumber(src)
+  if not src or src <= 0 then return end
+  if Config.DetectionsEnabled == false then return end  -- tespitler geçici kapalı
+  if not GetPlayerName(src) then return end
+  if CAC.eventLimited(src, 'serverReport', 30, 10000) then return end
+  -- Kara liste raporlarında aksiyon da anahtara girer: "Remove" logundan hemen
+  -- sonra gelen KICK'e yükseltilmiş rapor 20 sn süzgecine takılmasın.
+  local gateKey = dtype
+  if type(details) == 'table' and details.__action then gateKey = tostring(dtype) .. ':' .. tostring(details.__action) end
+  -- Safe Guard: muaf bir olay / resource'a atfedilen rapor panele hiç gitmez
+  -- (20 sn kapısından önce, böylece muaf rapor gerçek olanı bastırmaz).
+  if CAC.safeGuardDrops and CAC.safeGuardDrops(dtype, details) then return end
+  if not reportAllowed(src, gateKey) then return end
+  if CAC.toolExempt and CAC.toolExempt(src, dtype) then return end
+  local ids = getIdents(src)
+  local pname = GetPlayerName(src) or ('Player#' .. src)
+  -- origin='server': tespiti sunucu kendi gözlemiyle üretti (godmode_guard,
+  -- silent aim açısı, blacklist, entityCreating…). Yalnızca bu raporlar ban
+  -- seviyesine çıkabilir.
+  -- İSTİSNA: sunucu modülü yalnızca client'ın verdiği bir kararı iletiyorsa
+  -- (ör. spoofed bullets doğrulamasında "silah elimde değil" cevabı) details
+  -- içinde __origin='client' işaretler; o rapor client kaynaklı sayılır.
+  local det = type(details) == 'table' and details or { info = tostring(details or '') }
+  local origin = 'server'
+  if det.__origin == 'client' then origin = 'client' end
+  -- Kara liste: model başına seçilen aksiyon (REMOVE/KICK/BAN) panele iletilir
+  -- (bkz. CAC.enforceBlacklist). Bu olay yalnızca sunucu içinden tetiklenir.
+  local requested = det.__action
+  det.__origin, det.__action, det.bypass = nil, nil, nil
+  CAC.request('/detections', 'POST', {
+    type = tostring(dtype or 'UNKNOWN'),
+    severity = tostring(severity or 'MEDIUM'),
+    playerName = pname,
+    license = ids.license,
+    ids = { license = ids.license, steam = ids.steam, discord = ids.discord, ip = ids.ip },
+    origin = origin,
+    requestedAction = requested,
+    bypass = (CAC.staffBypass and CAC.staffBypass(src)) and 'staff' or nil,
+    details = det,
+  }, function(ok, data)
+    if not ok then return end
+    applyVerdict(src, dtype, data)
+  end)
+end)
+
+-- ---------------------------------------------------------------------------
+-- Döngüler
+-- ---------------------------------------------------------------------------
+
+CreateThread(function()
+  if not Config.Token or Config.Token == '' then
+    print('^1[CoreAC] WARNING: coreac_token is not set. Add your server token to server.cfg.^7')
+    return
+  end
+  if CoreAC and CoreAC.drawLogo then CoreAC:drawLogo() end
+  print('^2[CoreAC] Anti-cheat started. Connecting to the panel...^7')
+  if Config.DetectionsEnabled == false then
+    print('^3[CoreAC] NOTE: detections are currently OFF. Enable them with set coreac_detections "true".^7')
+  end
+  refreshBans()
+  heartbeat()
+  syncResources()
+
+  local function loop(interval, fn)
+    CreateThread(function()
+      while true do
+        Wait(interval * 1000)
+        pcall(fn)
+      end
+    end)
+  end
+
+  loop(Config.HeartbeatInterval, heartbeat)
+  loop(Config.PlayerSyncInterval, syncPlayers)
+  loop(Config.ActionPollInterval, pollActions)
+  loop(Config.ActionPollInterval, pollCommands)
+  loop(Config.BanRefreshInterval, refreshBans)
+  loop(Config.ResourceSyncInterval, syncResources)
+  loop(Config.LogFlushInterval, flushLogs)
+end)

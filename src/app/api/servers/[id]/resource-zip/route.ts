@@ -13,7 +13,7 @@ export async function GET(_req: NextRequest, ctx: { params: { id: string } }) {
     status: 200,
     headers: {
       "Content-Type": "application/zip",
-      "Content-Disposition": 'attachment; filename="aeigs-anticheat.zip"',
+      "Content-Disposition": 'attachment; filename="coreac.zip"',
       "Content-Length": String(zip.length),
       "Cache-Control": "no-store",
     },

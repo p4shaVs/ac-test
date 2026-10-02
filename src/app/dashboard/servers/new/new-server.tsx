@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui";
 import { CopyButton } from "@/components/copy-button";
@@ -49,17 +50,17 @@ export function NewServerFlow({ appUrl }: { appUrl: string }) {
     }
   }
 
-  // ---- Kurulum ekranı (oluşturulduktan sonra) — Core Shield kendi tarzı ----
+  // ---- Kurulum ekranı (oluşturulduktan sonra) ----
   if (created) {
     const cfg =
-      `## ─── Core Shield Anti-Cheat ───\n` +
-      `set aeigs_api "${apiUrl}"\n` +
-      `set aeigs_token "${created.apiToken}"\n` +
-      `add_ace resource.aeigs-anticheat command allow\n` +
+      `## ─── CoreAC Anti-Cheat ───\n` +
+      `set coreac_api "${apiUrl}"\n` +
+      `set coreac_token "${created.apiToken}"\n` +
+      `add_ace resource.coreac command allow\n` +
       // No screenshot resource in this block on purpose. Pasting it into a cfg
       // that already ensures one created a second ensure: two concurrent yarn
       // builds deadlock and the server never finishes starting.
-      `ensure aeigs-anticheat`;
+      `ensure coreac`;
     return (
       <div className="mx-auto grid max-w-4xl gap-4 lg:grid-cols-[1fr_300px]">
         {/* Sol: tek birleşik cfg bloğu (terminal görünümü) */}
@@ -88,9 +89,10 @@ export function NewServerFlow({ appUrl }: { appUrl: string }) {
             <p className="mt-1 text-slate-400">Your server is ready. Copy the block on the left into <code className="text-slate-300">server.cfg</code>.</p>
           </div>
           <ul className="space-y-2.5 rounded-2xl border border-white/5 bg-base-850/60 p-4 text-xs text-slate-400">
-            <li className="flex gap-2"><span className="text-brand-300">›</span> <span><b className="text-slate-200">Resource:</b> <code>aeigs-anticheat</code> folder into <code>resources/</code>.</span></li>
+            <li className="flex gap-2"><span className="text-brand-300">›</span> <span><b className="text-slate-200">Easiest:</b> the one-click installer on the <b className="text-slate-200">Download</b> page does all of this for you.</span></li>
+            <li className="flex gap-2"><span className="text-brand-300">›</span> <span><b className="text-slate-200">Resource:</b> <code>coreac</code> folder into <code>resources/</code> (rename it if you like — then change the last two lines too).</span></li>
             <li className="flex gap-2"><span className="text-brand-300">›</span> <span><b className="text-slate-200">Monitoring:</b> screenshots need <code>screencapture</code> (or <code>screenshot-basic</code>) — ensure it <b className="text-slate-200">once</b>, never twice.</span></li>
-            <li className="flex gap-2"><span className="text-brand-300">›</span> <span><b className="text-slate-200">ensure order:</b> these lines must come before your other <code>ensure</code>must come before your other resources.</span></li>
+            <li className="flex gap-2"><span className="text-brand-300">›</span> <span><b className="text-slate-200">ensure order:</b> put these lines above your other <code>ensure</code> lines so the anti-cheat starts first.</span></li>
             <li className="flex gap-2"><span className="text-brand-300">›</span> <span><b className="text-slate-200">add_ace:</b> required for console, kick and resource commands.</span></li>
           </ul>
           <div className="flex flex-col gap-2">
@@ -115,7 +117,7 @@ export function NewServerFlow({ appUrl }: { appUrl: string }) {
           <label className="label">Licence key</label>
           <input
             className="input font-mono tracking-wide"
-            placeholder="AEIGS-XXXX-XXXX-XXXX-XXXX"
+            placeholder="COREAC-XXXX-XXXX-XXXX-XXXX"
             value={key}
             onChange={(e) => setKey(e.target.value.toUpperCase())}
           />
@@ -146,7 +148,11 @@ export function NewServerFlow({ appUrl }: { appUrl: string }) {
         <button className="btn-primary w-full" onClick={activate} disabled={loading}>
           {loading ? "Creating…" : "Activate & create server"}
         </button>
-        <p className="text-center text-xs text-slate-600">No key? You can redeem a gift code from the My Licences page.</p>
+        <p className="text-center text-xs text-slate-600">
+          No key yet?{" "}
+          <Link href="/purchase" className="text-brand-300 hover:text-brand-200">See how to buy one</Link>
+          {" "}— or redeem a gift code on the My Licences page.
+        </p>
       </div>
     </Card>
   );

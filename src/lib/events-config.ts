@@ -1,9 +1,12 @@
-// Protected Client Events — customer-managed honeypot event names.
+// Protected Events — customer-managed honeypot event names.
 //
-// The resource registers a handler for each of these names on the client; a
-// player who triggers one (e.g. an executor firing a cheat-menu event) is
-// flagged as CHEAT_EVENT_HONEYPOT (client-origin, so KICK at most — never a
-// ban, so a mistaken entry cannot ban an innocent player).
+// The resource traps each name twice: as a client event (client/events.lua,
+// client-origin → KICK at most) and as a server event (server/entity_guard.lua,
+// server-origin). Cheat menus mostly fire money/job exploits with
+// TriggerServerEvent, which only the server-side trap can see. Names whose
+// "prefix:" matches a resource installed on the server are skipped, so a
+// resource's own events can never be trapped by accident. The type defaults to
+// KICK; owners may raise CHEAT_EVENT_HONEYPOT to BAN in Actions.
 //
 // IMPORTANT (shown in the UI): only add events that NO legitimate resource on
 // the server ever fires. We do NOT name-mangle events (that needs invasive
@@ -39,4 +42,7 @@ export const KNOWN_CHEAT_EVENTS: string[] = [
   "adminmenu:allowall",
   "antilynx8:crashuser",
   "antilynxr4:crashuser",
+  "esx_truckerjob:pay",
+  "esx_billing:sendBill",
+  "vrp_slotmachine:server:2",
 ];

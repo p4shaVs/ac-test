@@ -48,6 +48,7 @@ export default async function ConfigLibraryPage({ params }: { params: { id: stri
         anti_rapid_fire: true,
         anti_wallhack: true,
         anti_melee_reach: true,
+        anti_headshot_rate: true,
         anti_instant_repair: false,
         anti_armor_regen: false,
       },

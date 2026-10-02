@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="menu.css" />
+</head>
+<body>
+  <!-- Announcements, admin messages and warnings — top centre, shown even when the panel is closed. -->
+  <div id="notices" class="notices"></div>
+
+  <!-- Live anti-cheat alerts for staff — top right, independent of the panel. -->
+  <div id="alertStack" class="alert-stack"></div>
+
+  <!-- Ban video — full screen, shown right before a banned player is dropped. -->
+  <div id="banVideo" class="ban-video hidden"></div>
+
+  <!-- Admin panel (/cac) -->
+  <div id="root" class="hidden">
+    <div class="panel" role="dialog" aria-label="CoreAC admin panel">
+      <header class="head">
+        <div class="brand">
+          <span class="logo" id="brand">CORE<b>AC</b></span>
+          <span class="crumb" id="crumb">Players</span>
+        </div>
+        <div class="head-right">
+          <div id="specPill" class="chip spec hidden">
+            <span class="dot"></span><span id="specText">Spectating</span>
+            <button id="specStop" class="chip-btn">Stop</button>
+          </div>
+          <div class="chip"><span class="dot live"></span><b id="onlineCount">0</b> online</div>
+          <button id="close" class="close-btn" title="Close">ESC</button>
+        </div>
+      </header>
+
+      <nav id="tabs" class="tabs"></nav>
+
+      <main id="view" class="view"></main>
+    </div>
+
+    <div id="modal" class="modal hidden" role="dialog" aria-modal="true"></div>
+    <div id="toasts" class="toasts"></div>
+  </div>
+  <script src="menu.js"></script>
+</body>
+</html>

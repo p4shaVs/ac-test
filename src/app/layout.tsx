@@ -19,13 +19,13 @@ const jakarta = localFont({
 
 export const metadata: Metadata = {
   title: {
-    default: "Core Shield Anti-Cheat — cheat protection for FiveM",
-    template: "%s · Core Shield Anti-Cheat",
+    default: "CoreAC Anti-Cheat — cheat protection for FiveM",
+    template: "%s · CoreAC Anti-Cheat",
   },
   description:
     "Anti-cheat, web panel and licence management for your FiveM server. Server-side godmode, silent aim and exploit detection, live map, ban and kick management.",
-  applicationName: "Core Shield Anti-Cheat",
-  keywords: ["fivem", "anticheat", "anti-cheat", "aeigs", "fivem panel"],
+  applicationName: "CoreAC Anti-Cheat",
+  keywords: ["fivem", "anticheat", "anti-cheat", "coreac", "fivem panel"],
   robots: { index: true, follow: true },
 };
 

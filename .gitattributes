@@ -1,0 +1,2 @@
+# The Windows installer is a committed build artifact — never touch its bytes.
+installer-win/*.exe binary

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySession } from "@/lib/jwt";
-import { SESSION_COOKIE } from "@/lib/session";
+import { SESSION_COOKIE } from "@/lib/session-cookie";
 
 // Edge middleware: /dashboard ve /admin için kaba erişim kontrolü + demo
 // oturumunun salt-okunur tutulması. DB doğrulaması route/sayfa seviyesinde

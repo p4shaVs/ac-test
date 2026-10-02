@@ -8,7 +8,7 @@ import { ApiError } from "@/lib/api";
 import { parseJson } from "@/lib/utils";
 import { sanitizeRules } from "@/lib/rules";
 import { sanitizeActions } from "@/lib/detection-actions";
-import { sanitizeAcConfig } from "@/lib/ac-config";
+import { sanitizeAcConfig, acForResource } from "@/lib/ac-config";
 
 // FiveM kaynağı bu ucu düzenli aralıklarla çağırarak sunucuyu "çevrimiçi" tutar.
 const schema = z.object({
@@ -39,18 +39,24 @@ export const POST = handler(async (req: NextRequest) => {
   //
   // KRİTİK: burada HAM config dönülüyordu. Hiç ayar kaydetmemiş yeni bir
   // sunucuda `config.rules` tanımsız olduğu için kaynak tarafındaki
-  // Aeigs.getRules() boş tablo döndürüyor, dolayısıyla protection.lua /
+  // CAC.getRules() boş tablo döndürüyor, dolayısıyla protection.lua /
   // vehicle_guard.lua / session_guard.lua içindeki HER ruleOn(...) false
   // oluyordu: silent aim, damage multiplier, explosive bullets, vehicle
   // godmode, entity spam, chat flood, reconnect spam korumalarının tamamı
   // kutudan KAPALI geliyordu. Artık üç bölüm de varsayılanlarla doldurulup
   // gönderiliyor — müşteri hiçbir şey yapmadan korumalı başlıyor.
   const stored = parseJson<Record<string, unknown>>(server.config, {});
+  // Discord webhook URLs are secrets the PANEL uses (it posts to Discord itself);
+  // the game server has no use for them and anything it holds can be read by a
+  // backdoor running beside it. `...stored` used to hand over the legacy
+  // `discordWebhook` together with everything else — strip it, and the
+  // panel-only fields of the new Settings tab (see acForResource).
+  const { discordWebhook: _wh, webhookEvents: _whEvents, ...forResource } = stored;
   const config = {
-    ...stored,
+    ...forResource,
     rules: sanitizeRules(stored.rules),
     actions: sanitizeActions(stored.actions),
-    ac: sanitizeAcConfig(stored.ac),
+    ac: acForResource(sanitizeAcConfig(stored.ac)),
   };
 
   return ok({

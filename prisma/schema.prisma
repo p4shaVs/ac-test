@@ -1,4 +1,4 @@
-// Aeigs Anti-Cheat — veritabanı şeması
+// CoreAC Anti-Cheat — veritabanı şeması
 // Yerel/tek makine kurulumu: SQLite (dosya tabanlı, ekstra sunucu gerekmez).
 // İleride buluta taşınırsa provider'ı "postgresql" yapmak yeterli; enum'lar
 // zaten string olarak modellendiği için taşıma sorunsuzdur.
@@ -101,7 +101,7 @@ model Order {
 
 model LicenseKey {
   id          String   @id @default(cuid())
-  key         String   @unique // AEIGS-XXXX-XXXX-XXXX-XXXX
+  key         String   @unique // COREAC-XXXX-XXXX-XXXX-XXXX (eski: AEIGS-…)
   productId   String?
   product     Product? @relation(fields: [productId], references: [id])
 
@@ -180,6 +180,9 @@ model Whitelist {
   kind       String   // license | discord | steam | ip
   value      String
   note       String?
+  // Hangi korumalardan muaf: JSON dizi. [] = HEPSİ (eski davranış).
+  // Öğeler: "cat:<kategori>" (movement, combat…) ya da tespit tipi ("NOCLIP").
+  scope      String   @default("[]")
   createdBy  String?
   createdAt  DateTime @default(now())
 
@@ -278,6 +281,11 @@ model Player {
   name        String
   online      Boolean  @default(false)
 
+  // Cihaz izi (ban kaçırma engeli): FiveM donanım token'ları (JSON dizi) ve
+  // oyuncunun bilgisayarına bırakılan kalıcı işaret (KVP, 32 hex).
+  tokens      String   @default("[]")
+  deviceId    String?
+
   firstSeenAt DateTime @default(now())
   lastSeenAt  DateTime @default(now())
   playtimeSec Int      @default(0)
@@ -319,6 +327,13 @@ model Ban {
   ip          String?
   playerName  String
 
+  // Cihaz izi anlık görüntüsü (bağlı oyuncunun kaydına ek olarak). Hesap
+  // değiştirip gelen banlı oyuncu bu token'lar / işaretle tanınır.
+  tokens      String   @default("[]")
+  deviceId    String?
+  // Ban kaçırma banı ise: kaçırılan asıl banın kodu (ör. "AC-3F9K2Q").
+  evasionOf   String?
+
   reason      String
   bannedBy    String   // admin adı / "AntiCheat"
   active      Boolean  @default(true)
@@ -327,6 +342,11 @@ model Ban {
   expiresAt   DateTime?
   unbannedAt  DateTime?
   unbannedBy  String?
+
+  // Panel → ban detayı: personel notları (JSON dizi: {by, at, text}) ve bu banın
+  // yanlış pozitif olarak işaretlenip kaldırıldığı ("Fix False Ban").
+  notes         String   @default("[]")
+  falsePositive Boolean  @default(false)
 
   // Bu banı tetikleyen tespit — "neden banlandık" replay'i izlemek için.
   detectionId String?     @unique
