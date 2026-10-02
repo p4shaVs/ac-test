@@ -4,10 +4,11 @@ import { db } from "@/lib/db";
 import { handler, ok, ApiError } from "@/lib/api";
 import { authenticateServer } from "@/lib/server-auth";
 import { rateLimit } from "@/lib/ratelimit";
-import { readNetworkPolicy, queryNetworkReputation, reputationScore } from "@/lib/network-bans";
+import {
+  readNetworkPolicy, queryNetworkReputation, reputationScore, decideNetworkAction, recordNetworkFlag, describeFlag,
+} from "@/lib/network-bans";
 import { readAcSettings } from "@/lib/ac-settings";
 import { sendWebhook } from "@/lib/discord";
-import { severityForType } from "@/lib/detection-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -104,49 +105,21 @@ export const POST = handler(async (req: NextRequest) => {
 
   // Flagged → always leave a visible record (panel + Discord). Action is LOG or
   // KICK only; a network flag is a signal, not proof, so it never bans and never
-  // creates a local Ban row.
-  const action: "LOG" | "KICK" = policy.action === "KICK" ? "KICK" : "LOG";
+  // creates a local Ban row. With "strong flags only" (default) a weak flag —
+  // backed only by staff bans with unclear reasons — is logged, never blocked.
+  const action = decideNetworkAction(policy, rep);
 
   const player = body.license
     ? await db.player.findUnique({
         where: { serverId_license: { serverId: server.id, license: body.license } },
+        select: { id: true },
       })
     : null;
 
-  await db.detection.create({
-    data: {
-      serverId: server.id,
-      playerId: player?.id,
-      type: "NETWORK_BAN",
-      severity: severityForType("NETWORK_BAN"),
-      playerName: body.playerName,
-      details: JSON.stringify({
-        distinctOwners: rep.distinctOwners,
-        totalBans: rep.totalBans,
-        topReason: rep.topType,
-        note: `Banned across ${rep.distinctOwners} network server owner(s).`,
-      }),
-      action,
-    },
-  });
+  await recordNetworkFlag(server, player, body.playerName, rep, action, false);
 
-  await db.serverLog.create({
-    data: {
-      serverId: server.id,
-      level: "DETECTION",
-      source: "network",
-      message: `NETWORK_BAN → ${body.playerName} (banned on ${rep.distinctOwners} network owners)${
-        action === "KICK" ? " — entry blocked" : ""
-      }`,
-    },
+  return ok({
+    flagged: true, action, distinctOwners: rep.distinctOwners, strength: rep.strength,
+    reason: describeFlag(rep), reputation, threat, deny, shadow,
   });
-
-  void sendWebhook(server.config, "detection", server.name, {
-    player: body.playerName,
-    reason: `Network reputation — banned across ${rep.distinctOwners} server owner(s)${
-      action === "KICK" ? " (entry blocked)" : ""
-    }`,
-  });
-
-  return ok({ flagged: true, action, distinctOwners: rep.distinctOwners, reputation, threat, deny, shadow });
 });

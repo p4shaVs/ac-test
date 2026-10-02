@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { handler, ok } from "@/lib/api";
-import { requireOwnedServer } from "@/lib/api-guards";
+import { requireServerAccess } from "@/lib/api-guards";
 import { joaat } from "@/lib/gta-models";
 import { trollPropPreset } from "@/lib/troll-props";
 
@@ -21,7 +21,7 @@ const addSchema = z.object({
 });
 
 export const POST = handler(async (req: NextRequest, ctx: { params: { id: string } }) => {
-  const { server, user } = await requireOwnedServer(ctx.params.id);
+  const { server, user } = await requireServerAccess(ctx.params.id, "config");
   const body = addSchema.parse(await req.json());
 
   const existing = await db.blacklist.findMany({
@@ -49,7 +49,7 @@ export const POST = handler(async (req: NextRequest, ctx: { params: { id: string
 const deleteSchema = z.object({ preset: z.literal("troll-props") });
 
 export const DELETE = handler(async (req: NextRequest, ctx: { params: { id: string } }) => {
-  const { server } = await requireOwnedServer(ctx.params.id);
+  const { server } = await requireServerAccess(ctx.params.id, "config");
   deleteSchema.parse(await req.json());
   const hashes = trollPropPreset().map((m) => String(m.hash));
   const res = await db.blacklist.deleteMany({

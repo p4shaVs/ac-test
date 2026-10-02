@@ -57,7 +57,18 @@ const ACTIVITY_LABEL: Record<string, string> = {
 type ViewMode = "iso" | "top" | "city";
 type FilterMode = "heat" | "risky" | "cluster";
 
-export function MapView({ serverId, players, maxSlots }: { serverId: string; players: MapPlayer[]; maxSlots: number }) {
+export function MapView({
+  serverId,
+  players,
+  maxSlots,
+  canModerate = true,
+}: {
+  serverId: string;
+  players: MapPlayer[];
+  maxSlots: number;
+  /** Live screenshots need "Moderate players". */
+  canModerate?: boolean;
+}) {
   const router = useRouter();
   const [view, setView] = useState<ViewMode>("iso");
   const [mode, setMode] = useState<FilterMode>("cluster");
@@ -189,7 +200,7 @@ export function MapView({ serverId, players, maxSlots }: { serverId: string; pla
           </div>
         </div>
 
-        {sel && <PlayerDetail serverId={serverId} p={sel} />}
+        {sel && <PlayerDetail serverId={serverId} p={sel} canModerate={canModerate} />}
 
         <div className="max-h-[300px] overflow-y-auto rounded-2xl border border-white/5 bg-base-850/60 p-2">
           {shown.length === 0 ? (
@@ -233,7 +244,7 @@ function RangeRow({ label, min, max, lo, hi, onLo, onHi }: {
   );
 }
 
-function PlayerDetail({ serverId, p }: { serverId: string; p: MapPlayer }) {
+function PlayerDetail({ serverId, p, canModerate }: { serverId: string; p: MapPlayer; canModerate: boolean }) {
   const [ssUrl, setSsUrl] = useState<string | null>(null);
   const [ssStatus, setSsStatus] = useState("");
   const [busy, setBusy] = useState(false);
@@ -274,6 +285,8 @@ function PlayerDetail({ serverId, p }: { serverId: string; p: MapPlayer }) {
         <Info label="Position" value={p.posX != null ? `${Math.round(p.posX)}, ${Math.round(p.posY!)}` : "—"} />
         <Info label="Play time" value={`${Math.round(p.playtimeSec / 3600)}h`} />
       </div>
+      {canModerate && (
+      <>
       <div className="overflow-hidden rounded-xl border border-white/10 bg-base-950">
         {ssUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -285,6 +298,8 @@ function PlayerDetail({ serverId, p }: { serverId: string; p: MapPlayer }) {
       <button className="btn-secondary mt-2 w-full" onClick={requestScreenshot} disabled={busy}>
         <Icons.eye size={15} /> {busy ? "Fetching…" : "Request live view"}
       </button>
+      </>
+      )}
     </div>
   );
 }

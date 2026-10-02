@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { handler } from "@/lib/api";
-import { requireOwnedServer } from "@/lib/api-guards";
+import { requireServerAccess } from "@/lib/api-guards";
 
 function csvEscape(v: unknown): string {
   const s = v === null || v === undefined ? "" : String(v);
@@ -11,7 +11,7 @@ function csvEscape(v: unknown): string {
 // Ban listesini CSV olarak indirir (Excel/Sheets'te açılabilir).
 export const GET = handler(
   async (_req: Request, ctx: { params: { id: string } }) => {
-    const { server } = await requireOwnedServer(ctx.params.id);
+    const { server } = await requireServerAccess(ctx.params.id, "moderate");
     const bans = await db.ban.findMany({
       where: { serverId: server.id },
       orderBy: { createdAt: "desc" },

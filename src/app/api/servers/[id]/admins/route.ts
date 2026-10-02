@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { handler, ok, ApiError } from "@/lib/api";
-import { requireOwnedServer } from "@/lib/api-guards";
+import { requireServerAccess } from "@/lib/api-guards";
 import { audit } from "@/lib/audit";
 import { clientIp } from "@/lib/session";
 import { ADMIN_PERMISSIONS, ROLE_DEFAULTS } from "@/lib/admin-perms";
@@ -20,7 +20,7 @@ const schema = z.object({
 
 export const POST = handler(
   async (req: NextRequest, ctx: { params: { id: string } }) => {
-    const { server, user } = await requireOwnedServer(ctx.params.id);
+    const { server, user } = await requireServerAccess(ctx.params.id, "admins");
     const body = schema.parse(await req.json());
 
     const exists = await db.serverAdmin.findFirst({

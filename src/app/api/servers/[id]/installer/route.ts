@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { handler } from "@/lib/api";
 import { requireOwnedServer } from "@/lib/api-guards";
 import { buildInstallerBat } from "@/lib/installer-script";
 import { env } from "@/lib/env";
@@ -9,7 +10,8 @@ export const dynamic = "force-dynamic";
 
 // ?stealth=0 → kaynak "coreac" klasörüne kurulur; varsayılan (gizli ad) rastgele
 // bir klasör adı seçer ki hile menüleri AC'yi adıyla bulup durduramasın.
-export async function GET(req: NextRequest, ctx: { params: { id: string } }) {
+// Wrapped in handler(): a team member (or stranger) gets a clean 403/404, not a 500.
+export const GET = handler(async (req: NextRequest, ctx: { params: { id: string } }) => {
   const { server } = await requireOwnedServer(ctx.params.id);
 
   const apiBase = (env.APP_URL || "http://localhost:3000").replace(/\/+$/, "");
@@ -25,4 +27,4 @@ export async function GET(req: NextRequest, ctx: { params: { id: string } }) {
       "Cache-Control": "no-store",
     },
   });
-}
+});

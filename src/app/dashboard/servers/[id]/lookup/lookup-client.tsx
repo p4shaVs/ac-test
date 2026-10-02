@@ -78,7 +78,14 @@ interface Dossier {
     recent: { id: string; label: string; severity: string; action: string; createdAt: string }[];
   };
   linked: { id: string; name: string; via: string[]; online: boolean; banned: boolean; lastSeenAt: string }[];
-  network: { flagged: boolean; distinctOwners: number; totalBans: number; topType: string | null };
+  network: {
+    flagged: boolean;
+    strength: "none" | "weak" | "strong";
+    distinctOwners: number;
+    totalBans: number;
+    topType: string | null;
+    categories: { type: string; label: string; count: number }[];
+  };
 }
 
 const RECENT_KEY = "coreac.lookup.recent";
@@ -143,7 +150,17 @@ function Section({ title, right, children, className }: { title: string; right?:
   );
 }
 
-export function LookupClient({ serverId, initialQuery = "", initialPlayer = null }: { serverId: string; initialQuery?: string; initialPlayer?: string | null }) {
+export function LookupClient({
+  serverId,
+  initialQuery = "",
+  initialPlayer = null,
+  canModerate = true,
+}: {
+  serverId: string;
+  initialQuery?: string;
+  initialPlayer?: string | null;
+  canModerate?: boolean;
+}) {
   const [q, setQ] = useState(initialQuery);
   const [results, setResults] = useState<Result[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -392,11 +409,11 @@ export function LookupClient({ serverId, initialQuery = "", initialPlayer = null
                       <Link href={`/dashboard/servers/${serverId}/bans?ban=${activeHere.id}`} className="btn-secondary h-8 px-3 text-xs">
                         <Icons.ban size={12} /> Open the ban
                       </Link>
-                    ) : (
+                    ) : canModerate ? (
                       <button type="button" onClick={() => setBanOpen(true)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-rose-400/30 px-3 text-xs font-medium text-rose-200 transition hover:bg-rose-400/10">
                         <Icons.ban size={12} /> Ban
                       </button>
-                    )}
+                    ) : null}
                     <CopyButton text={allIds} label="Copy identifiers" className="h-8 px-3" />
                     <button type="button" onClick={() => loadDossier(d.player.id)} className="btn-ghost h-8 px-3 text-xs">
                       <Icons.refresh size={12} className={cn(dLoading && "animate-spin")} /> Refresh
@@ -420,9 +437,13 @@ export function LookupClient({ serverId, initialQuery = "", initialPlayer = null
                 <Signal
                   icon="globe"
                   label="CoreAC network"
-                  value={d.network.distinctOwners ? `${d.network.distinctOwners} server${d.network.distinctOwners === 1 ? "" : "s"}` : "Clean"}
-                  sub={d.network.distinctOwners ? `banned elsewhere${d.network.flagged ? " · flagged" : ""}` : "no bans on other servers"}
-                  tone={d.network.flagged ? "red" : d.network.distinctOwners ? "amber" : "green"}
+                  value={d.network.distinctOwners ? `${d.network.distinctOwners} communit${d.network.distinctOwners === 1 ? "y" : "ies"}` : "Clean"}
+                  sub={
+                    d.network.distinctOwners
+                      ? `${d.network.flagged ? `${d.network.strength} flag` : "not flagged"}${d.network.categories?.[0] ? ` · ${d.network.categories[0].label}` : ""}`
+                      : "no cheat bans on other servers"
+                  }
+                  tone={d.network.strength === "strong" ? "red" : d.network.distinctOwners ? "amber" : "green"}
                 />
               </div>
 

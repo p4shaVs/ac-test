@@ -301,6 +301,55 @@ console.log("\n== punishments: the action you pick is the action that runs ==");
     check("only unusable ids → refused", "error" in identityFrom(parseIdentifiers("license2:abc fivem:1")));
   }
 
+  console.log("\n== CoreAC network: fairness, strength, window ==");
+  {
+    const { networkTypeForManual, summarise, decideNetworkAction, sanitizeNetworkPolicy, describeFlag, NETWORK_WINDOW_DAYS } =
+      await import("../../src/lib/network-bans");
+    check("staff ban for aimbot → shared as a cheat ban", networkTypeForManual("Aimbot use") === "MANUAL_CHEAT");
+    check("Turkish cheat reason → cheat ban", networkTypeForManual("hile menüsü (executor)") === "MANUAL_CHEAT");
+    check("toxicity / RDM / küfür → behaviour ban (never shared)",
+      ["Toxic in OOC", "RDM", "küfür etti", "Fail RP"].every((r) => networkTypeForManual(r) === "MANUAL_CONDUCT"));
+    check("cheat words win over behaviour words", networkTypeForManual("toxic and using godmode") === "MANUAL_CHEAT");
+    check("unclear reason → plain staff ban", networkTypeForManual("Banned") === "MANUAL" && networkTypeForManual("") === "MANUAL");
+
+    const now = Date.now();
+    const at = (daysAgo: number) => new Date(now - daysAgo * 86_400_000);
+    const strong = summarise([
+      { ownerId: "a", type: "AIMBOT", createdAt: at(3) },
+      { ownerId: "b", type: "MANUAL_CHEAT", createdAt: at(10) },
+      { ownerId: "b", type: "GODMODE", createdAt: at(11) },
+    ], now);
+    check("two owners with detections/cheat bans → strong flag", strong.flagged && strong.strength === "strong" && strong.distinctOwners === 2);
+    check("breakdown: categories, automatic vs staff, first/last ban",
+      strong.categories.length === 3 && strong.automatic === 2 && strong.manual === 1 && !!strong.firstBanAt && !!strong.lastBanAt);
+    const weak = summarise([
+      { ownerId: "a", type: "AIMBOT", createdAt: at(3) },
+      { ownerId: "b", type: "MANUAL", createdAt: at(4) },
+    ], now);
+    check("one owner only has an unclear staff ban → weak flag", weak.flagged && weak.strength === "weak");
+    const single = summarise([{ ownerId: "a", type: "AIMBOT", createdAt: at(1) }, { ownerId: "a", type: "NOCLIP", createdAt: at(2) }], now);
+    check("one owner alone never flags (anti-poisoning)", !single.flagged && single.strength === "none" && single.distinctOwners === 1);
+    const conduct = summarise([
+      { ownerId: "a", type: "MANUAL_CONDUCT", createdAt: at(1) },
+      { ownerId: "b", type: "MANUAL_CONDUCT", createdAt: at(1) },
+    ], now);
+    check("behaviour bans never count (even old data)", !conduct.flagged && conduct.distinctOwners === 0);
+    const old = summarise([
+      { ownerId: "a", type: "AIMBOT", createdAt: at(NETWORK_WINDOW_DAYS + 5) },
+      { ownerId: "b", type: "AIMBOT", createdAt: at(NETWORK_WINDOW_DAYS + 9) },
+    ], now);
+    check(`bans older than ${NETWORK_WINDOW_DAYS} days stop counting but stay in history`, !old.flagged && old.olderBans === 2);
+
+    const kick = { action: "KICK" as const, contribute: true, strongOnly: true };
+    check("Keep out + strong only: strong → KICK, weak → LOG", decideNetworkAction(kick, strong) === "KICK" && decideNetworkAction(kick, weak) === "LOG");
+    check("Keep out without strong only: weak → KICK", decideNetworkAction({ ...kick, strongOnly: false }, weak) === "KICK");
+    check("Log only never kicks", decideNetworkAction({ ...kick, action: "LOG" }, strong) === "LOG");
+    check("policy defaults: strong flags only, sharing on", sanitizeNetworkPolicy({}).strongOnly === true && sanitizeNetworkPolicy({}).contribute === true);
+    check("a settings save without strongOnly keeps the stored value",
+      sanitizeNetworkPolicy({ ...sanitizeNetworkPolicy({ strongOnly: false }), action: "LOG", contribute: true }).strongOnly === false);
+    check("the flag text names counts and cheat types, never a server", describeFlag(strong).startsWith("banned on 2 other CoreAC communities ("));
+  }
+
   console.log("\n== Windows installer ==");
   {
     const { normaliseKey, publicApiBase } = await import("../../src/lib/install-key");
@@ -326,6 +375,124 @@ console.log("\n== punishments: the action you pick is the action that runs ==");
     const exe = readFileSync(resolve(process.cwd(), "installer-win/CoreAC-Setup.exe"));
     check("installer-win/CoreAC-Setup.exe is a Windows executable", exe[0] === 0x4d && exe[1] === 0x5a);
     check(`the committed exe is version ${version} (rebuild with npm run build:installer)`, !!version && exe.includes(Buffer.from(`CoreAC Setup ${version}`, "utf16le")));
+  }
+
+  console.log("\n== panel team: roles, ranks and who may hand out what ==");
+  {
+    const T = await import("../../src/lib/team");
+    const ops = await import("../../src/lib/team-ops");
+    const who = (role: import("../../src/lib/team").Role, perms?: import("../../src/lib/team").Permission[]) => ({
+      role,
+      perms: T.permissionsOf(role, perms ?? (role === "OWNER" ? [] : T.ROLES[role].perms)),
+    });
+    const owner = who("OWNER");
+    const admin = who("ADMIN");
+    const adminNoConsole = who("ADMIN", ["moderate", "config", "admins", "settings", "team"]);
+    const mod = who("MODERATOR");
+    const modTeam = who("MODERATOR", ["moderate", "team"]);
+    const viewer = who("VIEWER");
+
+    check("presets: Admin has every permission, Moderator moderates, Viewer only looks",
+      T.ROLES.ADMIN.perms.length === T.ALL_PERMISSIONS.length && T.ROLES.MODERATOR.perms.join() === "moderate" && T.ROLES.VIEWER.perms.length === 0);
+    check("stored permissions are cleaned (unknown and duplicates dropped)", T.sanitizePermissions(["team", "root", "moderate", "team", 5]).join() === "moderate,team");
+    check("broken JSON in the database means no permissions", T.parsePermissions("{nope").length === 0);
+    check("owner can manage an Admin", T.canManage(owner, { role: "ADMIN" }));
+    check("an Admin cannot manage another Admin", !T.canManage(admin, { role: "ADMIN" }));
+    check("an Admin can manage Moderators and Viewers", T.canManage(admin, { role: "MODERATOR" }) && T.canManage(admin, { role: "VIEWER" }));
+    check("nobody manages the owner", !T.canManage(owner, { role: "OWNER" }) && !T.canManage(admin, { role: "OWNER" }));
+    check("a Moderator without the team permission manages nobody", !T.canManage(mod, { role: "VIEWER" }) && T.assignableRoles(mod).length === 0);
+    check("a Moderator with the team permission can only bring in Viewers", T.assignableRoles(modTeam).join() === "VIEWER");
+    check("assignable roles: owner gets all three, Admin gets Moderator/Viewer",
+      T.assignableRoles(owner).join() === "ADMIN,MODERATOR,VIEWER" && T.assignableRoles(admin).join() === "MODERATOR,VIEWER");
+    check("you cannot hand out a permission you do not hold", !T.canManage(adminNoConsole, { role: "MODERATOR" }, ["moderate", "console"]));
+    check("…but everything you hold is fine", T.canManage(adminNoConsole, { role: "MODERATOR" }, ["moderate", "config"]));
+    check("changing perms: an Admin without console cannot strip the console the owner gave",
+      !T.permissionChangeAllowed(adminNoConsole, ["moderate", "console"], ["moderate"]));
+    check("…nor grant it", !T.permissionChangeAllowed(adminNoConsole, ["moderate"], ["moderate", "console"]));
+    check("…but may change the rest while it stays", T.permissionChangeAllowed(adminNoConsole, ["moderate", "console"], ["console", "config"]));
+    check("a Viewer has no rights at all, the owner has every one", viewer.perms.size === 0 && owner.perms.size === T.ALL_PERMISSIONS.length);
+
+    check("menu: a Viewer cannot open configuration, console, admins, settings or live monitor",
+      ["rules", "events", "blacklist", "whitelist", "config-library", "setup", "console", "resources", "admins", "settings", "monitoring"].every((p) => !T.canOpenPage(p, [], false)));
+    check("menu: a Viewer still sees overview, bans, detections, logs, lookup and the team",
+      ["", "bans", "detections", "logs", "admin-logs", "lookup", "network", "team", "players", "map"].every((p) => T.canOpenPage(p, [], false)));
+    check("menu: a Moderator opens the live monitor but not the console", T.canOpenPage("monitoring", ["moderate"], false) && !T.canOpenPage("console", ["moderate"], false));
+    check("menu: the owner opens everything", Object.keys(T.PAGE_PERMISSION).every((p) => T.canOpenPage(p, [], true)));
+
+    // Invite tokens: 256-bit, only the hash is stored, and states are exact.
+    const a = ops.newInviteToken();
+    const b = ops.newInviteToken();
+    check("invite tokens are 43 url-safe characters and unique", ops.isInviteTokenShape(a.token) && a.token !== b.token);
+    check("only the SHA-256 of the token is stored", a.hash === ops.hashInviteToken(a.token) && a.hash.length === 64 && !a.hash.includes(a.token));
+    check("anything not shaped like a token is rejected before a query", !ops.isInviteTokenShape("../../etc") && !ops.isInviteTokenShape(a.token + "x"));
+    const base = { acceptedAt: null, revokedAt: null, declinedAt: null, expiresAt: new Date(Date.now() + 60_000) };
+    check("invite states: pending / accepted / revoked / declined / expired",
+      ops.inviteState(base) === "pending" &&
+        ops.inviteState({ ...base, acceptedAt: new Date() }) === "accepted" &&
+        ops.inviteState({ ...base, revokedAt: new Date() }) === "revoked" &&
+        ops.inviteState({ ...base, declinedAt: new Date() }) === "declined" &&
+        ops.inviteState({ ...base, expiresAt: new Date(Date.now() - 1) }) === "expired");
+    check("e-mails are masked on the invite page", ops.maskEmail("hamza@example.com") === "ha***@example.com");
+
+    // Every /api/servers/[id] handler goes through the access guard with the right permission.
+    const { readdirSync } = await import("node:fs");
+    const { join, sep } = await import("node:path");
+    const root = resolve(process.cwd(), "src/app/api/servers/[id]");
+    const walk = (d: string): string[] =>
+      readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : e.name === "route.ts" ? [join(d, e.name)] : []));
+    const EXPECTED: Record<string, string> = {
+      "actions/route.ts": "PATCH:config",
+      "admins/route.ts": "POST:admins",
+      "admins/[adminId]/route.ts": "PATCH:admins DELETE:admins",
+      "bans/export/route.ts": "GET:moderate",
+      "bans/offline/route.ts": "POST:moderate",
+      "bans/route.ts": "POST:config",
+      "bans/[banId]/route.ts": "GET:view POST:moderate",
+      "blacklist/preset/route.ts": "POST:config DELETE:config",
+      "blacklist/route.ts": "POST:config PATCH:config DELETE:config",
+      "config/route.ts": "PATCH:config",
+      "console/route.ts": "GET:console POST:console",
+      "detections/[detectionId]/route.ts": "GET:view",
+      "event-log/route.ts": "GET:view PATCH:config",
+      "installer/route.ts": "GET:owner",
+      "lookup/route.ts": "GET:view",
+      "lookup/[playerId]/route.ts": "GET:view",
+      "moderate/route.ts": "POST:moderate",
+      "network/route.ts": "POST:view",
+      "protected-events/route.ts": "PATCH:config",
+      "resource-action/route.ts": "POST:console",
+      "resource-zip/route.ts": "GET:owner",
+      "route.ts": "PATCH:settings DELETE:owner",
+      "rules/route.ts": "PATCH:config",
+      "screenshot/route.ts": "POST:moderate GET:view",
+      "shots/[rid]/route.ts": "GET:view",
+      "team/route.ts": "GET:view POST:view",
+      "token/route.ts": "POST:owner",
+      "unban/route.ts": "POST:moderate",
+      "whitelist/route.ts": "POST:config PATCH:config DELETE:config",
+    };
+    const seen = new Set<string>();
+    for (const f of walk(root)) {
+      const rel = f.slice(root.length + 1).split(sep).join("/");
+      seen.add(rel);
+      const src = readFileSync(f, "utf8");
+      const parts = src.split(/export (?:const|async function) (GET|POST|PATCH|PUT|DELETE)\b/);
+      const got: string[] = [];
+      for (let i = 1; i < parts.length; i += 2) {
+        const g = [...parts[i + 1].matchAll(/require(?:ServerAccess\([^,)]+(?:,\s*"([a-z]+)")?\)|OwnedServer\()/g)].map((x) =>
+          x[0].includes("Owned") ? "owner" : x[1] || "view"
+        );
+        got.push(`${parts[i]}:${g[0] ?? "NONE"}`);
+      }
+      check(`guard ${rel} = ${got.join(" ")}`, EXPECTED[rel] === got.join(" "), EXPECTED[rel] ?? "not in the table — add it");
+    }
+    check("every expected server route still exists", Object.keys(EXPECTED).every((k) => seen.has(k)));
+    const net = readFileSync(join(root, "network/route.ts"), "utf8");
+    check("network: everything but a look-up needs Configuration", /body\.action !== "check" && !access\.perms\.has\("config"\)/.test(net));
+    const team = readFileSync(join(root, "team/route.ts"), "utf8");
+    check("team: managing people needs the team permission", /if \(!access\.perms\.has\("team"\)\)/.test(team));
+    const srv = readFileSync(join(root, "route.ts"), "utf8");
+    check("server settings: the network policy needs Configuration", /body\.network !== undefined && !access\.perms\.has\("config"\)/.test(srv));
   }
 
   console.log(`\n${total - failed}/${total} checks passed${failed ? `  —  ${failed} FAILED` : ""}`);

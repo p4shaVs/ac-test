@@ -1,10 +1,11 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { handler, ok, ApiError } from "@/lib/api";
-import { requireOwnedServer } from "@/lib/api-guards";
+import { requireServerAccess } from "@/lib/api-guards";
 import { parseJson } from "@/lib/utils";
 import { detectionLabel } from "@/lib/detection-actions";
 import { queryNetworkReputation } from "@/lib/network-bans";
+import { accessibleServerIds } from "@/lib/team-access";
 
 type Ctx = { params: { id: string; playerId: string } };
 
@@ -17,10 +18,10 @@ function isPrivateIp(ip: string | null): boolean {
 }
 
 // A player's dossier for the Lookup page. "Across your servers" only ever means
-// the servers THIS owner has — other customers' servers are never named; the
+// the servers the VIEWER can open (owned or on its team) — other customers' servers are never named; the
 // network part is the anonymous reputation count the connection gate uses.
 export const GET = handler(async (_req: Request, ctx: Ctx) => {
-  const { server, user } = await requireOwnedServer(ctx.params.id);
+  const { server, user } = await requireServerAccess(ctx.params.id);
   const player = await db.player.findFirst({ where: { id: ctx.params.playerId, serverId: server.id } });
   if (!player) throw new ApiError(404, "Player not found");
 
@@ -34,17 +35,19 @@ export const GET = handler(async (_req: Request, ctx: Ctx) => {
   if (player.steam) banOr.push({ steam: player.steam });
 
   const since30 = new Date(Date.now() - 30 * 86_400_000);
+  // "Your servers" = every server the viewer can open (owned or on its team).
+  const visible = await accessibleServerIds(user.id);
   const [ownerServers, sameIdentity, bans, actions, detections, detByType, candidates, network, last30] = await Promise.all([
-    db.server.findMany({ where: { ownerId: user.id }, select: { id: true, name: true } }),
+    db.server.findMany({ where: { id: { in: visible } }, select: { id: true, name: true } }),
     idOr.length
       ? db.player.findMany({
-          where: { server: { ownerId: user.id }, OR: idOr },
+          where: { serverId: { in: visible }, OR: idOr },
           select: { id: true, serverId: true, name: true, playtimeSec: true, firstSeenAt: true, lastSeenAt: true, online: true },
           take: 50,
         })
       : Promise.resolve([]),
     db.ban.findMany({
-      where: { server: { ownerId: user.id }, OR: banOr },
+      where: { serverId: { in: visible }, OR: banOr },
       orderBy: { createdAt: "desc" },
       take: 40,
       select: {
@@ -84,7 +87,7 @@ export const GET = handler(async (_req: Request, ctx: Ctx) => {
       select: { id: true, name: true, ip: true, deviceId: true, tokens: true, online: true, lastSeenAt: true, bans: { where: { active: true }, select: { id: true }, take: 1 } },
       take: 3000,
     }),
-    queryNetworkReputation(user.id, { license: player.license, steam: player.steam, discord: player.discord }),
+    queryNetworkReputation(server.ownerId, { license: player.license, steam: player.steam, discord: player.discord }),
     db.detection.count({ where: { serverId: server.id, playerId: player.id, createdAt: { gte: since30 } } }),
   ]);
 

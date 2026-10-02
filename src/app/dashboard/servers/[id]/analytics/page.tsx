@@ -1,4 +1,4 @@
-import { getOwnedServer } from "@/lib/guards";
+import { getServerAccess } from "@/lib/guards";
 import { getUserOverview } from "@/lib/stats";
 import { PageHeader, StatCard, Card, Badge } from "@/components/ui";
 import { AreaTrend, DonutChart } from "@/components/charts";
@@ -6,7 +6,7 @@ import { AreaTrend, DonutChart } from "@/components/charts";
 export const dynamic = "force-dynamic";
 
 export default async function AnalyticsPage({ params }: { params: { id: string } }) {
-  const { server } = await getOwnedServer(params.id);
+  const { server } = await getServerAccess(params.id);
   const o = await getUserOverview([server.id]);
 
   return (

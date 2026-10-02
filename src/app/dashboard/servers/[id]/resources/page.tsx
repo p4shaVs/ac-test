@@ -1,4 +1,6 @@
-import { getOwnedServer } from "@/lib/guards";
+import { getServerAccess } from "@/lib/guards";
+import { can } from "@/lib/team";
+import { NoAccess } from "@/components/no-access";
 import { db } from "@/lib/db";
 import { PageHeader, EmptyState } from "@/components/ui";
 import { ResourcesManager, type ResourceRow } from "./resources-manager";
@@ -6,7 +8,8 @@ import { ResourcesManager, type ResourceRow } from "./resources-manager";
 export const dynamic = "force-dynamic";
 
 export default async function ResourcesPage({ params }: { params: { id: string } }) {
-  const { server } = await getOwnedServer(params.id);
+  const { server, access } = await getServerAccess(params.id);
+  if (!can(access, "console")) return <NoAccess serverId={server.id} perm="console" role={access.role} />;
   const resources = await db.serverResource.findMany({
     where: { serverId: server.id },
     orderBy: { name: "asc" },

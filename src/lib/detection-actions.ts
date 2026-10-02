@@ -114,7 +114,7 @@ export const DETECTION_TYPES: DetectionTypeDef[] = [
   D("NO_RECOIL", "No Recoil", "combat", "strong", "KICK"),
   D("GIVE_ALL_WEAPONS", "Give All Weapons", "combat", "strong", "KICK"),
   D("NO_RELOAD", "No Reload", "combat", "heuristic", "LOG"),
-  D("RAPID_FIRE", "Rapid Fire", "combat", "heuristic", "LOG"),
+  D("RAPID_FIRE", "Rapid Fire", "combat", "strong", "KICK"),
   D("WALLBANG", "Wallbang / ESP indicator", "combat", "heuristic", "LOG"),
   // 9 of the last 10 kills were single head shots from range. Skilled players in
   // a one-tap meta can get there too, so this is a review flag, never a penalty.
@@ -198,6 +198,7 @@ export const DETECTION_TYPES: DetectionTypeDef[] = [
   D("CHEAT_EVENT_HONEYPOT", "Cheat Menu Event (honeypot)", "integrity", "confirmed", "KICK"),
   D("CRASH_ATTEMPT", "Server Crash Attempt", "integrity", "confirmed", "BAN"),
   D("AC_TAMPER", "Anti-Cheat Disabled / Tampered", "integrity", "confirmed", "KICK"),
+  D("STATE_DESYNC", "Spoofed Position Reports", "integrity", "strong", "KICK"),
   D("OVERLAY", "Cheat Menu Detected (Overlay)", "integrity", "strong", "KICK"),
   D("LUA_MENU", "Lua Cheat Menu", "integrity", "strong", "KICK"),
   D("RESOURCE_INJECT", "Resource Injection", "integrity", "strong", "KICK"),

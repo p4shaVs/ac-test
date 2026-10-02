@@ -37,6 +37,7 @@ model User {
   orders        Order[]
   auditLogs     AuditLog[]
   sessions      Session[]
+  memberships   ServerMember[] @relation("ServerMemberships")
 }
 
 // Sunucu tarafında revoke edebilmek için oturum kayıtları (refresh/jti).
@@ -166,6 +167,8 @@ model Server {
   whitelist     Whitelist[]
   blacklist     Blacklist[]
   screenshots   ScreenshotRequest[]
+  members       ServerMember[]
+  invites       ServerInvite[]
 
   @@index([ownerId])
 }
@@ -249,6 +252,50 @@ model ServerCommand {
 
   @@index([serverId, status])
   @@index([serverId, createdAt])
+}
+
+// Panel team: users other than the owner who may open this server in the panel.
+// (The in-game admin menu is separate: ServerAdmin.) role = ADMIN | MODERATOR | VIEWER;
+// permissions = JSON list of the member's effective permissions (src/lib/team.ts).
+model ServerMember {
+  id          String    @id @default(cuid())
+  serverId    String
+  server      Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation("ServerMemberships", fields: [userId], references: [id], onDelete: Cascade)
+  role        String    @default("MODERATOR")
+  permissions String    @default("[]")
+  addedById   String?
+  createdAt   DateTime  @default(now())
+  lastSeenAt  DateTime?
+
+  @@unique([serverId, userId])
+  @@index([userId])
+}
+
+// A pending team invite. If the invited person already had an account, userId is
+// set and they accept from their own dashboard; otherwise it is bound to the
+// email and a one-time link (only the token's hash is stored) — both are needed.
+model ServerInvite {
+  id           String    @id @default(cuid())
+  serverId     String
+  server       Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  email        String
+  userId       String?
+  role         String
+  permissions  String    @default("[]")
+  tokenHash    String    @unique
+  createdById  String
+  createdAt    DateTime  @default(now())
+  expiresAt    DateTime
+  acceptedAt   DateTime?
+  acceptedById String?
+  revokedAt    DateTime?
+  declinedAt   DateTime?
+
+  @@index([serverId])
+  @@index([email])
+  @@index([userId])
 }
 
 model ServerAdmin {

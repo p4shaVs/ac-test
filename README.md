@@ -66,6 +66,8 @@ Her tespit tipinin bir güven seviyesi vardır. Seviye, **kutudan çıkan varsay
 | Ses / megafon trolü | interact-sound: herkese / dev yarıçapa / 1.0 üstü ses / spam (sunucu); 100 m+ ses menzili (client). |
 | Executor | AC durdurma (sunucu canlılık kontrolü), resource enjeksiyonu, overlay, Lua menü, tuzak olaylar (client + **sunucu**). |
 | AC'yi susturma (hook) | `client/integrity.lua`: yüklenirken `TriggerServerEvent`, `AddEventHandler`, `CreateThread`, `Wait`… ve CoreAC'nin kendi rapor fonksiyonlarının orijinalleri saklanır; 15 sn'de bir karşılaştırılır. Executor bunlardan birini değiştirirse (raporları yutmak için) orijinal kanaldan **AC_TAMPER** gider. Canlılık kontrolü de sürdüğü için resource'u durdurmak ayrıca yakalanır. |
+| Rapid fire | `server/protection.lua`: atışlar arası süre **atıcının kendi oyun saatinden** (`weaponDamageEvent.damageTime`) ölçülür — ağ gecikmesi / toplu gelen paketler etkilemez; aynı andaki isabetler (saçma, çoklu kurban) tek atış. Sınıf başına taban (tabanca 40, SMG 35, tüfek 45, MG 40, keskin 120 ms — en hızlı gerçek silahın ~yarısı); 6+ atışlık bir serinin ortanca aralığı tabanın altındaysa hızlı seri, **10 dk'da 3 hızlı seri = RAPID_FIRE** (strong → KICK). Pompalı/ağır/fırlatılan ölçülmez; eklenti silahı 2 başka oyuncu da o hızda atıyorsa doğal hızlı sayılır (vanilla silahta bu muafiyet yok). |
+| Sahte konum raporu | `server/telemetry_guard.lua`: executor client'taki AC'ye sahte konum verirse (native sahteleme) noclip/teleport kontrolleri kör olur; ama ped'i oyun motoru OneSync ile sunucuya yine doğru senkronlar. AC'nin 3 sn'lik konum raporu sunucunun gördüğü konumla kıyaslanır: tolerans 30 m + hız × (1.5 sn + ping); **art arda 3 rapor** uyuşmazsa **STATE_DESYNC** (strong → KICK). Meşru ışınlanma/revive muafiyeti, ilk 45 sn, Trust whitelist ve OneSync'siz sunucu (0,0,0) atlanır. |
 | Anti-crash | `server/crash_guard.lua` — dört ayrı anahtar (Configuration → Anti-Crash): **crash modelleri** (slod_* yayalar, bilinen crash propları — oluşmadan iptal), **başka oyuncuya bağlanan araç/NPC/prop** (2 sn'de bir taranır, silinir), **flood kalkanı** (2 sn'de 60 varlık, 25 parçacık, 3 sn'de 25 mermi; aşan oyuncunun o türü 5 sn kilitlenir, 50+ ölçekli parçacık iptal), **crash olayları** (telefon patlaması, sahte kick oylaması, başka oyuncunun yayasına görev seli). Güvenilen script'lerin (Safe Scripts) varlıklarına dokunulmaz. Tipler: CRASH_ATTEMPT (confirmed), ENTITY_FLOOD (strong → KICK). |
 | Model kara listesi | Araç/ped/obje/silah; sunucu `entityCreating` ile oluşumu iptal eder. Hazır **Troll & giant props** paketi (~300 dev obje). |
 
@@ -90,6 +92,17 @@ Tespitlerin **etrafındaki** kurallar. Her ayar gerçek Lua koduna ya da panel r
 | **Logs & Webhooks** | Olay başına ayrı Discord kanalı (ban, warn, kick, connect, disconnect, silent aim, admin) + konsol anahtarları. Webhook adresleri **yalnızca panelde** durur: Discord'a panel gönderir, oyun sunucusu hiç görmez (heartbeat'ten çıkarılır). |
 | **Framework & API** | ESX / QBCore / Qbox resource adları, txAdmin klasörü (`admins.json`'daki yöneticiler bağlanır bağlanmaz yetkili sayılır), komut öneki (yeniden başlatmadan değişir) ve oyun sunucusunun HTTP API'si. |
 
+## CoreAC Network (paylaşılan ban ağı)
+
+Bir müşterinin banı diğerleri için **sinyaldir** (`src/lib/network-bans.ts`, panel: **CoreAC Network** sayfası):
+
+- **Ne paylaşılır:** kalıcı banlar, yalnızca license/Steam/Discord'un tek yönlü HMAC hash'iyle (IP asla). Otomatik CoreAC tespitleri tipiyle; yetkili banları sebebine göre sınıflanır — hile (`MANUAL_CHEAT`), belirsiz (`MANUAL`), **davranış** (toxic, RDM, küfür… → **hiç paylaşılmaz**).
+- **Bayrak:** en az **2 farklı sahibin** son **365 gün** içindeki banı (bir sahibin sunucuları tek sayılır). **Güçlü** = o sahiplerin banları otomatik tespit ya da hile banı; **zayıf** = belirsiz yetkili banları da var.
+- **Politika** (sunucu başına, ağ sayfasında): Kapalı / Yalnızca logla / **Dışarıda tut**; varsayılan "yalnızca güçlü bayrakları dışarıda tut" (zayıf olanlar loglanır). Ağ asla ban atmaz.
+- **Canlı:** bir ban oyuncuyu bayraklı hâle getirdiği anda, oyuncunun **şu an oynadığı diğer sahiplerin** sunucuları bilgilendirilir (`pushToOnline`): kayıt + log + Discord, politika "dışarıda tut" ise oyundan çıkarılır. Oyuncu/sunucu başına günde bir kez.
+- **Kanıt:** bayrakta topluluk sayısı, hile türleri (×adet), otomatik/yetkili dağılımı, ilk/son ban — **başka bir sunucunun adı hiçbir yerde görünmez** (panel, Discord, oyuncuya gösterilen ret mesajı).
+- **Sayfa:** koruma modu ve iki anahtar, özet sayılar, şu an çevrimiçi bayraklı oyuncular, son bayraklar, kimlik sorgulama (anonim), paylaşılan banlarınız (tek tek **geri çekilebilir**). Unban / "Fix false ban" katkıyı otomatik geri alır.
+
 ## Moderasyon ve log ekranları
 
 Kayıtların hepsinde **tam kaydın JSON'u** (kopyalanabilir) bir tık uzaktadır.
@@ -105,6 +118,25 @@ Kayıtların hepsinde **tam kaydın JSON'u** (kopyalanabilir) bir tık uzaktadı
 | **Event Log** | Canlı akış (açıkken): Spawn, Remove, Explosion, Damage, Particle, Kill, izlenen script olayları, Join/Leave. Her satırın JSON'unda silah, hasar, kafa vuruşu, kurban, model (adıyla), netId, koordinat ya da olay argümanları. |
 | **Console** | Terminal: renkli seviye/kaynak, komut geçmişi (↑/↓), Refresh / Clear / Live / Auto-scroll, 3 sn'de bir yenilenir. |
 | **Server Logs** | Gün gün gruplu; satıra tıklayınca JSON. |
+
+## Panel ekibi (Team)
+
+Sahip, yetkililerine **kendi panel girişlerini** verir — şifre paylaşımı yok (`src/lib/team.ts`, `team-access.ts`, `team-ops.ts`; sayfa: sunucu → **Team**).
+
+| Rol | Varsayılan yetkiler |
+|---|---|
+| **Owner** (sunucunun sahibi) | Her şey + yalnızca ona ait olanlar: lisans anahtarı, sunucu token'ı, kurulum dosyaları (.bat / .zip / exe), sunucuyu silmek |
+| **Admin** | Tüm izinler; Moderator ve Viewer'ları yönetir |
+| **Moderator** | Her sayfayı/logu görür + oyuncu moderasyonu (ban/kick/uyarı/unban, offline ban, ban notları, Fix false ban, ekran görüntüsü, CSV) |
+| **Viewer** | Her sayfayı/logu görür, hiçbir şeyi değiştiremez |
+
+- **İzinler** rol ön ayarıdır; üye başına tek tek açılıp kapatılabilir: *Moderate players*, *Console & resources*, *Configuration* (korumalar, cezalar, modeller, whitelist, korumalı event'ler, event log, ağ politikası, config kütüphanesi), *In-game admins*, *Server settings*, *Team*.
+- **Kurallar:** yalnızca **senden aşağı rütbedekileri** yönetirsin (Admin başka bir Admin'e ya da sahibe dokunamaz); yalnızca **sende olan izinleri** verebilir ya da alabilirsin (konsolu olmayan bir Admin, sahibin bir Moderator'a verdiği konsolu ne alabilir ne verebilir). Kendi rolünü değiştiremezsin.
+- **Davet:** e-posta ya da kullanıcı adıyla; panel e-posta göndermez, oluşan **tek kullanımlık link** (7 gün) Discord'dan iletilir. DB'de yalnız token'ın SHA-256'sı tutulur; link yalnız davet edilen hesapta çalışır (hesap varsa kullanıcı kimliğine, yoksa e-postaya bağlıdır — o e-postayla kayıt olunur). Hesabı olan kişi daveti **panel ana sayfasında** da görür (Accept / Decline). Kaybolan link için "New link", geri almak için "Revoke". Demo hesabı davet edilemez. En fazla 25 üye / 20 açık davet.
+- **Erişim her istekte DB'den** okunur: üyelikten çıkarılan ya da izni alınan kişi bir sonraki tıklamada erişimi kaybeder. Rütbesi/izni düşen birinin artık veremeyeceği açık davetleri otomatik geri çekilir; kabul anında da davet edenin hâlâ bu daveti verebildiği kontrol edilir.
+- **Görünürlük:** sunucuya erişimi olmayan biri için sunucu yokmuş gibidir (404). Yetkisi olmayan sayfalar menüden ve komut paletinden kalkar; adresi elle yazılırsa "Your role can't open this page" görünür; API 403 döner. Butonlar da role göre gizlenir (Players'ta Warn/Kick/Ban, ban detayında Unban/Fix/not, Network/Event Log ayarları…).
+- **Hesap verebilirlik:** her işlem yapanın adıyla **Admin Logs**'a düşer; ekip olayları (davet, katılma, rol/izin değişikliği, çıkarma, ayrılma) Admin Logs'ta **Team** grubunda ve Team sayfasının "Team activity" kartında görünür.
+- Paylaşılan sunucular **My Servers** ve ana sayfada "Shared with you" altında, sunucu değiştiricide rol rozetiyle listelenir.
 
 ## Windows kurulum programı (`installer-win/`)
 
@@ -140,7 +172,9 @@ curl -X POST -H "Authorization: Bearer $COREAC_TOKEN" -d '{"code":"AC-7K3QP9"}' 
 
 `npm run test:sim` hepsini tek seferde çalıştırır: gerçek Lua 5.4 derleyicisiyle derleme, `check:ac`, gerçek resource script'lerini taklit FiveM içinde
 çalıştıran senaryolar (bağlantı kapıları, ban & kanıt, Safe Guard, config/log/framework/önek, HTTP API, anti-crash, event log, silent aim & hasar,
-istemci tarafı, AC bütünlüğü) ve panel doğrulamaları (SSRF/injection, oyun sunucusuna giden veri, Discord yönlendirmesi, Configuration sayfası kapsamı, ban notları). Tek senaryo için: `node tools/sim/run.cjs scenario_conn.lua`.
+istemci tarafı, AC bütünlüğü, rapid fire + sahte konum raporu) ve panel doğrulamaları (SSRF/injection, oyun sunucusuna giden veri, Discord yönlendirmesi, Configuration sayfası kapsamı, ban notları, ağ adaleti/güç/pencere, ekip rolleri/rütbe/izin kuralları, her `/api/servers/[id]` rotasının doğru yetkiyle korunduğu). Tek senaryo için: `node tools/sim/run.cjs scenario_conn.lua`.
+
+Ağın canlı bildirimi gerçek bir veritabanı ister: `tools/sim/verify-network-live.ts` yalnızca adı `verify.db` olan izole bir kopyada çalışır (`DATABASE_URL=file:…/verify.db npx tsx tools/sim/verify-network-live.ts`).
 
 ## Güvenlik notları
 

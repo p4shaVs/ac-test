@@ -1,4 +1,6 @@
-import { getOwnedServer } from "@/lib/guards";
+import { getServerAccess } from "@/lib/guards";
+import { can } from "@/lib/team";
+import { NoAccess } from "@/components/no-access";
 import { parseJson } from "@/lib/utils";
 import { defaultRules, RULE_GROUPS } from "@/lib/rules";
 import { ConfigLibrary, type Preset } from "./config-library";
@@ -12,7 +14,8 @@ const allOn = Object.fromEntries(ALL_KEYS.map((k) => [k, true]));
 // Presets are just Server-Guard rule sets applied via PATCH /rules — real config,
 // no dead switches. Keys come from rules.ts so they always match the Lua.
 export default async function ConfigLibraryPage({ params }: { params: { id: string } }) {
-  const { server } = await getOwnedServer(params.id);
+  const { server, access } = await getServerAccess(params.id);
+  if (!can(access, "config")) return <NoAccess serverId={server.id} perm="config" role={access.role} />;
   const current = parseJson<Record<string, unknown>>(server.config, {});
   const active = parseJson<Record<string, boolean>>(JSON.stringify(current.rules ?? {}), {});
 

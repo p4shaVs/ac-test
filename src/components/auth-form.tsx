@@ -178,14 +178,14 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         {mode === "login" ? (
           <>
             No account yet?{" "}
-            <Link href="/register" className="font-semibold text-brand-300 hover:text-brand-200">
+            <Link href={next ? `/register?next=${encodeURIComponent(next)}` : "/register"} className="font-semibold text-brand-300 hover:text-brand-200">
               Register
             </Link>
           </>
         ) : (
           <>
             Already have an account?{" "}
-            <Link href="/login" className="font-semibold text-brand-300 hover:text-brand-200">
+            <Link href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"} className="font-semibold text-brand-300 hover:text-brand-200">
               Sign in
             </Link>
           </>

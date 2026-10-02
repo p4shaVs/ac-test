@@ -27,6 +27,7 @@ const suites = [
   { name: "scenario: config, logs, framework, prefix", cmd: process.execPath, args: ["run.cjs", "scenario_config.lua"], cwd: here },
   { name: "scenario: game server HTTP API", cmd: process.execPath, args: ["run.cjs", "scenario_httpapi.lua"], cwd: here },
   { name: "scenario: anti-crash", cmd: process.execPath, args: ["run.cjs", "scenario_crash.lua"], cwd: here },
+  { name: "scenario: rapid fire + spoofed position reports", cmd: process.execPath, args: ["run.cjs", "scenario_firerate_desync.lua"], cwd: here },
   { name: "scenario: event log (live feed + JSON details)", cmd: process.execPath, args: ["run.cjs", "scenario_eventlog.lua"], cwd: here },
   { name: "scenario: silent aim (2 tiers) + damage boost", cmd: process.execPath, args: ["run.cjs", "scenario_aim_damage.lua"], cwd: here },
   {

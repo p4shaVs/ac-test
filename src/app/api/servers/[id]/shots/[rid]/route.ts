@@ -3,7 +3,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { db } from "@/lib/db";
 import { fail, ApiError } from "@/lib/api";
-import { requireOwnedServer } from "@/lib/api-guards";
+import { requireServerAccess } from "@/lib/api-guards";
 import { SHOTS_DIR, isSafeShotId } from "@/lib/shots";
 
 export const runtime = "nodejs";
@@ -20,7 +20,7 @@ const TYPES: Record<string, string> = {
 // so they are never public.
 export async function GET(_req: NextRequest, ctx: { params: { id: string; rid: string } }) {
   try {
-    const { server } = await requireOwnedServer(ctx.params.id);
+    const { server } = await requireServerAccess(ctx.params.id);
     const rid = ctx.params.rid;
     if (!isSafeShotId(rid)) return fail(400, "Invalid request id");
 

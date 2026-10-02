@@ -242,42 +242,154 @@ local subtleHits = {}  -- [src] = { {t, miss, dist, pad} }  (Kademe 2)
 local silentHits = {}   -- [src] = { zaman damgaları }       (Kademe 1)
 
 -- ---------------------------------------------------------------------------
--- RAPID FIRE (fire-rate hilesi) — RAPOR-ONLY, yumuşak sinyal.
--- Aynı silahtan ardışık isabetler arasındaki süre, hiçbir gerçek silahın
--- ulaşamayacağı kadar kısaysa (60ms = 1000 rpm üstü) işaretle. Asla ban
--- atmaz — sadece panelde görünür, isterseniz manuel inceleyin.
+-- RAPID FIRE (atış hızı hilesi)
 --
--- YANLIŞ-POZİTİF DÜZELTMESİ: aralık eskiden SUNUCUYA VARIŞ zamanıyla
--- ölçülüyordu. Ağ paketleri toplu gelir; normal hızda sıkılan mermiler
--- sunucuya 1-5 ms arayla ulaşıp "rapid fire" sayılıyordu. Artık atıcının
--- kendi saatindeki atış anı (damageTime) kullanılır. Aynı andaki isabetler
--- (pompalı saçması, tek atışta birden fazla kurban) aynı damageTime'ı taşır
--- ve sayılmaz. Minigun gibi ağır silahlar doğası gereği hızlıdır → hariç.
+-- ÖLÇÜ: atıcının KENDİ oyun saatindeki atış anı (weaponDamageEvent.damageTime).
+-- Sunucuya varış zamanı hiç kullanılmaz: ağ paketleri toplu gelir ve normal
+-- hızda sıkılan mermiler sunucuya 1-5 ms arayla ulaşabilir (eski sürüm bu
+-- yüzden yanlış "rapid fire" sayıyordu). Aynı damageTime'lı isabetler (pompalı
+-- saçması, tek merminin birden fazla kurbanı) tek atış sayılır.
+--
+-- KARAR:
+--   * Silah sınıfı başına TABAN aralık (ms) — o sınıfın en hızlı GERÇEK
+--     silahının aralığının yaklaşık yarısı. Rapid fire menüleri her karede ateş
+--     eder (60 fps → ~16 ms); tabanın çok altındadır.
+--   * SERİ: aralarında 1 sn'den kısa boşluk olan art arda atışlar. Seride en az
+--     RF_MIN_INTERVALS aralık varsa ve aralıkların ORTANCASI tabandan kısaysa
+--     hızlı seridir (tek tük kısa aralık — kare atlaması vb. — sayılmaz).
+--   * 10 dakikada RF_BURSTS hızlı seri → RAPID_FIRE (panel: strong → en fazla KICK).
+--   * Eklenti silah (sınıfı vanilla tablodan değil oyunculardan öğrenilen):
+--     aynı silahla en az 2 BAŞKA oyuncu da hızlı seri attıysa silah doğası gereği
+--     hızlıdır → muaf. Vanilla silahta bu muafiyet YOKTUR (tabanı biliyoruz;
+--     birlikte hile açan iki kişi birbirini aklayamasın).
+--   * Ağır (minigun…), pompalı, fırlatılan ve yakın dövüş silahları ölçülmez.
 -- ---------------------------------------------------------------------------
-local lastShot = {}      -- [src][weaponHash] = son isabet zamanı
-local rapidFireStrike = {}
+local RF_FLOOR_MS      = { pistol = 40, smg = 35, rifle = 45, mg = 40, sniper = 120 }
+local RF_FLOOR_UNKNOWN = 25          -- sınıfı hiç bilinmeyen eklenti silah: en hoşgörülü taban
+local RF_SKIP          = { heavy = true, shotgun = true, thrown = true, melee = true, equipment = true }
+local RF_BURST_GAP_MS  = 1000        -- seriyi bölen boşluk (atıcının saatinde)
+local RF_MIN_INTERVALS = 6
+local RF_MAX_INTERVALS = 30          -- uzun kesintisiz ateş bu uzunlukta parçalanır
+local RF_BURSTS        = 3
+local RF_WINDOW_MS     = 10 * 60000
+local RF_PEER_MS       = 30 * 60000
+
+local rfBurst   = {}  -- [src] = { weapon, cls, floor, vanilla, last, seen, intervals }
+local rfStrikes = {}  -- [src] = { {t, weapon, median, shots} }
+local rfPeers   = {}  -- [weapon] = { [src] = t }   (eklenti silahların "doğal hız" kanıtı)
+
+local function rfMedian(list)
+  local c = {}
+  for i, v in ipairs(list) do c[i] = v end
+  table.sort(c)
+  local n = #c
+  if n == 0 then return math.huge end
+  local m = math.floor((n + 1) / 2)
+  if n % 2 == 0 then return (c[m] + c[m + 1]) / 2 end
+  return c[m]
+end
+
+local function rfCloseBurst(src, b, now)
+  if not b or #b.intervals < RF_MIN_INTERVALS then return end
+  local med = rfMedian(b.intervals)
+  if med >= b.floor then return end
+  -- Hızlı seri.
+  if not b.vanilla then
+    local peers = rfPeers[b.weapon] or {}
+    rfPeers[b.weapon] = peers
+    peers[src] = now
+    local others = 0
+    for s, at in pairs(peers) do
+      if s ~= src and now - at < RF_PEER_MS then others = others + 1 end
+    end
+    if others >= 2 then return end            -- bu eklenti silah herkeste bu hızda
+  end
+  local list = {}
+  for _, e in ipairs(rfStrikes[src] or {}) do
+    if now - e.t < RF_WINDOW_MS then list[#list + 1] = e end
+  end
+  list[#list + 1] = { t = now, weapon = b.weapon, median = med, shots = #b.intervals + 1 }
+  rfStrikes[src] = list
+  if #list < RF_BURSTS then return end
+  rfStrikes[src] = nil
+  local fastest, shots = math.huge, 0
+  for _, e in ipairs(list) do
+    if e.median < fastest then fastest = e.median end
+    shots = shots + e.shots
+  end
+  TriggerEvent('coreac:serverReport', src, 'RAPID_FIRE', 'HIGH', {
+    source      = 'fire_rate',
+    weapon      = CoreAC.WeaponLabel and CoreAC.WeaponLabel(b.weapon) or tostring(b.weapon),
+    weaponClass = b.cls or 'unknown',
+    bursts      = #list,
+    shots       = shots,
+    intervalMs  = math.floor(fastest + 0.5),
+    floorMs     = b.floor,
+    rpm         = math.floor(60000 / math.max(1, fastest)),
+  })
+end
+
+local function rfNewBurst(src, wh, cls, shotAt, now)
+  local vanilla = CoreAC.GetWeaponClass and CoreAC.GetWeaponClass(wh) ~= nil
+  rfBurst[src] = {
+    weapon = wh, cls = cls, floor = RF_FLOOR_MS[cls] or RF_FLOOR_UNKNOWN, vanilla = vanilla,
+    last = shotAt, seen = now, intervals = {},
+  }
+end
 
 local function checkRapidFire(src, weaponHash, shotAt)
   if not ruleOn('anti_rapid_fire') then return end
   shotAt = tonumber(shotAt)
-  if not shotAt then return end
-  if weaponClass(weaponHash, src) == 'heavy' then return end
-  lastShot[src] = lastShot[src] or {}
-  local last = lastShot[src][weaponHash]
-  if last == shotAt then return end                 -- aynı atış (saçma / çoklu kurban)
-  lastShot[src][weaponHash] = shotAt
-  if not last then return end
-  local dt = shotAt - last
-  if dt > 0 and dt < 60 then
-    rapidFireStrike[src] = (rapidFireStrike[src] or 0) + 1
-    if rapidFireStrike[src] >= 8 then
-      rapidFireStrike[src] = 0
-      TriggerEvent('coreac:serverReport', src, 'RAPID_FIRE', 'MEDIUM', { weapon = weaponHash, dt = dt })
-    end
-  else
-    rapidFireStrike[src] = 0
+  if not shotAt or shotAt <= 0 then return end
+  local wh = signedToUnsigned(weaponHash)
+  local cls = weaponClass(weaponHash, src)
+  if cls and RF_SKIP[cls] then return end
+  local now = GetGameTimer()
+  local b = rfBurst[src]
+  if not b then return rfNewBurst(src, wh, cls, shotAt, now) end
+  if b.weapon ~= wh then
+    rfCloseBurst(src, b, now)
+    return rfNewBurst(src, wh, cls, shotAt, now)
+  end
+  b.seen = now
+  if shotAt == b.last then return end              -- aynı atış (saçma / birden fazla kurban)
+  local dt = shotAt - b.last
+  if dt < 0 or dt > RF_BURST_GAP_MS then           -- saat geri gitti ya da seri bitti
+    rfCloseBurst(src, b, now)
+    return rfNewBurst(src, wh, cls, shotAt, now)
+  end
+  b.intervals[#b.intervals + 1] = dt
+  b.last = shotAt
+  if #b.intervals >= RF_MAX_INTERVALS then         -- kesintisiz ateş de değerlendirilsin
+    rfCloseBurst(src, b, now)
+    rfNewBurst(src, wh, cls, shotAt, now)
   end
 end
+
+-- Atıcı ateşi kestiğinde açık kalan seri bir sonraki atışı beklemesin.
+CreateThread(function()
+  while true do
+    Wait(2000)
+    local now = GetGameTimer()
+    for src, b in pairs(rfBurst) do
+      if now - b.seen > 1500 then
+        rfBurst[src] = nil
+        rfCloseBurst(src, b, now)
+      end
+    end
+    for w, peers in pairs(rfPeers) do
+      local any = false
+      for s, at in pairs(peers) do
+        if now - at >= RF_PEER_MS then peers[s] = nil else any = true end
+      end
+      if not any then rfPeers[w] = nil end
+    end
+  end
+end)
+
+AddEventHandler('playerDropped', function()
+  rfBurst[source], rfStrikes[source] = nil, nil
+end)
 
 -- ---------------------------------------------------------------------------
 -- WALLBANG / ESP GÖSTERGESİ — RAPOR-ONLY, yumuşak sinyal.
@@ -345,7 +457,7 @@ local badAim = {}     -- [src] = { zamanlar }  (kullanılamayan örnekler)
 
 AddEventHandler('playerDropped', function()
   local s = source
-  silentHits[s] = nil; subtleHits[s] = nil; badAim[s] = nil; lastShot[s] = nil; rapidFireStrike[s] = nil; losStrike[s] = nil; reachStrike[s] = nil
+  silentHits[s] = nil; subtleHits[s] = nil; badAim[s] = nil; losStrike[s] = nil; reachStrike[s] = nil
   noAimHits[s] = nil
 end)
 
@@ -662,8 +774,8 @@ AddEventHandler('weaponDamageEvent', function(sender, data)
     checkPeerDamage(src, data)
   end
 
-  -- Rapid fire + wallbang/ESP (rapor-only, yumuşak sinyaller) — oyuncu
-  -- hedeflerine bakar, whitelist'li atıcılar hariç tutulur.
+  -- Rapid fire (atıcının saatine göre atış hızı) + wallbang/ESP (rapor-only) —
+  -- whitelist'li atıcılar hariç tutulur.
   if data and (data.hitGlobalIds or data.hitGlobalId)
       and not (CAC.isWhitelisted and CAC.isWhitelisted(src)) then
     if data.weaponType then checkRapidFire(src, data.weaponType, data.damageTime) end

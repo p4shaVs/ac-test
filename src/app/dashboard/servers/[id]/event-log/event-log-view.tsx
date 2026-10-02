@@ -37,7 +37,16 @@ function fmtTime(t: number): string {
   return new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-export function EventLogView({ serverId, initialEnabled }: { serverId: string; initialEnabled: boolean }) {
+export function EventLogView({
+  serverId,
+  initialEnabled,
+  canConfigure = true,
+}: {
+  serverId: string;
+  initialEnabled: boolean;
+  /** Turning the feed on/off, clearing it for everyone and the watch list need "Configure protection". */
+  canConfigure?: boolean;
+}) {
   const [enabled, setEnabled] = useState(initialEnabled);
   const [events, setEvents] = useState<LiveEvent[]>([]);
   const [watch, setWatch] = useState<string[]>([]);
@@ -138,6 +147,7 @@ export function EventLogView({ serverId, initialEnabled }: { serverId: string; i
         description="A live feed of what players do — spawns, removals, explosions, damage, particles, kills and the script events you watch. Select a line for its full JSON."
         actions={
           <>
+            {canConfigure ? (
             <button
               type="button"
               onClick={() => patch({ enabled: !enabled })}
@@ -150,6 +160,12 @@ export function EventLogView({ serverId, initialEnabled }: { serverId: string; i
               <span className={cn("h-2 w-2 rounded-full", enabled ? (paused ? "bg-amber-300" : "animate-pulse bg-emerald-400") : "bg-black/60")} />
               {enabled ? (paused ? "Paused" : "Live — turn off") : "Turn on"}
             </button>
+            ) : (
+              <span className="flex h-9 items-center gap-2 rounded-lg border border-white/[0.08] px-3.5 text-xs text-slate-400">
+                <span className={cn("h-2 w-2 rounded-full", enabled ? (paused ? "bg-amber-300" : "animate-pulse bg-emerald-400") : "bg-slate-600")} />
+                {enabled ? (paused ? "Paused" : "Live") : "Off"}
+              </span>
+            )}
             <button type="button" onClick={() => setPaused((p) => !p)} disabled={!enabled} className="btn-secondary h-9 px-3 text-xs disabled:opacity-40">
               {paused ? <Icons.play size={13} /> : <Icons.pause size={13} />}
               {paused ? "Resume" : "Pause"}
@@ -160,7 +176,8 @@ export function EventLogView({ serverId, initialEnabled }: { serverId: string; i
                 setEvents([]);
                 setSel(null);
                 sinceRef.current = undefined;
-                patch({ clear: true });
+                // Members who cannot configure only clear their own view.
+                if (canConfigure) patch({ clear: true });
               }}
               disabled={!enabled}
               className="btn-secondary h-9 px-3 text-xs disabled:opacity-40"
@@ -184,6 +201,7 @@ export function EventLogView({ serverId, initialEnabled }: { serverId: string; i
         </button>
         {watchOpen && (
           <div className="border-t border-white/[0.06] px-5 py-4">
+            {canConfigure && (
             <div className="flex gap-2">
               <input
                 value={newEvent}
@@ -197,14 +215,17 @@ export function EventLogView({ serverId, initialEnabled }: { serverId: string; i
                 Watch
               </button>
             </div>
+            )}
             <div className="mt-3 flex flex-wrap gap-1.5">
               {watch.length === 0 && <span className="text-xs text-slate-600">Nothing watched yet.</span>}
               {watch.map((w) => (
                 <span key={w} className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] py-1 pl-2.5 pr-1.5 font-mono text-[11.5px] text-slate-300">
                   {w}
-                  <button type="button" title="Stop watching" disabled={busy} onClick={() => patch({ watchEvents: watch.filter((x) => x !== w) })} className="text-slate-500 transition hover:text-rose-300">
-                    <Icons.x size={12} />
-                  </button>
+                  {canConfigure && (
+                    <button type="button" title="Stop watching" disabled={busy} onClick={() => patch({ watchEvents: watch.filter((x) => x !== w) })} className="text-slate-500 transition hover:text-rose-300">
+                      <Icons.x size={12} />
+                    </button>
+                  )}
                 </span>
               ))}
             </div>
@@ -231,9 +252,13 @@ export function EventLogView({ serverId, initialEnabled }: { serverId: string; i
           </span>
           <h3 className="text-sm font-semibold text-slate-100">The event log is off</h3>
           <p className="max-w-sm text-sm text-slate-500">It starts streaming within about five seconds of turning it on. The game server does no extra work while it is off.</p>
-          <button type="button" onClick={() => patch({ enabled: true })} disabled={busy} className="btn-primary mt-1">
-            {busy ? "…" : "Turn on the event log"}
-          </button>
+          {canConfigure ? (
+            <button type="button" onClick={() => patch({ enabled: true })} disabled={busy} className="btn-primary mt-1">
+              {busy ? "…" : "Turn on the event log"}
+            </button>
+          ) : (
+            <p className="text-[12px] text-slate-600">Ask someone who can configure protection to turn it on.</p>
+          )}
         </div>
       ) : (
         <SplitView

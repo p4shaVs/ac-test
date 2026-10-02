@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { handler, ok } from "@/lib/api";
-import { requireOwnedServer } from "@/lib/api-guards";
+import { requireServerAccess } from "@/lib/api-guards";
 import { rateLimit } from "@/lib/ratelimit";
 import { audit } from "@/lib/audit";
 import { clientIp } from "@/lib/session";
@@ -24,7 +24,7 @@ const cmdFor: Record<string, (n: string) => string> = {
 
 export const POST = handler(
   async (req: NextRequest, ctx: { params: { id: string } }) => {
-    const { server, user } = await requireOwnedServer(ctx.params.id);
+    const { server, user } = await requireServerAccess(ctx.params.id, "console");
     const rl = rateLimit(`resact:${user.id}`, 30, 60_000);
     if (!rl.success) throw new ApiError(429, "Too fast, please wait");
 

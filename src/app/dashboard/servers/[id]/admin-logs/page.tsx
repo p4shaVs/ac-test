@@ -1,4 +1,4 @@
-import { getOwnedServer } from "@/lib/guards";
+import { getServerAccess } from "@/lib/guards";
 import { db } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { parseJson } from "@/lib/utils";
@@ -48,7 +48,7 @@ function parseLine(message: string): { action: string; target: string | null; ac
 // What your STAFF did — moderation and panel/in-game/console actions. CoreAC's
 // own automatic actions are under Detections and Kicks/Bans.
 export default async function AdminLogsPage({ params }: { params: { id: string } }) {
-  const { server } = await getOwnedServer(params.id);
+  const { server } = await getServerAccess(params.id);
 
   const [actions, logs] = await Promise.all([
     db.punishAction.findMany({

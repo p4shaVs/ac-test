@@ -8,6 +8,7 @@ import { CommandPalette } from "./command-palette";
 import { BRAND } from "@/lib/brand";
 import { Icons, type IconName } from "./icons";
 import { cn } from "@/lib/utils";
+import { canOpenPage, roleLabel, type Permission, type Role } from "@/lib/team";
 
 export interface NavItem {
   href: string;
@@ -32,12 +33,23 @@ export interface ShellServer {
   id: string;
   name: string;
   status: string;
+  /** Your role on it — OWNER for your own servers. */
+  role?: Role;
+  /** Effective panel permissions (team members). */
+  perms?: Permission[];
 }
 
-/** The menu while you are inside a server. */
-function serverNav(id: string): NavSection[] {
-  const b = `/dashboard/servers/${id}`;
-  return [
+/** The menu while you are inside a server, trimmed to what your role can open. */
+function serverNav(server: ShellServer): NavSection[] {
+  const b = `/dashboard/servers/${server.id}`;
+  const isOwner = (server.role ?? "OWNER") === "OWNER";
+  const perms = server.perms ?? [];
+  const open = (item: NavItem) => {
+    if (!item.href.startsWith(b)) return item.href !== "/dashboard/download" || isOwner;
+    const segment = item.href.slice(b.length + 1).split("/")[0] ?? "";
+    return canOpenPage(segment, perms, isOwner);
+  };
+  const all: NavSection[] = [
     { items: [{ href: b, label: "Overview", icon: "dashboard", exact: true }] },
     {
       title: "Moderation",
@@ -49,7 +61,7 @@ function serverNav(id: string): NavSection[] {
         { href: `${b}/warns`, label: "Warnings", icon: "warn" },
         { href: `${b}/lookup`, label: "Lookup", icon: "search" },
         { href: `${b}/linked-accounts`, label: "Linked Accounts", icon: "link" },
-        { href: `${b}/network`, label: "Network Bans", icon: "globe" },
+        { href: `${b}/network`, label: "CoreAC Network", icon: "globe" },
         { href: `${b}/map`, label: "Live Map", icon: "map" },
       ],
     },
@@ -81,12 +93,14 @@ function serverNav(id: string): NavSection[] {
       title: "Account",
       items: [
         { href: `${b}/settings`, label: "Server Settings", icon: "config" },
+        { href: `${b}/team`, label: "Team", icon: "users" },
         { href: `${b}/support`, label: "Support", icon: "lifebuoy" },
         { href: `/dashboard/download`, label: "Download", icon: "download" },
         { href: `/docs`, label: "Documentation", icon: "book" },
       ],
     },
   ];
+  return all.map((s) => ({ ...s, items: s.items.filter(open) })).filter((s) => s.items.length > 0);
 }
 
 export function PanelShell({
@@ -141,7 +155,10 @@ export function PanelShell({
   const activeServerId = match?.[1];
   const activeServer = activeServerId ? servers.find((s) => s.id === activeServerId) : undefined;
   const inServer = !!activeServer;
-  const sections = inServer ? serverNav(activeServer!.id) : nav;
+  const sections = inServer ? serverNav(activeServer!) : nav;
+  const activeRole = activeServer?.role ?? "OWNER";
+  const owned = servers.filter((s) => (s.role ?? "OWNER") === "OWNER");
+  const shared = servers.filter((s) => (s.role ?? "OWNER") !== "OWNER");
 
   function isActive(item: NavItem) {
     if (item.exact) return pathname === item.href;
@@ -196,28 +213,43 @@ export function PanelShell({
               <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
                 <span className={cn("h-1.5 w-1.5 rounded-full", online ? "bg-emerald-400" : "bg-slate-600")} />
                 {online ? "Online" : "Offline"}
+                {activeRole !== "OWNER" && (
+                  <span className="ml-auto rounded border border-white/10 px-1 text-[9.5px] font-semibold uppercase tracking-wider text-slate-400">
+                    {roleLabel(activeRole)}
+                  </span>
+                )}
               </span>
             </span>
             <Icons.chevronDown size={15} className={cn("shrink-0 text-slate-500 transition", switcherOpen && "rotate-180")} />
           </button>
           {switcherOpen && (
             <div className="absolute left-3 right-3 top-[calc(100%-2px)] z-40 rounded-xl border border-white/10 bg-[#131315] p-1.5 shadow-pop">
-              <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">Servers</p>
-              {servers.map((s) => (
-                <Link
-                  key={s.id}
-                  href={`/dashboard/servers/${s.id}`}
-                  onClick={() => setSwitcherOpen(false)}
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] hover:bg-white/[0.05]",
-                    s.id === activeServer!.id ? "text-white" : "text-slate-400"
-                  )}
-                >
-                  <span className={cn("h-1.5 w-1.5 rounded-full", s.status === "ONLINE" ? "bg-emerald-400" : "bg-slate-600")} />
-                  <span className="flex-1 truncate">{s.name}</span>
-                  {s.id === activeServer!.id && <Icons.check size={14} className="text-slate-300" />}
-                </Link>
-              ))}
+              {[
+                { title: "Your servers", list: owned },
+                { title: "Shared with you", list: shared },
+              ]
+                .filter((g) => g.list.length > 0)
+                .map((g) => (
+                  <div key={g.title}>
+                    <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">{g.title}</p>
+                    {g.list.map((s) => (
+                      <Link
+                        key={s.id}
+                        href={`/dashboard/servers/${s.id}`}
+                        onClick={() => setSwitcherOpen(false)}
+                        className={cn(
+                          "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] hover:bg-white/[0.05]",
+                          s.id === activeServer!.id ? "text-white" : "text-slate-400"
+                        )}
+                      >
+                        <span className={cn("h-1.5 w-1.5 rounded-full", s.status === "ONLINE" ? "bg-emerald-400" : "bg-slate-600")} />
+                        <span className="flex-1 truncate">{s.name}</span>
+                        {s.role && s.role !== "OWNER" && <span className="text-[10.5px] text-slate-600">{roleLabel(s.role)}</span>}
+                        {s.id === activeServer!.id && <Icons.check size={14} className="text-slate-300" />}
+                      </Link>
+                    ))}
+                  </div>
+                ))}
               <div className="my-1 h-px bg-white/[0.06]" />
               <Link href="/dashboard/servers" onClick={() => setSwitcherOpen(false)} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-slate-400 hover:bg-white/[0.05] hover:text-white">
                 <Icons.server size={14} /> All servers

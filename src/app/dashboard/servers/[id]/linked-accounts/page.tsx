@@ -1,4 +1,4 @@
-import { getOwnedServer } from "@/lib/guards";
+import { getServerAccess } from "@/lib/guards";
 import { db } from "@/lib/db";
 import { PageHeader, EmptyState, Badge } from "@/components/ui";
 import { Icons } from "@/components/icons";
@@ -15,7 +15,7 @@ export default async function LinkedAccountsPage({
 }: {
   params: { id: string };
 }) {
-  const { server } = await getOwnedServer(params.id);
+  const { server } = await getServerAccess(params.id);
 
   const players = await db.player.findMany({
     where: { serverId: server.id, ip: { not: null } },

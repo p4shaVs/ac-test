@@ -4,13 +4,13 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { handler, ok, ApiError } from "@/lib/api";
-import { requireOwnedServer } from "@/lib/api-guards";
+import { requireServerAccess } from "@/lib/api-guards";
 import { rateLimit } from "@/lib/ratelimit";
 import { audit } from "@/lib/audit";
 import { clientIp } from "@/lib/session";
 import { generateBanCode } from "@/lib/keys";
 import { sendWebhook } from "@/lib/discord";
-import { recordNetworkBan } from "@/lib/network-bans";
+import { recordNetworkBan, networkTypeForManual } from "@/lib/network-bans";
 import { identityFrom, parseIdentifiers, MAX_BAN_MINUTES } from "@/lib/identifiers";
 
 const schema = z.object({
@@ -25,7 +25,7 @@ const schema = z.object({
 // stored with the identifiers given and the game server picks it up on its next
 // ban-list refresh (≤ 60 s), so they are refused at the door.
 export const POST = handler(async (req: NextRequest, ctx: { params: { id: string } }) => {
-  const { server, user } = await requireOwnedServer(ctx.params.id);
+  const { server, user } = await requireServerAccess(ctx.params.id, "moderate");
   const rl = rateLimit(`offline-ban:${user.id}`, 30, 60_000);
   if (!rl.success) throw new ApiError(429, "Too many bans in a minute, slow down");
 
@@ -114,7 +114,7 @@ export const POST = handler(async (req: NextRequest, ctx: { params: { id: string
   });
 
   if (!expiresAt) {
-    await recordNetworkBan(server, { license: id.license, steam: id.steam, discord: id.discord, playerName: name, type: "MANUAL" });
+    await recordNetworkBan(server, { license: id.license, steam: id.steam, discord: id.discord, playerName: name, type: networkTypeForManual(body.reason) });
   }
 
   await audit({

@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { handler, ok, ApiError } from "@/lib/api";
-import { requireOwnedServer } from "@/lib/api-guards";
+import { requireServerAccess } from "@/lib/api-guards";
 import { parseJson } from "@/lib/utils";
 
 interface ReplayFrame {
@@ -15,7 +15,7 @@ interface ReplayFrame {
 // "Neden banlandık" — Yapılandırma sayfasındaki izleme özelliği için.
 export const GET = handler(
   async (_req: Request, ctx: { params: { id: string; detectionId: string } }) => {
-    await requireOwnedServer(ctx.params.id);
+    await requireServerAccess(ctx.params.id);
 
     const detection = await db.detection.findFirst({
       where: { id: ctx.params.detectionId, serverId: ctx.params.id },

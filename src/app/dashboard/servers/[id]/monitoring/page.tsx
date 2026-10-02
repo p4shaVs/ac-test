@@ -1,4 +1,6 @@
-import { getOwnedServer } from "@/lib/guards";
+import { getServerAccess } from "@/lib/guards";
+import { can } from "@/lib/team";
+import { NoAccess } from "@/components/no-access";
 import { db } from "@/lib/db";
 import { PageHeader, EmptyState } from "@/components/ui";
 import { MonitoringGrid, type MonPlayer } from "./monitoring-grid";
@@ -6,7 +8,8 @@ import { MonitoringGrid, type MonPlayer } from "./monitoring-grid";
 export const dynamic = "force-dynamic";
 
 export default async function MonitoringPage({ params }: { params: { id: string } }) {
-  const { server } = await getOwnedServer(params.id);
+  const { server, access } = await getServerAccess(params.id);
+  if (!can(access, "moderate")) return <NoAccess serverId={server.id} perm="moderate" role={access.role} />;
   const players = await db.player.findMany({
     where: { serverId: server.id, online: true },
     orderBy: { trustScore: "asc" },

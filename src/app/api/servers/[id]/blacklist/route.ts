@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { handler, ok, ApiError } from "@/lib/api";
-import { requireOwnedServer } from "@/lib/api-guards";
+import { requireServerAccess } from "@/lib/api-guards";
 
 // Only model-hash kinds the resource actually enforces are accepted. Explosions
 // are typed events (not model hashes) and are handled by Configuration →
@@ -16,7 +16,7 @@ const createSchema = z.object({
 });
 
 export const POST = handler(async (req: NextRequest, ctx: { params: { id: string } }) => {
-  const { server, user } = await requireOwnedServer(ctx.params.id);
+  const { server, user } = await requireServerAccess(ctx.params.id, "config");
   const body = createSchema.parse(await req.json());
   const model = body.model.trim().toLowerCase();
 
@@ -41,7 +41,7 @@ export const POST = handler(async (req: NextRequest, ctx: { params: { id: string
 const patchSchema = z.object({ id: z.string(), enabled: z.boolean() });
 
 export const PATCH = handler(async (req: NextRequest, ctx: { params: { id: string } }) => {
-  const { server } = await requireOwnedServer(ctx.params.id);
+  const { server } = await requireServerAccess(ctx.params.id, "config");
   const body = patchSchema.parse(await req.json());
   await db.blacklist.updateMany({
     where: { id: body.id, serverId: server.id },
@@ -53,7 +53,7 @@ export const PATCH = handler(async (req: NextRequest, ctx: { params: { id: strin
 const deleteSchema = z.object({ id: z.string() });
 
 export const DELETE = handler(async (req: NextRequest, ctx: { params: { id: string } }) => {
-  const { server } = await requireOwnedServer(ctx.params.id);
+  const { server } = await requireServerAccess(ctx.params.id, "config");
   const { id } = deleteSchema.parse(await req.json());
   await db.blacklist.deleteMany({ where: { id, serverId: server.id } });
   return ok({ deleted: true });

@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { handler, ok, ApiError } from "@/lib/api";
-import { requireOwnedServer } from "@/lib/api-guards";
+import { requireServerAccess } from "@/lib/api-guards";
 import { audit } from "@/lib/audit";
 import { clientIp } from "@/lib/session";
 import { ADMIN_PERMISSIONS } from "@/lib/admin-perms";
@@ -18,7 +18,7 @@ const patchSchema = z.object({
 // (Config.AdminInterval, 60 s by default).
 export const PATCH = handler(
   async (req: NextRequest, ctx: { params: { id: string; adminId: string } }) => {
-    const { server, user } = await requireOwnedServer(ctx.params.id);
+    const { server, user } = await requireServerAccess(ctx.params.id, "admins");
     const admin = await db.serverAdmin.findFirst({
       where: { id: ctx.params.adminId, serverId: server.id },
     });
@@ -45,7 +45,7 @@ export const PATCH = handler(
 
 export const DELETE = handler(
   async (_req: NextRequest, ctx: { params: { id: string; adminId: string } }) => {
-    const { server, user } = await requireOwnedServer(ctx.params.id);
+    const { server, user } = await requireServerAccess(ctx.params.id, "admins");
     const admin = await db.serverAdmin.findFirst({
       where: { id: ctx.params.adminId, serverId: server.id },
     });

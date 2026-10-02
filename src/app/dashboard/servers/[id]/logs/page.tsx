@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getOwnedServer } from "@/lib/guards";
+import { getServerAccess } from "@/lib/guards";
 import { db } from "@/lib/db";
 import { JsonView, PageHeader } from "@/components/ui";
 import { Icons } from "@/components/icons";
@@ -30,7 +30,7 @@ function dayLabel(d: Date): string {
 }
 
 export default async function LogsPage({ params, searchParams }: { params: { id: string }; searchParams: SP }) {
-  const { server } = await getOwnedServer(params.id);
+  const { server } = await getServerAccess(params.id);
   const level = LEVELS.includes((searchParams.level ?? "ALL").toUpperCase() as (typeof LEVELS)[number])
     ? (searchParams.level ?? "ALL").toUpperCase()
     : "ALL";

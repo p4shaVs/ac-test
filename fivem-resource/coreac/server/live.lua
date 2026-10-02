@@ -816,6 +816,12 @@ function CAC.grantTp(src, ms)
   flight[src] = nil
 end
 
+--- Meşru ışınlanma muafiyeti şu an geçerli mi? (telemetry_guard.lua okur)
+function CAC.hasTpGrace(src)
+  local g = tpGrace[tonumber(src)]
+  return g ~= nil and GetGameTimer() < g
+end
+
 -- Sunucu taraflı revive muafiyeti (vehicle_guard.lua'nın armor-regen kontrolü
 -- kullanır — gerçek reviveyi armor artışıyla karıştırmasın diye).
 local reviveGrace = {}

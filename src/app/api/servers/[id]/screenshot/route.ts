@@ -2,14 +2,14 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { handler, ok, ApiError } from "@/lib/api";
-import { requireOwnedServer } from "@/lib/api-guards";
+import { requireServerAccess } from "@/lib/api-guards";
 import { rateLimit } from "@/lib/ratelimit";
 
 // Panelden bir oyuncunun ekran görüntüsü istenir; kaynak polling ile alır.
 const schema = z.object({ playerId: z.string() });
 
 export const POST = handler(async (req: NextRequest, ctx: { params: { id: string } }) => {
-  const { server, user } = await requireOwnedServer(ctx.params.id);
+  const { server, user } = await requireServerAccess(ctx.params.id, "moderate");
   const rl = rateLimit(`ss:${user.id}`, 30, 60_000);
   if (!rl.success) throw new ApiError(429, "Too many requests");
 
@@ -31,7 +31,7 @@ export const POST = handler(async (req: NextRequest, ctx: { params: { id: string
 
 // Bir oyuncunun en son tamamlanmış ekran görüntüsünü döndürür (polling için).
 export const GET = handler(async (req: NextRequest, ctx: { params: { id: string } }) => {
-  const { server } = await requireOwnedServer(ctx.params.id);
+  const { server } = await requireServerAccess(ctx.params.id);
   const playerId = new URL(req.url).searchParams.get("playerId");
   if (!playerId) throw new ApiError(400, "playerId is required");
   const player = await db.player.findFirst({ where: { id: playerId, serverId: server.id } });

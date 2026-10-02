@@ -2,11 +2,11 @@ import { NextRequest } from "next/server";
 import { headers } from "next/headers";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { handler, ok } from "@/lib/api";
-import { requireOwnedServer } from "@/lib/api-guards";
+import { ApiError, handler, ok } from "@/lib/api";
+import { requireServerAccess } from "@/lib/api-guards";
 import { audit } from "@/lib/audit";
 import { clientIp } from "@/lib/session";
-import { sanitizeNetworkPolicy } from "@/lib/network-bans";
+import { readNetworkPolicy, sanitizeNetworkPolicy } from "@/lib/network-bans";
 
 const patchSchema = z.object({
   name: z.string().trim().min(2).max(48).optional(),
@@ -18,14 +18,19 @@ const patchSchema = z.object({
     .object({
       action: z.enum(["OFF", "LOG", "KICK"]),
       contribute: z.boolean(),
+      strongOnly: z.boolean().optional(),
     })
     .optional(),
 });
 
 export const PATCH = handler(
   async (req: NextRequest, ctx: { params: { id: string } }) => {
-    const { server, user } = await requireOwnedServer(ctx.params.id);
+    const { server, user, access } = await requireServerAccess(ctx.params.id, "settings");
     const body = patchSchema.parse(await req.json());
+    // The network policy is protection configuration, not a server setting.
+    if (body.network !== undefined && !access.perms.has("config")) {
+      throw new ApiError(403, "Your role on this server does not allow this (needs “Configuration”).", "FORBIDDEN");
+    }
 
     // config JSON içinde discordWebhook + webhookEvents + network sakla
     let config = server.config;
@@ -37,7 +42,7 @@ export const PATCH = handler(
       const parsed = JSON.parse(server.config || "{}");
       if (body.discordWebhook !== undefined) parsed.discordWebhook = body.discordWebhook;
       if (body.webhookEvents !== undefined) parsed.webhookEvents = body.webhookEvents;
-      if (body.network !== undefined) parsed.network = sanitizeNetworkPolicy(body.network);
+      if (body.network !== undefined) parsed.network = sanitizeNetworkPolicy({ ...readNetworkPolicy(server.config), ...body.network });
       config = JSON.stringify(parsed);
     }
 
@@ -65,7 +70,7 @@ export const PATCH = handler(
 
 export const DELETE = handler(
   async (_req: NextRequest, ctx: { params: { id: string } }) => {
-    const { server, user } = await requireOwnedServer(ctx.params.id);
+    const { server, user } = await requireServerAccess(ctx.params.id, "owner");
     await db.server.delete({ where: { id: server.id } });
     await audit({
       userId: user.id,

@@ -8,6 +8,7 @@ import { DONUT_PALETTE } from "@/lib/palette";
 import { Icons, type IconName } from "@/components/icons";
 import { timeAgo, parseJson, cn } from "@/lib/utils";
 import { readAcSettings } from "@/lib/ac-settings";
+import { loadTeamInbox, TeamInvitesCard, SharedServersGrid } from "@/components/team-inbox";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,7 @@ export default async function DashboardHome() {
     include: { licenseKey: { select: { status: true, expiresAt: true } } },
   });
   const serverIds = servers.map((s) => s.id);
+  const inbox = await loadTeamInbox(user.id);
   const since = new Date(Date.now() - DAY);
 
   const [overview, recent, onlineByServer, detByServer, bans24h] = await Promise.all([
@@ -125,7 +127,11 @@ export default async function DashboardHome() {
         </div>
       </section>
 
+      <TeamInvitesCard invites={inbox.invites} />
+      <SharedServersGrid shared={inbox.shared} title={hasServers ? "Shared with you" : "Servers you help run"} />
+
       {!hasServers ? (
+        inbox.shared.length > 0 ? null : (
         <EmptyState
           icon="server"
           title="You have no servers yet"
@@ -137,6 +143,7 @@ export default async function DashboardHome() {
             </div>
           }
         />
+        )
       ) : (
         <div className="space-y-6">
           {/* ------------------------------------------------------ health */}

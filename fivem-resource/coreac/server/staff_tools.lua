@@ -190,7 +190,7 @@ local txMode = {}   -- src -> 'noclip' | 'godmode' | 'superjump'
 
 -- Bir araç açıkken hiç raporlanmayacak tespit tipleri.
 local TOOL_TYPES = {
-  noclip    = { NOCLIP = true, TELEPORT = true, FREECAM = true, INVISIBLE = true, FLYHACK = true,
+  noclip    = { NOCLIP = true, TELEPORT = true, FREECAM = true, INVISIBLE = true, FLYHACK = true, STATE_DESYNC = true,
                 OUT_OF_BOUNDS = true, GODMODE = true, VEHICLE_NOCLIP = true, SPECTATE = true },
   godmode   = { GODMODE = true, NO_RAGDOLL = true, NO_FALL_DAMAGE = true },
   superjump = { SUPER_JUMP = true, NO_FALL_DAMAGE = true, NO_RAGDOLL = true },

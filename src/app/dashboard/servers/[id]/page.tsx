@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getOwnedServer } from "@/lib/guards";
+import { getServerAccess } from "@/lib/guards";
 import { db } from "@/lib/db";
 import { getUserOverview } from "@/lib/stats";
 import { Card } from "@/components/ui";
@@ -12,6 +12,7 @@ import { readAcSettings } from "@/lib/ac-settings";
 import { trollPropPreset } from "@/lib/troll-props";
 import { env } from "@/lib/env";
 import { cn, parseJson, timeAgo } from "@/lib/utils";
+import { can, roleLabel } from "@/lib/team";
 import { CopyKey } from "./copy-key";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ const ACT: Record<string, string> = {
 };
 
 export default async function ServerOverview({ params }: { params: { id: string } }) {
-  const { server } = await getOwnedServer(params.id);
+  const { server, access } = await getServerAccess(params.id);
   const now = Date.now();
   const d24 = new Date(now - 86400e3);
   const d48 = new Date(now - 2 * 86400e3);
@@ -117,11 +118,24 @@ export default async function ServerOverview({ params }: { params: { id: string 
             </dd>
             <dt className="text-slate-500">Licence</dt>
             <dd className="flex min-w-0 items-center gap-2">
-              <CopyKey value={(server.licenseKey as { key?: string } | null)?.key ?? null} />
+              {access.isOwner ? (
+                <CopyKey value={(server.licenseKey as { key?: string } | null)?.key ?? null} />
+              ) : (
+                <span className="text-xs leading-5 text-slate-500">{server.licenseKey ? "Active" : "—"}</span>
+              )}
               <span className={cn("shrink-0 text-xs", days !== null && days <= 7 ? "text-amber-300" : "text-slate-500")}>
                 {days === null ? "lifetime" : `${days}d left`}
               </span>
             </dd>
+            {!access.isOwner && (
+              <>
+                <dt className="text-slate-500">Your role</dt>
+                <dd className="text-xs leading-5 text-slate-300">
+                  {roleLabel(access.role)}
+                  <a href={`${base}/team`} className="text-slate-500 hover:text-white"> · team</a>
+                </dd>
+              </>
+            )}
           </dl>
         </div>
 
@@ -147,10 +161,10 @@ export default async function ServerOverview({ params }: { params: { id: string 
             {" "}Staff {staffBypass ? "are never punished" : "are treated like players"}.
           </p>
           <div className="mt-3 flex flex-wrap gap-1.5">
-            <QuickLink href={`${base}/monitoring`} icon="eye" label="Live" />
+            {can(access, "moderate") && <QuickLink href={`${base}/monitoring`} icon="eye" label="Live" />}
             <QuickLink href={`${base}/event-log`} icon="scan" label="Event Log" />
-            <QuickLink href={`${base}/rules`} icon="config" label="Configure" />
-            <QuickLink href={`${base}/console`} icon="terminal" label="Console" />
+            {can(access, "config") && <QuickLink href={`${base}/rules`} icon="config" label="Configure" />}
+            {can(access, "console") && <QuickLink href={`${base}/console`} icon="terminal" label="Console" />}
           </div>
         </div>
       </section>
@@ -234,6 +248,7 @@ export default async function ServerOverview({ params }: { params: { id: string 
         </Card>
 
         <div className="grid content-start gap-4">
+          {can(access, "config") && (
           <Card>
             <SectionTitle icon="check" title="Setup" sub={`${doneCount} of ${checklist.length} done`} />
             <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-white/5">
@@ -253,6 +268,7 @@ export default async function ServerOverview({ params }: { params: { id: string 
               ))}
             </ul>
           </Card>
+          )}
 
           <Card>
             <SectionTitle icon="users" title="Most flagged" sub="Last 24 h" />

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { handler, ok, ApiError } from "@/lib/api";
-import { requireOwnedServer } from "@/lib/api-guards";
+import { requireServerAccess } from "@/lib/api-guards";
 import { sanitizeScope } from "@/lib/bypass";
 import { sendWebhook } from "@/lib/discord";
 
@@ -17,7 +17,7 @@ const createSchema = z.object({
 // Bypass listesine ekle. Discord ID / license için "discord:" / "license:" öneki
 // yoksa otomatik eklenir (FiveM identifier biçimi).
 export const POST = handler(async (req: NextRequest, ctx: { params: { id: string } }) => {
-  const { server, user } = await requireOwnedServer(ctx.params.id);
+  const { server, user } = await requireServerAccess(ctx.params.id, "config");
   const body = createSchema.parse(await req.json());
 
   let value = body.value.trim();
@@ -49,7 +49,7 @@ const patchSchema = z.object({ id: z.string(), scope: z.array(z.string()).max(15
 
 // Change which protections an entry is exempt from.
 export const PATCH = handler(async (req: NextRequest, ctx: { params: { id: string } }) => {
-  const { server, user } = await requireOwnedServer(ctx.params.id);
+  const { server, user } = await requireServerAccess(ctx.params.id, "config");
   const body = patchSchema.parse(await req.json());
   const before = await db.whitelist.findFirst({ where: { id: body.id, serverId: server.id }, select: { value: true } });
   await db.whitelist.updateMany({
@@ -68,7 +68,7 @@ export const PATCH = handler(async (req: NextRequest, ctx: { params: { id: strin
 const deleteSchema = z.object({ id: z.string() });
 
 export const DELETE = handler(async (req: NextRequest, ctx: { params: { id: string } }) => {
-  const { server, user } = await requireOwnedServer(ctx.params.id);
+  const { server, user } = await requireServerAccess(ctx.params.id, "config");
   const { id } = deleteSchema.parse(await req.json());
   const row = await db.whitelist.findFirst({ where: { id, serverId: server.id }, select: { value: true } });
   await db.whitelist.deleteMany({ where: { id, serverId: server.id } });

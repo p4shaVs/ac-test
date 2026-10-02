@@ -221,7 +221,9 @@ local function verdictUnsafe(src, name, ids)
     if resp.deny == 'threat' then return deny('threat', s.ThreatMessage) end
     if resp.deny == 'reputation' then return deny('reputation', s.ReputationMessage) end
     if resp.flagged and resp.action == 'KICK' then
-      return deny('network', 'You are blocked by the anti-cheat network.')
+      -- Panel yalnızca sayı ve tespit türü verir; başka sunucunun adı asla gelmez.
+      local why = type(resp.reason) == 'string' and resp.reason ~= '' and (': ' .. resp.reason:sub(1, 180)) or '.'
+      return deny('network', 'You are blocked by the CoreAC anti-cheat network' .. why)
     end
   elseif failClosed and panelDecides() then
     return deny('verify', s.VerifyUnavailableMessage)

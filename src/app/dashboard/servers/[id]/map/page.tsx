@@ -1,4 +1,5 @@
-import { getOwnedServer } from "@/lib/guards";
+import { getServerAccess } from "@/lib/guards";
+import { can } from "@/lib/team";
 import { db } from "@/lib/db";
 import { MapView, type MapPlayer } from "./map-view";
 
@@ -9,7 +10,7 @@ export default async function MapPage({
 }: {
   params: { id: string };
 }) {
-  const { server } = await getOwnedServer(params.id);
+  const { server, access } = await getServerAccess(params.id);
   const players = await db.player.findMany({
     where: { serverId: server.id, online: true },
     orderBy: { trustScore: "asc" },
@@ -31,5 +32,5 @@ export default async function MapPage({
     ping: p.ping,
   }));
 
-  return <MapView serverId={server.id} players={rows} maxSlots={server.maxSlots} />;
+  return <MapView serverId={server.id} players={rows} maxSlots={server.maxSlots} canModerate={can(access, "moderate")} />;
 }

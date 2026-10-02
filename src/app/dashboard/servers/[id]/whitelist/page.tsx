@@ -1,4 +1,6 @@
-import { getOwnedServer } from "@/lib/guards";
+import { getServerAccess } from "@/lib/guards";
+import { can } from "@/lib/team";
+import { NoAccess } from "@/components/no-access";
 import { db } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { BypassManager, type BypassRow } from "./bypass-manager";
@@ -7,7 +9,8 @@ import { parseScope } from "@/lib/bypass";
 export const dynamic = "force-dynamic";
 
 export default async function WhitelistPage({ params }: { params: { id: string } }) {
-  const { server } = await getOwnedServer(params.id);
+  const { server, access } = await getServerAccess(params.id);
+  if (!can(access, "config")) return <NoAccess serverId={server.id} perm="config" role={access.role} />;
   const rows = await db.whitelist.findMany({
     where: { serverId: server.id },
     orderBy: { createdAt: "desc" },

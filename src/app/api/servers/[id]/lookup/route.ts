@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { handler, ok } from "@/lib/api";
-import { requireOwnedServer } from "@/lib/api-guards";
+import { requireServerAccess } from "@/lib/api-guards";
 
 // Oyuncu sorgulama: isim/identifier ile arar; tehdit puanı, ban geçmişi,
 // alt hesap (aynı IP) ve oynama süresini döndürür.
 export const GET = handler(
   async (req: NextRequest, ctx: { params: { id: string } }) => {
-    const { server } = await requireOwnedServer(ctx.params.id);
+    const { server } = await requireServerAccess(ctx.params.id);
     const q = (new URL(req.url).searchParams.get("q") ?? "").trim();
     if (q.length < 2) return ok({ results: [] });
 

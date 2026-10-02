@@ -364,6 +364,19 @@ export const Icons = {
       <path d="M16 21h1a2 2 0 0 0 2-2v-4a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1" />
     </Base>
   ),
+  mail: (p: IconProps) => (
+    <Base {...p}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3 7 9 6 9-6" />
+    </Base>
+  ),
+  userPlus: (p: IconProps) => (
+    <Base {...p}>
+      <circle cx="9" cy="8" r="4" />
+      <path d="M2 21a7 7 0 0 1 14 0" />
+      <path d="M19 8v6M16 11h6" />
+    </Base>
+  ),
   note: (p: IconProps) => (
     <Base {...p}>
       <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9l-6-6Z" />

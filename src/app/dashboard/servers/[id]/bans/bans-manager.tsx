@@ -33,7 +33,21 @@ export interface BanRow {
 
 type Filter = "all" | "active" | "lifted" | "false" | "auto" | "staff";
 
-export function BansManager({ serverId, bans, initialOpen }: { serverId: string; bans: BanRow[]; initialOpen: string | null }) {
+export function BansManager({
+  serverId,
+  bans,
+  initialOpen,
+  canModerate = true,
+  canConfigure = true,
+}: {
+  serverId: string;
+  bans: BanRow[];
+  initialOpen: string | null;
+  /** Offline ban, unban, notes, CSV export. */
+  canModerate?: boolean;
+  /** "Delete lifted records" / "Lift every active ban". */
+  canConfigure?: boolean;
+}) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -121,9 +135,11 @@ export function BansManager({ serverId, bans, initialOpen }: { serverId: string;
           title="No bans yet"
           description="Bans issued from the Players page, in game or by automatic detections appear here."
           action={
-            <button type="button" onClick={() => setOffline(true)} className="btn-primary h-9 px-4 text-xs">
-              <Icons.plus size={14} /> Ban someone offline
-            </button>
+            canModerate ? (
+              <button type="button" onClick={() => setOffline(true)} className="btn-primary h-9 px-4 text-xs">
+                <Icons.plus size={14} /> Ban someone offline
+              </button>
+            ) : undefined
           }
         />
         {dialog}
@@ -165,12 +181,17 @@ export function BansManager({ serverId, bans, initialOpen }: { serverId: string;
         />
         <div className="flex items-center gap-2">
           <SearchBox value={query} onChange={setQuery} placeholder="Name, ban ID, licence, Discord, reason…" className="w-full xl:w-80" />
-          <button type="button" onClick={() => setOffline(true)} className="btn-primary h-9 shrink-0 px-3 text-xs">
-            <Icons.plus size={14} /> Offline ban
-          </button>
-          <a href={`/api/servers/${serverId}/bans/export`} className="btn-secondary h-9 shrink-0 px-3 text-xs">
-            <Icons.download size={14} /> CSV
-          </a>
+          {canModerate && (
+            <button type="button" onClick={() => setOffline(true)} className="btn-primary h-9 shrink-0 px-3 text-xs">
+              <Icons.plus size={14} /> Offline ban
+            </button>
+          )}
+          {canModerate && (
+            <a href={`/api/servers/${serverId}/bans/export`} className="btn-secondary h-9 shrink-0 px-3 text-xs">
+              <Icons.download size={14} /> CSV
+            </a>
+          )}
+          {canConfigure && (
           <div ref={menuRef} className="relative shrink-0">
             <button type="button" onClick={() => setMenu((m) => !m)} className="btn-secondary h-9 w-9 justify-center p-0" aria-label="More actions">
               <Icons.menu size={15} />
@@ -196,6 +217,7 @@ export function BansManager({ serverId, bans, initialOpen }: { serverId: string;
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
 
@@ -270,6 +292,7 @@ export function BansManager({ serverId, bans, initialOpen }: { serverId: string;
           banId={open}
           onClose={() => openBan(null)}
           onChanged={() => router.refresh()}
+          canModerate={canModerate}
         />
       )}
     </div>

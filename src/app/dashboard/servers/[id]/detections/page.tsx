@@ -1,4 +1,4 @@
-import { getOwnedServer } from "@/lib/guards";
+import { getServerAccess } from "@/lib/guards";
 import { db } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { DETECTION_CATEGORIES, DETECTION_TYPES, detectionLabel } from "@/lib/detection-actions";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 const CATEGORY = new Map(DETECTION_TYPES.map((d) => [d.type, d.category]));
 
 export default async function DetectionsPage({ params }: { params: { id: string } }) {
-  const { server } = await getOwnedServer(params.id);
+  const { server } = await getServerAccess(params.id);
   const detections = await db.detection.findMany({
     where: { serverId: server.id },
     orderBy: { createdAt: "desc" },

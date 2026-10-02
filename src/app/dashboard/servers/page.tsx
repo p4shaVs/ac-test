@@ -5,12 +5,14 @@ import { db } from "@/lib/db";
 import { PageHeader, Card, EmptyState, StatusBadge, LinkButton } from "@/components/ui";
 import { Icons } from "@/components/icons";
 import { timeAgo } from "@/lib/utils";
+import { loadTeamInbox, TeamInvitesCard, SharedServersGrid } from "@/components/team-inbox";
 
 export const metadata: Metadata = { title: "My Servers" };
 export const dynamic = "force-dynamic";
 
 export default async function ServersPage() {
   const user = (await getCurrentUser())!;
+  const inbox = await loadTeamInbox(user.id);
   const servers = await db.server.findMany({
     where: { ownerId: user.id },
     orderBy: { createdAt: "asc" },
@@ -24,7 +26,7 @@ export default async function ServersPage() {
     <>
       <PageHeader
         title="My Servers"
-        description="Your protected FiveM servers."
+        description="Your protected FiveM servers, and the ones other owners invited you to help run."
         actions={
           <LinkButton href="/dashboard/servers/new" icon="plus" variant="secondary">
             Add server
@@ -32,7 +34,9 @@ export default async function ServersPage() {
         }
       />
 
-      {servers.length === 0 ? (
+      <TeamInvitesCard invites={inbox.invites} />
+
+      {servers.length === 0 && inbox.shared.length > 0 ? null : servers.length === 0 ? (
         <EmptyState
           icon="server"
           title="No servers added yet"
@@ -77,6 +81,11 @@ export default async function ServersPage() {
               </Card>
             </Link>
           ))}
+        </div>
+      )}
+      {inbox.shared.length > 0 && (
+        <div className={servers.length ? "mt-8" : ""}>
+          <SharedServersGrid shared={inbox.shared} />
         </div>
       )}
     </>

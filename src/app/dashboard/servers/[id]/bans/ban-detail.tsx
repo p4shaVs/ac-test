@@ -95,11 +95,14 @@ export function BanDetail({
   banId,
   onClose,
   onChanged,
+  canModerate = true,
 }: {
   serverId: string;
   banId: string;
   onClose: () => void;
   onChanged: () => void;
+  /** Team members without "Moderate players" see the ban but cannot change it. */
+  canModerate?: boolean;
 }) {
   const [data, setData] = useState<BanDetailData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -238,12 +241,12 @@ export function BanDetail({
                 <Icons.link size={11} /> Evasion of #{b.evasionOf}
               </span>
             )}
-            {!b.falsePositive && (
+            {canModerate && !b.falsePositive && (
               <button type="button" onClick={fixFalseBan} disabled={busy !== null} className="inline-flex h-6 items-center gap-1.5 rounded-full border border-amber-400/25 px-2.5 text-[11px] font-medium text-amber-200 transition hover:bg-amber-400/10 disabled:opacity-50">
                 <Icons.wand size={11} /> Fix false ban
               </button>
             )}
-            {b.active && (
+            {canModerate && b.active && (
               <button type="button" onClick={unban} disabled={busy !== null} className="inline-flex h-6 items-center gap-1.5 rounded-full border border-emerald-400/25 px-2.5 text-[11px] font-medium text-emerald-200 transition hover:bg-emerald-400/10 disabled:opacity-50">
                 <Icons.undo size={11} /> {busy === "unban" ? "Lifting…" : "Unban"}
               </button>
@@ -437,6 +440,7 @@ export function BanDetail({
 
           {data && tab === "notes" && (
             <div className="space-y-4">
+              {canModerate && (
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
@@ -460,6 +464,7 @@ export function BanDetail({
                   </button>
                 </div>
               </form>
+              )}
               {data.notes.length === 0 ? (
                 <p className="py-6 text-center text-[13px] text-slate-500">No notes yet.</p>
               ) : (
@@ -470,14 +475,14 @@ export function BanDetail({
                         <Avatar name={n.by} size={26} />
                         <span className="text-[12.5px] font-medium text-slate-200">{n.by}</span>
                         <span className="text-[11px] text-slate-500">{formatDateTime(n.at)}</span>
-                        <button
+                        {canModerate && <button
                           type="button"
                           onClick={() => confirm("Delete this note?") && post({ action: "deleteNote", noteId: n.id }, "del")}
                           className="ml-auto text-slate-600 opacity-0 transition hover:text-rose-300 group-hover:opacity-100"
                           aria-label="Delete note"
                         >
                           <Icons.trash size={13} />
-                        </button>
+                        </button>}
                       </div>
                       <p className="mt-2 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-slate-300">{n.text}</p>
                     </li>
@@ -498,6 +503,7 @@ export function BanDetail({
         {/* Footer: false-positive switch + actions */}
         {b && (
           <div className="flex flex-col gap-3 border-t border-white/[0.07] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+            {canModerate ? (
             <button
               type="button"
               disabled={busy !== null}
@@ -513,14 +519,19 @@ export function BanDetail({
                 <span className="block text-[11.5px] text-slate-500">Marks the record only — “Fix false ban” also lifts it.</span>
               </span>
             </button>
+            ) : (
+              <span className="flex items-center gap-2 text-[12px] text-slate-500">
+                <Icons.lock size={13} /> View only — your role cannot change bans.
+              </span>
+            )}
             <div className="flex items-center gap-2">
               {b.code && <CopyButton text={b.code} label="Copy ban ID" className="h-9 px-3" />}
-              {!b.falsePositive && (
+              {canModerate && !b.falsePositive && (
                 <button type="button" onClick={fixFalseBan} disabled={busy !== null} className="btn-secondary h-9 px-3 text-xs">
                   <Icons.wand size={13} /> {busy === "fix" ? "Fixing…" : "Fix false ban"}
                 </button>
               )}
-              {b.active && (
+              {canModerate && b.active && (
                 <button type="button" onClick={unban} disabled={busy !== null} className="btn-primary h-9 px-4 text-xs">
                   <Icons.undo size={13} /> {busy === "unban" ? "Lifting…" : "Unban"}
                 </button>

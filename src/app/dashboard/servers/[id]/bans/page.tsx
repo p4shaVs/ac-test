@@ -1,8 +1,9 @@
-import { getOwnedServer } from "@/lib/guards";
+import { getServerAccess } from "@/lib/guards";
 import { db } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { detectionLabel } from "@/lib/detection-actions";
 import { parseBanNotes } from "@/lib/ban-ops";
+import { can } from "@/lib/team";
 import { BansManager, type BanRow } from "./bans-manager";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ export default async function BansPage({
   params: { id: string };
   searchParams: { ban?: string };
 }) {
-  const { server } = await getOwnedServer(params.id);
+  const { server, access } = await getServerAccess(params.id);
   const bans = await db.ban.findMany({
     where: { serverId: server.id },
     orderBy: [{ active: "desc" }, { createdAt: "desc" }],
@@ -52,7 +53,7 @@ export default async function BansPage({
         title="Bans"
         description="Every ban, automatic or by staff. Open one to see the evidence, the player's history, notes and the raw record — and to lift it or correct it as a false positive."
       />
-      <BansManager serverId={server.id} bans={rows} initialOpen={initial} />
+      <BansManager serverId={server.id} bans={rows} initialOpen={initial} canModerate={can(access, "moderate")} canConfigure={can(access, "config")} />
     </>
   );
 }

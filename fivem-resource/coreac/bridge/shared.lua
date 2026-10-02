@@ -137,7 +137,8 @@ CoreAC.Detections = {
     ANTI_RESOURCE_STOP              = 'AC_TAMPER',
     ANTI_BYPASS_ATTEMPT             = 'BYPASS_ATTEMPT',
     ANTI_CRASH_ATTEMPT              = 'CRASH_ATTEMPT',
-    ANTI_ENTITY_FLOOD               = 'ENTITY_FLOOD',     -- server/crash_guard.lua (sel kalkanı)
+    ANTI_ENTITY_FLOOD               = 'ENTITY_FLOOD',
+    ANTI_STATE_DESYNC               = 'STATE_DESYNC',     -- server/telemetry_guard.lua     -- server/crash_guard.lua (sel kalkanı)
 
     -- Silah / combat
     ANTI_AMMO_CHEATING              = 'AMMO_CHEAT',

@@ -2,14 +2,14 @@ import { NextRequest } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
 import { handler, ok, ApiError } from "@/lib/api";
-import { requireOwnedServer } from "@/lib/api-guards";
+import { requireServerAccess } from "@/lib/api-guards";
 import { punishSchema } from "@/lib/validation";
 import { generateBanCode } from "@/lib/keys";
 import { sendWebhook, type WebhookEvent } from "@/lib/discord";
 import { rateLimit } from "@/lib/ratelimit";
 import { audit } from "@/lib/audit";
 import { clientIp } from "@/lib/session";
-import { recordNetworkBan } from "@/lib/network-bans";
+import { recordNetworkBan, networkTypeForManual } from "@/lib/network-bans";
 
 /**
  * Web panelinden oyuncuya ceza uygular (WARN / KICK / BAN).
@@ -18,7 +18,7 @@ import { recordNetworkBan } from "@/lib/network-bans";
  */
 export const POST = handler(
   async (req: NextRequest, ctx: { params: { id: string } }) => {
-    const { server, user } = await requireOwnedServer(ctx.params.id);
+    const { server, user } = await requireServerAccess(ctx.params.id, "moderate");
     const ip = clientIp(headers()) ?? "unknown";
 
     const rl = rateLimit(`moderate:${user.id}`, 60, 60_000);
@@ -94,7 +94,7 @@ export const POST = handler(
         steam: player.steam,
         discord: player.discord,
         playerName: player.name,
-        type: "MANUAL",
+        type: networkTypeForManual(body.reason),
       });
     }
 

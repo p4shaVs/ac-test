@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { handler, ok, ApiError } from "@/lib/api";
-import { requireOwnedServer } from "@/lib/api-guards";
+import { requireServerAccess } from "@/lib/api-guards";
 import { audit } from "@/lib/audit";
 import { clientIp } from "@/lib/session";
 import { parseJson } from "@/lib/utils";
@@ -25,7 +25,7 @@ async function loadBan(serverId: string, banId: string) {
 // it (evidence, screenshots, replay), linked evasion bans, the player's history
 // on this server and the staff notes.
 export const GET = handler(async (_req: Request, ctx: Ctx) => {
-  const { server } = await requireOwnedServer(ctx.params.id);
+  const { server } = await requireServerAccess(ctx.params.id);
   const ban = await loadBan(server.id, ctx.params.banId);
 
   const identity: Prisma.BanWhereInput[] = [];
@@ -210,7 +210,7 @@ const postSchema = z.discriminatedUnion("action", [
 ]);
 
 export const POST = handler(async (req: NextRequest, ctx: Ctx) => {
-  const { server, user } = await requireOwnedServer(ctx.params.id);
+  const { server, user } = await requireServerAccess(ctx.params.id, "moderate");
   const body = postSchema.parse(await req.json());
   const ban = await loadBan(server.id, ctx.params.banId);
   const ip = clientIp(headers());

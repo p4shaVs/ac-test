@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { handler, ok } from "@/lib/api";
-import { requireOwnedServer } from "@/lib/api-guards";
+import { requireServerAccess } from "@/lib/api-guards";
 import { audit } from "@/lib/audit";
 import { clientIp } from "@/lib/session";
 import { sendWebhook } from "@/lib/discord";
@@ -14,7 +14,7 @@ const schema = z.object({
 
 // Toplu ban işlemleri: kaldırılmışları temizle veya tüm aktif banları kaldır.
 export const POST = handler(async (req: NextRequest, ctx: { params: { id: string } }) => {
-  const { server, user } = await requireOwnedServer(ctx.params.id);
+  const { server, user } = await requireServerAccess(ctx.params.id, "config");
   const { action } = schema.parse(await req.json());
 
   if (action === "clearInactive") {

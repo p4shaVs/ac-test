@@ -12,6 +12,9 @@ const LABELS: Record<string, string> = {
   lastAmmoInWeapon: "Previous ammo", ammoInClip: "Clip", lastAmmoInClip: "Previous clip",
   normal: "Everyone else", players: "Compared with", kills: "Kills", oneTaps: "One-shot head kills",
   medianDist: "Typical distance", kind: "What", limit: "Limit", windowMs: "Window", target: "Target", task: "Task", hooked: "Hooked function", offsetDeg: "Off aim", offTarget: "Hits off the crosshair", medianOffDeg: "Typical miss", maxOffDeg: "Worst miss", angleCos: "Aim match", dist: "Distance", multiplier: "Multiplier", impact: "Impact",
+  intervalMs: "Shot gap", floorMs: "Fastest real gun", rpm: "Fire rate", bursts: "Bursts", shots: "Shots", weaponClass: "Weapon type",
+  reports: "Reports", tolerance: "Allowed", reportedPos: "Reported position", serverPos: "Server sees", reportedHealth: "Reported health",
+  serverHealth: "Server health", reportedArmor: "Reported armour", serverArmor: "Server armour",
 };
 
 const SOURCES: Record<string, string> = {
@@ -34,13 +37,17 @@ const SOURCES: Record<string, string> = {
   kick_votes: "server: kick-vote spam",
   aim_telemetry_invalid: "server: aim data forged far from the player",
   peer_damage: "server: hits stronger than every other player's with this weapon",
+  fire_rate: "shots faster than any real gun of this type, on the shooter's own clock",
+  telemetry_mismatch: "server: the anti-cheat's position reports disagree with where the server sees the player",
 };
 
 const SKIP = new Set(["replay", "bypass", "hash", "inCombat", "custom", "blocked", "info"]);
 
 function unit(key: string, v: unknown): string {
   if (typeof v === "number") {
-    if (key === "distance" || key === "flight" || key === "voiceRange" || key === "dist" || key === "medianDist") return `${Math.round(v)} m`;
+    if (key === "distance" || key === "flight" || key === "voiceRange" || key === "dist" || key === "medianDist" || key === "tolerance") return `${Math.round(v)} m`;
+    if (key === "intervalMs" || key === "floorMs") return `${Math.round(v)} ms`;
+    if (key === "rpm") return `${Math.round(v)} rpm`;
     if (key === "offsetDeg" || key === "medianOffDeg" || key === "maxOffDeg") return `${v}°`;
     if (key === "players") return `${v} players`;
     if (key === "seconds") return `${v} s`;

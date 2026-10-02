@@ -100,6 +100,7 @@ const CATEGORIES: CatalogCategory[] = [
         label: "Anti-Cheat Stop / Tamper",
         desc: "Flags a player who stops or suspends a resource that still runs on the server. The server also notices when the anti-cheat on a player's game goes quiet or answers its challenge wrongly, and the anti-cheat checks its own code every 15 seconds for functions an executor swapped out.",
       }),
+      rule("anti_state_desync", ["STATE_DESYNC"]),
       ac("Settings.EnableAntiBackdoors", ["BACKDOOR"], ["Settings.StopServerWhenDetected"], { label: "Backdoor Protection" }),
     ],
   },

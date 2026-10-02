@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icons, type IconName } from "./icons";
 import { cn } from "@/lib/utils";
+import { canOpenPage, type Permission, type Role } from "@/lib/team";
 
 interface Cmd {
   id: string;
@@ -19,6 +20,8 @@ interface PaletteServer {
   id: string;
   name: string;
   status: string;
+  role?: Role;
+  perms?: Permission[];
 }
 
 const SERVER_PAGES: { path: string; label: string; icon: IconName; keywords?: string }[] = [
@@ -33,6 +36,7 @@ const SERVER_PAGES: { path: string; label: string; icon: IconName; keywords?: st
   { path: "/warns", label: "Warnings", icon: "warn" },
   { path: "/event-log", label: "Event Log", icon: "scan", keywords: "spawn explosion damage particle kill live" },
   { path: "/events", label: "Protected Events", icon: "activity", keywords: "honeypot trap" },
+  { path: "/network", label: "CoreAC Network", icon: "globe", keywords: "network bans reputation shared cheaters" },
   { path: "/logs", label: "Server Logs", icon: "logs" },
   { path: "/admin-logs", label: "Admin Logs", icon: "history", keywords: "staff audit" },
   { path: "/rules", label: "Configuration", icon: "config", keywords: "protections actions settings log-only" },
@@ -42,6 +46,7 @@ const SERVER_PAGES: { path: string; label: string; icon: IconName; keywords?: st
   { path: "/console", label: "Console", icon: "terminal", keywords: "command announce" },
   { path: "/resources", label: "Resources", icon: "cube", keywords: "restart start stop" },
   { path: "/settings", label: "Settings", icon: "config", keywords: "token webhook discord" },
+  { path: "/team", label: "Team", icon: "users", keywords: "staff members invite roles moderator viewer" },
 ];
 
 export function CommandPalette({
@@ -85,7 +90,9 @@ export function CommandPalette({
       );
     }
     for (const s of servers) {
+      const isOwner = (s.role ?? "OWNER") === "OWNER";
       for (const p of SERVER_PAGES) {
+        if (!canOpenPage(p.path.slice(1), s.perms ?? [], isOwner)) continue;
         out.push({
           id: `${s.id}${p.path}`,
           label: p.path ? `${s.name} → ${p.label}` : s.name,

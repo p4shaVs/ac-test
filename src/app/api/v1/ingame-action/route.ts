@@ -6,7 +6,7 @@ import { authenticateServer } from "@/lib/server-auth";
 import { rateLimit } from "@/lib/ratelimit";
 import { generateBanCode } from "@/lib/keys";
 import { sendWebhook, type WebhookEvent } from "@/lib/discord";
-import { recordNetworkBan } from "@/lib/network-bans";
+import { recordNetworkBan, networkTypeForManual } from "@/lib/network-bans";
 
 // Oyun içi yönetici menüsünden yapılan ceza (WARN/KICK/BAN) panele işlenir.
 // (Ceza oyunda zaten uygulandı; bu uç sadece kaydeder + webhook gönderir.)
@@ -79,7 +79,7 @@ export const POST = handler(async (req: NextRequest) => {
         steam: player?.steam,
         discord: player?.discord,
         playerName: body.playerName,
-        type: "MANUAL",
+        type: networkTypeForManual(body.reason),
       });
     }
   }

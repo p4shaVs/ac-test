@@ -176,10 +176,14 @@ r = H.connect(52)
 check('panel says deny=threat → ThreatMessage', not r.done and (r.last or ''):find('Too hot.', 1, true), H.verdictText(r))
 
 H.pushConfig({ AntiConnectionDupe = false })
-verdict = { flagged = true, action = 'KICK', distinctOwners = 3 }
+verdict = { flagged = true, action = 'KICK', distinctOwners = 3, reason = 'banned on 3 other CoreAC communities (Aimbot ×2)' }
 H.addPlayer(53, 'NetworkKick')
 r = H.connect(53)
-check('network policy KICK → refused (existing behaviour kept)', not r.done and (r.last or ''):find('blocked by the anti-cheat network', 1, true), H.verdictText(r))
+check('network policy KICK → refused with the reason (counts and cheat types only)', not r.done and (r.last or ''):find('blocked by the CoreAC anti-cheat network: banned on 3 other CoreAC communities (Aimbot', 1, true), H.verdictText(r))
+verdict = { flagged = true, action = 'KICK', distinctOwners = 3 }
+H.addPlayer(55, 'NetworkKickOld')
+r = H.connect(55)
+check('…and an older panel without a reason still refuses cleanly', not r.done and (r.last or ''):find('blocked by the CoreAC anti-cheat network.', 1, true), H.verdictText(r))
 
 verdict = { flagged = true, action = 'LOG', distinctOwners = 3 }
 H.addPlayer(54, 'NetworkLog')

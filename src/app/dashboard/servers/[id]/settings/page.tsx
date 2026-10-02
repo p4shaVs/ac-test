@@ -1,6 +1,7 @@
-import { getOwnedServer } from "@/lib/guards";
+import { getServerAccess } from "@/lib/guards";
+import { can } from "@/lib/team";
+import { NoAccess } from "@/components/no-access";
 import { readWebhookConfig } from "@/lib/discord";
-import { readNetworkPolicy } from "@/lib/network-bans";
 import { ServerSettings } from "./server-settings";
 
 export const dynamic = "force-dynamic";
@@ -10,9 +11,9 @@ export default async function SettingsPage({
 }: {
   params: { id: string };
 }) {
-  const { server } = await getOwnedServer(params.id);
+  const { server, access } = await getServerAccess(params.id);
+  if (!can(access, "settings")) return <NoAccess serverId={server.id} perm="settings" role={access.role} />;
   const wh = readWebhookConfig(server.config);
-  const network = readNetworkPolicy(server.config);
 
   return (
     <ServerSettings
@@ -23,10 +24,10 @@ export default async function SettingsPage({
         maxSlots: server.maxSlots,
         discordWebhook: wh.url,
         webhookEvents: wh.events,
-        network,
         hasToken: !!server.apiTokenHash,
       }}
       appUrl={process.env.APP_URL ?? ""}
+      isOwner={access.isOwner}
     />
   );
 }

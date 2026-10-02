@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/modal";
 import { Badge } from "@/components/ui";
@@ -54,9 +55,11 @@ type ActionType = "WARN" | "KICK" | "BAN";
 export function PlayersTable({
   serverId,
   players,
+  canModerate = true,
 }: {
   serverId: string;
   players: PlayerRow[];
+  canModerate?: boolean;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -190,9 +193,17 @@ export function PlayersTable({
                 <td className="px-4 py-3 text-slate-500">{timeAgo(p.lastSeenAt)}</td>
                 <td className="px-4 py-3">
                   <div className="flex justify-end gap-1.5">
-                    <ActionBtn icon="warn" title="Warn" onClick={() => openAction(p, "WARN")} />
-                    <ActionBtn icon="kick" title="Kick" onClick={() => openAction(p, "KICK")} />
-                    <ActionBtn icon="ban" title="Ban" danger onClick={() => openAction(p, "BAN")} />
+                    {canModerate ? (
+                      <>
+                        <ActionBtn icon="warn" title="Warn" onClick={() => openAction(p, "WARN")} />
+                        <ActionBtn icon="kick" title="Kick" onClick={() => openAction(p, "KICK")} />
+                        <ActionBtn icon="ban" title="Ban" danger onClick={() => openAction(p, "BAN")} />
+                      </>
+                    ) : (
+                      <Link href={`/dashboard/servers/${serverId}/lookup?p=${p.id}`} className="text-[11.5px] text-slate-500 hover:text-white">
+                        Profile
+                      </Link>
+                    )}
                   </div>
                 </td>
               </tr>

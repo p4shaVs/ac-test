@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { handler, ok, ApiError } from "@/lib/api";
-import { requireOwnedServer } from "@/lib/api-guards";
+import { requireServerAccess } from "@/lib/api-guards";
 import { rateLimit } from "@/lib/ratelimit";
 import { audit } from "@/lib/audit";
 import { clientIp } from "@/lib/session";
@@ -13,7 +13,7 @@ const schema = z.object({ command: z.string().trim().min(1).max(500) });
 // Console output: the latest server log lines, or only the ones after `since`
 // (an ISO time) so the terminal can poll without re-reading everything.
 export const GET = handler(async (req: NextRequest, ctx: { params: { id: string } }) => {
-  const { server } = await requireOwnedServer(ctx.params.id);
+  const { server } = await requireServerAccess(ctx.params.id, "console");
   const sinceRaw = new URL(req.url).searchParams.get("since");
   const since = sinceRaw ? new Date(sinceRaw) : null;
   const logs = await db.serverLog.findMany({
@@ -37,7 +37,7 @@ export const GET = handler(async (req: NextRequest, ctx: { params: { id: string 
 // Web konsolundan komut gönderir → kuyruğa alınır, FiveM kaynağı çalıştırır.
 export const POST = handler(
   async (req: NextRequest, ctx: { params: { id: string } }) => {
-    const { server, user } = await requireOwnedServer(ctx.params.id);
+    const { server, user } = await requireServerAccess(ctx.params.id, "console");
     const rl = rateLimit(`console:${user.id}`, 30, 60_000);
     if (!rl.success) throw new ApiError(429, "Too fast, please wait");
 

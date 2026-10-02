@@ -1,4 +1,6 @@
-import { getOwnedServer } from "@/lib/guards";
+import { getServerAccess } from "@/lib/guards";
+import { can } from "@/lib/team";
+import { NoAccess } from "@/components/no-access";
 import { db } from "@/lib/db";
 import { parseJson } from "@/lib/utils";
 import { AdminsManager, type AdminRow } from "./admins-manager";
@@ -10,7 +12,8 @@ export default async function AdminsPage({
 }: {
   params: { id: string };
 }) {
-  const { server } = await getOwnedServer(params.id);
+  const { server, access } = await getServerAccess(params.id);
+  if (!can(access, "admins")) return <NoAccess serverId={server.id} perm="admins" role={access.role} />;
   const admins = await db.serverAdmin.findMany({
     where: { serverId: server.id },
     orderBy: { createdAt: "asc" },

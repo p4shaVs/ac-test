@@ -1,4 +1,5 @@
-import { getOwnedServer } from "@/lib/guards";
+import { getServerAccess } from "@/lib/guards";
+import { can } from "@/lib/team";
 import { db } from "@/lib/db";
 import { EmptyState } from "@/components/ui";
 import { getCachedAvatar, warmAvatars } from "@/lib/discord-avatar";
@@ -11,7 +12,7 @@ export default async function PlayersPage({
 }: {
   params: { id: string };
 }) {
-  const { server } = await getOwnedServer(params.id);
+  const { server, access } = await getServerAccess(params.id);
 
   const players = await db.player.findMany({
     where: { serverId: server.id },
@@ -46,5 +47,5 @@ export default async function PlayersPage({
     );
   }
 
-  return <PlayersTable serverId={server.id} players={rows} />;
+  return <PlayersTable serverId={server.id} players={rows} canModerate={can(access, "moderate")} />;
 }

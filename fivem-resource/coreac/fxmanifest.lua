@@ -55,6 +55,7 @@ server_scripts {
   'server/vehicle_guard.lua',
   'server/staff_tools.lua',   -- yetkili tanıma + txAdmin/qb-adminmenu araç muafiyeti
   'server/entity_guard.lua',  -- fırlatılan araç, ses/megafon trolü, sunucu tuzak olayları
+  'server/telemetry_guard.lua', -- anti-cheat raporu ↔ sunucunun gördüğü konum (STATE_DESYNC)
   'server/crash_guard.lua',   -- anti-crash: çökerten modeller, oyuncuya yapıştırma, sel kalkanı, çökertme olayları
   'server/session_guard.lua',
   'server/liveness_guard.lua',

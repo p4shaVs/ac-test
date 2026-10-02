@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { handler, ok } from "@/lib/api";
-import { requireOwnedServer } from "@/lib/api-guards";
+import { requireServerAccess } from "@/lib/api-guards";
 import { parseJson } from "@/lib/utils";
 import { getEvents, clearEvents, type LiveEvent } from "@/lib/event-log-store";
 import { sanitizeProtectedEvents } from "@/lib/events-config";
@@ -29,7 +29,7 @@ function resolveHashes(e: LiveEvent): LiveEvent {
 
 // GET: current state, watched events and recent events (optionally since an id).
 export const GET = handler(async (req: NextRequest, ctx: { params: { id: string } }) => {
-  const { server } = await requireOwnedServer(ctx.params.id);
+  const { server } = await requireServerAccess(ctx.params.id);
   const config = parseJson<Record<string, unknown>>(server.config, {});
   const sinceId = new URL(req.url).searchParams.get("since") ?? undefined;
   return ok({
@@ -48,7 +48,7 @@ const patchSchema = z.object({
   watchEvents: z.array(z.string()).max(200).optional(),
 });
 export const PATCH = handler(async (req: NextRequest, ctx: { params: { id: string } }) => {
-  const { server, user } = await requireOwnedServer(ctx.params.id);
+  const { server, user } = await requireServerAccess(ctx.params.id, "config");
   const body = patchSchema.parse(await req.json());
   const config = parseJson<Record<string, unknown>>(server.config, {});
   let changed = false;

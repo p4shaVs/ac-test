@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getOwnedServer } from "@/lib/guards";
+import { getServerAccess } from "@/lib/guards";
 import { db } from "@/lib/db";
 import { Card, PageHeader, Badge } from "@/components/ui";
 import { Icons } from "@/components/icons";
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 // Support = self-diagnostics first (so a customer can fix the common issues
 // themselves) + where to get help. Everything shown is real, live data.
 export default async function SupportPage({ params }: { params: { id: string } }) {
-  const { server } = await getOwnedServer(params.id);
+  const { server } = await getServerAccess(params.id);
 
   const recentError = await db.serverLog.findFirst({
     where: { serverId: server.id, level: "ERROR" },

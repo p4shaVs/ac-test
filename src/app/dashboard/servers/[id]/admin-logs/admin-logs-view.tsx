@@ -18,7 +18,7 @@ export interface AdminLogRow {
   raw: Record<string, unknown>;
 }
 
-type Group = "all" | "moderation" | "appeals" | "config" | "console" | "other";
+type Group = "all" | "moderation" | "appeals" | "config" | "console" | "team" | "other";
 
 // How each action reads in the feed: "<actor> <verb> <target>".
 const ACTIONS: Record<string, { label: string; verb: string; icon: IconName; tone: string; group: Group }> = {
@@ -35,7 +35,15 @@ const ACTIONS: Record<string, { label: string; verb: string; icon: IconName; ton
   CONFIG: { label: "Configuration", verb: "changed the configuration", icon: "sliders", tone: "text-slate-200 border-white/15 bg-white/[0.05]", group: "config" },
   RESOURCE: { label: "Resource", verb: "managed a resource", icon: "cube", tone: "text-slate-200 border-white/15 bg-white/[0.05]", group: "config" },
   CONSOLE: { label: "Console", verb: "ran a console command", icon: "terminal", tone: "text-slate-200 border-white/15 bg-white/[0.05]", group: "console" },
+  "NETWORK WITHDRAW": { label: "Network withdraw", verb: "stopped sharing with the network the ban of", icon: "globe", tone: "text-slate-200 border-white/15 bg-white/[0.05]", group: "appeals" },
   INSTALL: { label: "Install", verb: "installed CoreAC on", icon: "download", tone: "text-slate-200 border-white/15 bg-white/[0.05]", group: "config" },
+  "TEAM INVITE": { label: "Team invite", verb: "sent a team invite to", icon: "mail", tone: "text-sky-200 border-sky-300/25 bg-sky-300/[0.08]", group: "team" },
+  "TEAM INVITE REVOKED": { label: "Invite revoked", verb: "revoked the team invite of", icon: "x", tone: "text-slate-300 border-white/15 bg-white/[0.05]", group: "team" },
+  "TEAM JOIN": { label: "Joined team", verb: "joined the panel team", icon: "users", tone: "text-sky-200 border-sky-300/25 bg-sky-300/[0.08]", group: "team" },
+  "TEAM ROLE": { label: "Role changed", verb: "changed the team role of", icon: "user", tone: "text-sky-200 border-sky-300/25 bg-sky-300/[0.08]", group: "team" },
+  "TEAM PERMISSIONS": { label: "Permissions changed", verb: "changed the panel permissions of", icon: "key", tone: "text-sky-200 border-sky-300/25 bg-sky-300/[0.08]", group: "team" },
+  "TEAM REMOVE": { label: "Removed from team", verb: "took team access away from", icon: "logout", tone: "text-rose-300 border-rose-400/30 bg-rose-400/10", group: "team" },
+  "TEAM LEAVE": { label: "Left team", verb: "left the panel team", icon: "logout", tone: "text-slate-300 border-white/15 bg-white/[0.05]", group: "team" },
   PANEL: { label: "Panel", verb: "did", icon: "dashboard", tone: "text-slate-300 border-white/15 bg-white/[0.05]", group: "other" },
 };
 
@@ -57,6 +65,7 @@ const GROUPS: { key: Group; label: string; icon: IconName }[] = [
   { key: "appeals", label: "Unbans & appeals", icon: "undo" },
   { key: "config", label: "Configuration", icon: "sliders" },
   { key: "console", label: "Console", icon: "terminal" },
+  { key: "team", label: "Team", icon: "users" },
   { key: "other", label: "Other", icon: "dashboard" },
 ];
 
@@ -218,7 +227,7 @@ export function AdminLogsView({ serverId, rows }: { serverId: string; rows: Admi
                     const m = meta(r.action);
                     const Icon = Icons[m.icon];
                     const isOpen = open === r.id;
-                    const sentenceTarget = r.target && !["UNBAN ALL", "CONFIG", "RESOURCE", "CONSOLE"].includes(r.action);
+                    const sentenceTarget = r.target && !["UNBAN ALL", "CONFIG", "RESOURCE", "CONSOLE", "TEAM JOIN", "TEAM LEAVE"].includes(r.action);
                     return (
                       <li key={r.id} className="relative">
                         <button

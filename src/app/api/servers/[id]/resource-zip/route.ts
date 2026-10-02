@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { handler } from "@/lib/api";
 import { requireOwnedServer } from "@/lib/api-guards";
 import { buildResourceZip } from "@/lib/install-package";
 
@@ -6,7 +7,7 @@ import { buildResourceZip } from "@/lib/install-package";
 // (installer kullanmak istemeyenler için alternatif).
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: NextRequest, ctx: { params: { id: string } }) {
+export const GET = handler(async (_req: NextRequest, ctx: { params: { id: string } }) => {
   await requireOwnedServer(ctx.params.id);
   const zip = await buildResourceZip();
   return new Response(new Uint8Array(zip), {
@@ -18,4 +19,4 @@ export async function GET(_req: NextRequest, ctx: { params: { id: string } }) {
       "Cache-Control": "no-store",
     },
   });
-}
+});

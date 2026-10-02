@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
-import { db } from "@/lib/db";
+import { accessibleServers } from "@/lib/team-access";
 import { PanelShell, type NavSection } from "@/components/panel-shell";
 
 const nav: NavSection[] = [
@@ -37,12 +37,14 @@ export default async function DashboardLayout({
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/dashboard");
 
-  // Sunucu içi menü (switcher) için kullanıcının sunucuları.
-  const servers = await db.server.findMany({
-    where: { ownerId: user.id },
-    orderBy: { createdAt: "asc" },
-    select: { id: true, name: true, status: true },
-  });
+  // Sunucu içi menü (switcher): kendi sunucuları + ekip üyesi olduğu sunucular.
+  const servers = (await accessibleServers(user.id)).map(({ server, role, perms }) => ({
+    id: server.id,
+    name: server.name,
+    status: server.status,
+    role,
+    perms,
+  }));
 
   return (
     <PanelShell nav={nav} user={user} servers={servers} variant="customer">

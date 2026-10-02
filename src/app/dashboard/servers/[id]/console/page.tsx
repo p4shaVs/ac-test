@@ -1,4 +1,6 @@
-import { getOwnedServer } from "@/lib/guards";
+import { getServerAccess } from "@/lib/guards";
+import { can } from "@/lib/team";
+import { NoAccess } from "@/components/no-access";
 import { db } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { ConsoleClient, type ConsoleLine } from "./console-client";
@@ -10,7 +12,8 @@ export default async function ConsolePage({
 }: {
   params: { id: string };
 }) {
-  const { server } = await getOwnedServer(params.id);
+  const { server, access } = await getServerAccess(params.id);
+  if (!can(access, "console")) return <NoAccess serverId={server.id} perm="console" role={access.role} />;
   const logs = await db.serverLog.findMany({
     where: { serverId: server.id },
     orderBy: { createdAt: "desc" },

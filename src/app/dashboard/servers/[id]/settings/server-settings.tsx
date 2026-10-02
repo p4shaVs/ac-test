@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui";
 import { CopyButton } from "@/components/copy-button";
 import { Icons } from "@/components/icons";
-
-type NetworkAction = "OFF" | "LOG" | "KICK";
 
 interface Props {
   server: {
@@ -16,17 +15,13 @@ interface Props {
     maxSlots: number;
     discordWebhook: string;
     webhookEvents: Record<string, boolean>;
-    network: { action: NetworkAction; contribute: boolean };
     hasToken: boolean;
   };
   appUrl: string;
+  /** The server token and deleting the server are the owner's alone. */
+  isOwner?: boolean;
 }
 
-const NETWORK_ACTIONS: { key: NetworkAction; label: string; desc: string }[] = [
-  { key: "OFF", label: "Off", desc: "Do not check connecting players against the network." },
-  { key: "LOG", label: "Log / alert", desc: "Let them in, but flag it in detections + Discord." },
-  { key: "KICK", label: "Block entry", desc: "Deny entry to players flagged by the network." },
-];
 
 const WEBHOOK_EVENTS: { key: string; label: string }[] = [
   { key: "ban", label: "Ban" },
@@ -39,15 +34,13 @@ const WEBHOOK_EVENTS: { key: string; label: string }[] = [
   { key: "connect", label: "Connection" },
 ];
 
-export function ServerSettings({ server, appUrl }: Props) {
+export function ServerSettings({ server, appUrl, isOwner = true }: Props) {
   const router = useRouter();
   const [name, setName] = useState(server.name);
   const [ip, setIp] = useState(server.ip ?? "");
   const [maxSlots, setMaxSlots] = useState(String(server.maxSlots));
   const [webhook, setWebhook] = useState(server.discordWebhook);
   const [events, setEvents] = useState<Record<string, boolean>>(server.webhookEvents);
-  const [netAction, setNetAction] = useState<NetworkAction>(server.network.action);
-  const [netContribute, setNetContribute] = useState<boolean>(server.network.contribute);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [token, setToken] = useState<string | null>(null);
@@ -67,7 +60,6 @@ export function ServerSettings({ server, appUrl }: Props) {
           maxSlots: Number(maxSlots) || 64,
           discordWebhook: webhook || null,
           webhookEvents: events,
-          network: { action: netAction, contribute: netContribute },
         }),
       });
       if (res.ok) {
@@ -194,7 +186,11 @@ export function ServerSettings({ server, appUrl }: Props) {
             </div>
             <div>
               <label className="label">Server token</label>
-              {token ? (
+              {!isOwner ? (
+                <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-base-900/60 px-3 py-2.5 text-sm text-slate-500">
+                  <Icons.lock size={14} /> Only the server owner can see or regenerate the token.
+                </div>
+              ) : token ? (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <code className="flex-1 truncate rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 font-mono text-sm text-emerald-200">
@@ -221,84 +217,35 @@ export function ServerSettings({ server, appUrl }: Props) {
           </div>
         </Card>
 
-        {/* Network reputation (global ban network) */}
+        {/* CoreAC Network — managed on the Network page */}
         <Card>
           <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold text-white">
-            <Icons.shieldCheck size={16} className="text-brand-400" /> Network reputation
+            <Icons.globe size={16} className="text-slate-400" /> CoreAC Network
           </h3>
           <p className="mb-4 text-xs text-slate-500">
-            When a player is banned across several servers in the network, this server is warned on
-            connect. Only anonymised (hashed) identifiers are shared — never IPs. A player is flagged
-            only after distinct server owners have banned them.
+            What a player flagged by the shared ban network triggers here, and whether your bans are shared, is set on the
+            Network page — together with who is flagged right now, your shared bans and an identifier look-up.
           </p>
-
-          <label className="label">On a flagged player</label>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {NETWORK_ACTIONS.map((a) => {
-              const on = netAction === a.key;
-              return (
-                <button
-                  key={a.key}
-                  type="button"
-                  onClick={() => setNetAction(a.key)}
-                  className={
-                    "rounded-xl border px-3 py-2.5 text-left transition " +
-                    (on
-                      ? "border-brand-500/50 bg-brand-500/10"
-                      : "border-white/10 hover:bg-white/5")
-                  }
-                >
-                  <span className={"block text-sm font-semibold " + (on ? "text-brand-200" : "text-slate-300")}>
-                    {a.label}
-                  </span>
-                  <span className="mt-0.5 block text-[11px] leading-tight text-slate-500">{a.desc}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setNetContribute((v) => !v)}
-            className="mt-4 flex w-full items-center justify-between rounded-xl border border-white/10 px-3 py-2.5 text-left hover:bg-white/5"
-          >
-            <span>
-              <span className="block text-sm font-medium text-slate-200">Contribute my bans to the network</span>
-              <span className="mt-0.5 block text-[11px] text-slate-500">
-                Share your permanent bans (hashed) so other servers benefit. Turning this off keeps your
-                bans private.
-              </span>
-            </span>
-            <span
-              className={
-                "relative h-5 w-9 shrink-0 rounded-full transition " +
-                (netContribute ? "bg-emerald-500/70" : "bg-white/15")
-              }
-            >
-              <span
-                className={
-                  "absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all " +
-                  (netContribute ? "left-4" : "left-0.5")
-                }
-              />
-            </span>
-          </button>
-
-          <div className="mt-4 flex items-center gap-3">
-            <button className="btn-primary" onClick={save} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </button>
-            {saved && (
-              <span className="flex items-center gap-1.5 text-sm text-emerald-400">
-                <Icons.check size={16} /> Saved
-              </span>
-            )}
-          </div>
+          <Link href={`/dashboard/servers/${server.id}/network`} className="btn-secondary h-9 px-3 text-xs">
+            <Icons.globe size={14} /> Open the Network page
+          </Link>
         </Card>
       </div>
 
       {/* Tehlikeli bölge */}
-      <div>
+      <div className="space-y-6">
+        <Card>
+          <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-white">
+            <Icons.users size={16} className="text-slate-400" /> Team
+          </h3>
+          <p className="mb-4 text-sm text-slate-400">
+            Give your staff their own panel login — Admins, Moderators and Viewers, each with only the rights you pick.
+          </p>
+          <Link href={`/dashboard/servers/${server.id}/team`} className="btn-secondary h-9 w-full justify-center text-xs">
+            <Icons.users size={14} /> Open the Team page
+          </Link>
+        </Card>
+        {isOwner && (
         <Card className="border-rose-500/20">
           <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-rose-300">
             <Icons.trash size={16} /> Danger zone
@@ -310,6 +257,7 @@ export function ServerSettings({ server, appUrl }: Props) {
             {deleting ? "Deleting…" : "Delete server"}
           </button>
         </Card>
+        )}
       </div>
     </div>
   );

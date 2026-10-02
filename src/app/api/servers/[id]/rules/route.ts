@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { handler, ok } from "@/lib/api";
-import { requireOwnedServer } from "@/lib/api-guards";
+import { requireServerAccess } from "@/lib/api-guards";
 import { sanitizeRules } from "@/lib/rules";
 import { audit } from "@/lib/audit";
 import { clientIp } from "@/lib/session";
@@ -14,7 +14,7 @@ const schema = z.object({ rules: z.record(z.boolean()) });
 // Güvenlik kurallarını server.config.rules altına kaydeder.
 export const PATCH = handler(
   async (req: NextRequest, ctx: { params: { id: string } }) => {
-    const { server, user } = await requireOwnedServer(ctx.params.id);
+    const { server, user } = await requireServerAccess(ctx.params.id, "config");
     const body = schema.parse(await req.json());
 
     const config = parseJson<Record<string, unknown>>(server.config, {});

@@ -1,4 +1,4 @@
-import { getOwnedServer } from "@/lib/guards";
+import { getServerAccess } from "@/lib/guards";
 import { AutoRefresh } from "@/components/auto-refresh";
 
 // Sunucu menüsü artık sol sidebar'da (PanelShell) gösteriliyor.
@@ -11,7 +11,7 @@ export default async function ServerLayout({
   children: React.ReactNode;
   params: { id: string };
 }) {
-  await getOwnedServer(params.id);
+  await getServerAccess(params.id);
   return (
     <>
       <AutoRefresh seconds={5} />
