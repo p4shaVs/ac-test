@@ -57,7 +57,9 @@ function CAC.report(dtype, severity, details, throttle)
   if severity == 'CRITICAL' and type(details) == 'table' then
     details.replay = CAC.dumpReplay()
   end
-  TriggerServerEvent('coreac:report', dtype, severity or 'HIGH', details)
+  -- Güvenli kanal (client/secure_channel.lua): imzalı ve sıra numaralı. Bir
+  -- "event blocker" bu raporu yolda düşürürse sunucu sıradaki boşluğu görür.
+  CAC.secureSend('report', { t = dtype, s = severity or 'HIGH', d = details })
 end
 
 -- ---------------------------------------------------------------------------
@@ -97,13 +99,35 @@ local function scriptTeleport()
   CAC.markTp()
   TriggerServerEvent('coreac:tpHint')
 end
-exports('markTeleport', scriptTeleport)
-exports('markRevive', function() CAC.markRevive() end)
-AddEventHandler('coreac:markTeleport', scriptTeleport)
-AddEventHandler('coreac:markRevive', function() CAC.markRevive() end)
+
+-- Bu entegrasyon noktaları muafiyet verir; bir executor'un kendi (sahte) resource'undan
+-- çağırıp ışınlanma/dirilme hilesini "meşru" göstermesine izin verilmez. Yalnızca
+-- sunucuda GERÇEKTEN var olan bir resource çağırabilir. Sunucu listesi henüz
+-- gelmediyse (girişin ilk saniyeleri) karar verilmez.
+function CAC.isServerResource(name)
+  if name == nil or name == GetCurrentResourceName() then return true end
+  local list = serverResources
+  if type(list) ~= 'table' then return true end
+  local n = 0
+  for _ in pairs(list) do n = n + 1; if n >= 10 then break end end
+  if n < 10 then return true end
+  return list[name] == true
+end
+
+local function allowedCaller(what)
+  local res = GetInvokingResource()
+  if CAC.isServerResource(res) then return true end
+  CAC.tamper({ reason = what .. ' requested by a resource the server does not have (executor)', event = tostring(res) })
+  return false
+end
+
+exports('markTeleport', function() if allowedCaller('teleport exemption') then scriptTeleport() end end)
+exports('markRevive', function() if allowedCaller('revive exemption') then CAC.markRevive() end end)
+AddEventHandler('coreac:markTeleport', function() if allowedCaller('teleport exemption') then scriptTeleport() end end)
+AddEventHandler('coreac:markRevive', function() if allowedCaller('revive exemption') then CAC.markRevive() end end)
 -- Eski ("Aeigs") entegrasyon olay adları.
-AddEventHandler('aeigs:markTeleport', scriptTeleport)
-AddEventHandler('aeigs:markRevive', function() CAC.markRevive() end)
+AddEventHandler('aeigs:markTeleport', function() if allowedCaller('teleport exemption') then scriptTeleport() end end)
+AddEventHandler('aeigs:markRevive', function() if allowedCaller('revive exemption') then CAC.markRevive() end end)
 
 --- Oyuncu (yeniden) spawn oldu: menü/multichar/ölüp-dirilme/karakter değişimi.
 --- HER durumda çağrılır — framework'e bağlı değildir (aşağıdaki ped-değişim
@@ -205,6 +229,8 @@ CreateThread(function()
     S.weapon = GetSelectedPedWeapon(ped)
 
     if CAC.active() then pushReplay(S) end
+    -- Kalp atışı sayacı: sunucu challenge cevaplarında ilerlediğini görür (thread donması).
+    if CAC.beat then CAC.beat() end
 
     Wait(200)
   end
@@ -220,36 +246,10 @@ end)
 CreateThread(function() Wait(2600); TriggerServerEvent('coreac:requestWeaponBlacklist') end)
 
 -- ---------------------------------------------------------------------------
--- CANLILIK (liveness) sinyali — server-authoritative ANTI-TAMPER.
--- En büyük açık: client tespitleri obfuscate değil, hileci resource'u durdurup/
--- etkisizleştirip hepsini kapatabilir. Bu ping her ~10 sn kesintisiz gider;
--- kesilirse sunucu (server/liveness_guard.lua) "AC devre dışı bırakıldı" olarak
--- işaretler. DetectionsEnabled'dan BAĞIMSIZDIR (tespit değil, canlılık kanıtı) —
--- test modunda da akmaya devam eder; aksiyonu server tarafında verilir.
-CreateThread(function()
-  while true do
-    Wait(10000)
-    if NetworkIsSessionStarted() then
-      TriggerServerEvent('coreac:alive')
-    end
-  end
-end)
-
+-- CANLILIK ve CHALLENGE artık client/secure_channel.lua'da: rastgele adlı,
+-- oturum anahtarıyla imzalı, sıra numaralı mesajlar. Eski sabit adlar
+-- ('coreac:alive', 'coreac:challengeReply') bu client tarafından ARTIK
+-- GÖNDERİLMEZ; sunucuda onları kullanan = eski/hazır bir bypass betiği (tuzak).
 -- ---------------------------------------------------------------------------
--- ANTI-TAMPER CHALLENGE — canlılık sinyalinin TAKLİT EDİLEMEZ hali.
---
--- Yalnızca 'coreac:alive' dinlemek zayıftı: hileci client AC'yi tamamen kapatıp
--- kendi kodundan TriggerServerEvent('coreac:alive') spam'leyerek "yaşıyorum"
--- taklidi yapabiliyordu. Sunucu artık rastgele bir sayı gönderiyor ve client'ın
--- CoreAC.SolveChallenge dönüşümünü aynen üretmesini bekliyor. AC'yi söken
--- hileci bu dönüşümü de yeniden üretmek zorunda (obfuscate build'de çok zor).
---
--- Cevap veremeyen/yanlış cevaplayan oyuncu, sunucudaki FP kalkanlarından
--- (ping, warmup, üst üste 3 başarısızlık, whitelist) sonra AC_TAMPER olur.
--- ---------------------------------------------------------------------------
-RegisterNetEvent('coreac:challenge', function(nonce)
-  if not CoreAC or not CoreAC.SolveChallenge then return end
-  TriggerServerEvent('coreac:challengeReply', nonce, CoreAC.SolveChallenge(nonce))
-end)
 
 print('^2[CoreAC] client core loaded^7')

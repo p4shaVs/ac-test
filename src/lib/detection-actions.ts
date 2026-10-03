@@ -204,6 +204,10 @@ export const DETECTION_TYPES: DetectionTypeDef[] = [
   D("RESOURCE_INJECT", "Resource Injection", "integrity", "strong", "KICK"),
   D("SPOOFER", "Identifier Spoofer", "integrity", "strong", "KICK"),
   D("EVENT_EXPLOIT", "Event Exploit", "integrity", "strong", "KICK"),
+  // Event Shield (server/event_shield.lua): a protected resource's event arrived
+  // that the resource's own code never sent — fired from an executor. Starts as LOG
+  // because a resource without the shield may legitimately send the same event.
+  D("EVENT_UNAUTHORIZED", "Event Fired by Executor (Event Shield)", "integrity", "strong", "LOG"),
 
   // ---------------------------------------------------------------- Other
   // Cross-server reputation: this player is banned on other servers in the

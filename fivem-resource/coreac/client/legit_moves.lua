@@ -87,7 +87,9 @@ for _, ev in ipairs({
   'txcl:spectate:start',              -- txAdmin spectate (admin ped taşınır)
   'qb-admin:client:spectate',         -- qb-adminmenu spectate
 }) do
-  RegisterNetEvent(ev, function() TriggerEvent('coreac:markTeleport') end)
+  -- Yalnızca SUNUCUDAN gelen olay muafiyet verir; istemcide yerel tetikleme
+  -- (executor'un "ışınlanmadan önce admin ışınlaması gibi görün" hilesi) yok sayılır.
+  CAC.onServerEvent(ev, function() TriggerEvent('coreac:markTeleport') end)
 end
 
 -- ---------------------------------------------------------------------------
@@ -95,7 +97,9 @@ end
 -- kararını txAdmin'in izin kontrollü logundan verir (staff_tools.lua).
 -- ---------------------------------------------------------------------------
 CAC.adminTool = nil
-RegisterNetEvent('txcl:setPlayerMode', function(mode)
+-- Yalnızca sunucudan: TriggerEvent('txcl:setPlayerMode', 'noclip') ile client
+-- noclip kontrolünü susturmak mümkün olmasın.
+CAC.onServerEvent('txcl:setPlayerMode', function(mode)
   if mode == 'noclip' or mode == 'godmode' or mode == 'superjump' then
     CAC.adminTool = mode
   else

@@ -92,10 +92,57 @@ C = { coords = vector3(200, -800, 30), vel = vector3(0, 0, 0), invincible = fals
       bulletProof = 0, meleeProof = 0, armed = false, shooting = false, faded = false, frozen = false, visible = true,
       control = true, health = 200, maxHealth = 200, armour = 0, falling = false, height = 0.0 }
 SIM.server = {}
+-- ---------------------------------------------------------------- fake server end of the secure channel
+-- client/secure_channel.lua talks on random event names (GlobalState.coreac_ch). This
+-- stub answers the hello with a key (as a NETWORK event: numeric source), checks every
+-- signature/sequence number and replays channel reports as the old 'coreac:report'
+-- callback so the older client scenarios keep observing reports the same way.
+SIM.CH = { hello = 'ch_hello', msg = 'ch_msg', key = 'ch_key', chal = 'ch_chal', pull = 'ch_pull', put = 'ch_put' }
+SIM.KEY = { 123456789, 987654321 }
+SIM.channel = {}      -- every verified message: { seq, kind, payload }
+SIM.channelBad = {}   -- signature / sequence problems the stub saw
+SIM.hellos = 0
+SIM.autoKey = true
+--- Server → client event (arrives with a numeric source, like the real network).
+function SIM.fromServer(name, ...) return SIM.dispatch(name, 65535, ...) end
+
+local lastSeq = 0
 function TriggerServerEvent(name, ...)
   SIM.server[#SIM.server + 1] = { name = name, args = { ... } }
+  if name == SIM.CH.hello then
+    SIM.hellos = SIM.hellos + 1
+    local _, nonce = ...
+    if SIM.autoKey then
+      SetTimeout(50, function() SIM.fromServer(SIM.CH.key, SIM.KEY[1], SIM.KEY[2], nonce) end)
+    end
+    return
+  end
+  if name == SIM.CH.msg then
+    local seq, kind, sig, payload = ...
+    if sig ~= CoreAC.ChannelSig(SIM.KEY, seq, kind) then SIM.channelBad[#SIM.channelBad + 1] = 'sig:' .. tostring(kind) end
+    if seq ~= lastSeq + 1 then SIM.channelBad[#SIM.channelBad + 1] = ('seq:%s->%s'):format(lastSeq, tostring(seq)) end
+    lastSeq = seq
+    SIM.channel[#SIM.channel + 1] = { seq = seq, kind = kind, payload = payload }
+    if kind == 'report' and type(payload) == 'table' and SIM.onServerEvent then
+      SIM.onServerEvent('coreac:report', payload.t, payload.s, payload.d)
+    end
+    if SIM.onChannel then SIM.onChannel(kind, payload) end
+    return
+  end
   if SIM.onServerEvent then SIM.onServerEvent(name, ...) end
 end
+
+-- Resources, metadata, commands and the invoking resource (secure_channel, Event Shield).
+SIM.clientResources = { 'coreac' }
+SIM.meta = {}          -- [res][key] = { files… }
+SIM.commandList = {}   -- GetRegisteredCommands()
+SIM.invoker = nil
+function GetInvokingResource() return SIM.invoker end
+function GetNumResources() return #SIM.clientResources end
+function GetResourceByFindIndex(i) return SIM.clientResources[i + 1] end
+function GetNumResourceMetadata(res, key) local m = SIM.meta[res]; return m and m[key] and #m[key] or 0 end
+function GetResourceMetadata(res, key, i) local m = SIM.meta[res]; return m and m[key] and m[key][i + 1] or nil end
+function GetRegisteredCommands() return SIM.commandList end
 function PlayerPedId() return 1 end
 function PlayerId() return 0 end
 function GetPlayerServerId() return 1 end
@@ -135,11 +182,15 @@ function RegisterCommand(name, fn) SIM.commands[name] = fn end
 function RegisterKeyMapping() end
 function SendNUIMessage(msg) SIM.nui[#SIM.nui + 1] = msg end
 function RegisterNUICallback(name, fn) SIM.nuiCallbacks[name] = fn end
-function GetResourceState(n) return SIM.resources[n] or 'missing' end
+function GetResourceState(n)
+  if SIM.resources[n] then return SIM.resources[n] end
+  for _, r in ipairs(SIM.clientResources or {}) do if r == n then return 'started' end end
+  return 'missing'
+end
 function GetCurrentResourceName() return 'coreac' end
 function GetConvar(_, d) return d end
 LocalPlayer = { state = setmetatable({}, { __index = { set = function(self, k, v) rawset(self, k, v) end } }) }
-GlobalState = {}
+GlobalState = { coreac_ch = SIM.CH }
 json = { encode = function() return '{}' end, decode = function() return {} end }
 SIM.exports = {}
 exports = setmetatable({}, {

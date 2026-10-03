@@ -186,7 +186,10 @@ ac unban <Ban ID>                   lift a ban, e.g. ac unban AC-7K3QP9
 ac baninfo <Ban ID>                 who, why and until when
 ac announce <message>               banner on every player's screen
 ac clear <peds|vehicles|objects|all> delete world entities (never players or occupied cars)
-ac reload                           pull the configuration from the panel now`}</Code>
+ac reload                           pull the configuration from the panel now
+ac shield [status]                  Event Shield: watched events, traps, protected resources
+ac shield install <resource|all>    protect resources against events fired by executors
+ac shield uninstall <resource|all>  remove the Event Shield include again`}</Code>
             </Section>
 
             <Section id="convars" title="Convars">

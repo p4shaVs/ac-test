@@ -270,12 +270,12 @@ local function heartbeat()
       end
       -- Client tespitleri (silah/ammo/noclip vb.) kuralları bilsin diye yayınla.
       TriggerClientEvent('coreac:rules', -1, ServerConfig.rules or {})
-      -- Panelden yönetilen "Protected Events" honeypot listesi (client/events.lua).
+      -- Panelden yönetilen "Protected Events" honeypot listesi — YALNIZCA SUNUCUDA
+      -- kurulur (server/entity_guard.lua). Liste artık oyunculara gönderilmez: olay
+      -- döken bir hileci hangi olayların tuzak olduğunu okuyamasın. Hile menüleri bu
+      -- olayları zaten TriggerServerEvent ile yollar.
       -- Panel → Safe Guard → Safe Events'teki olaylar listeden çıkarılır.
       local traps = CAC.withoutSafeEvents and CAC.withoutSafeEvents(ServerConfig.protectedEvents) or (ServerConfig.protectedEvents or {})
-      TriggerClientEvent('coreac:protectedEvents', -1, traps)
-      -- Aynı liste SUNUCU tarafında da tuzak: hile menüleri bu olayları çoğunlukla
-      -- TriggerServerEvent ile yollar; client tuzağı bunları hiç görmez.
       if CAC.setProtectedServerEvents then CAC.setProtectedServerEvents(traps) end
       -- Event Log'da izlenen script olayları (panel → Event Log → Watched events).
       if CAC.setWatchedEvents then CAC.setWatchedEvents(ServerConfig.watchEvents or {}) end
@@ -290,8 +290,6 @@ CAC.heartbeat = heartbeat
 RegisterNetEvent('coreac:requestRules', function()
   if CAC.noteEvent then CAC.noteEvent(source) end
   TriggerClientEvent('coreac:rules', source, ServerConfig.rules or {})
-  TriggerClientEvent('coreac:protectedEvents', source,
-    CAC.withoutSafeEvents and CAC.withoutSafeEvents(ServerConfig.protectedEvents) or (ServerConfig.protectedEvents or {}))
 end)
 
 -- ---------------------------------------------------------------------------
@@ -914,8 +912,12 @@ end)
 -- Client tespit köprüsü — client 'coreac:report' ile bildirir → API'ye yaz
 -- ---------------------------------------------------------------------------
 
-RegisterNetEvent('coreac:report', function(dtype, severity, details)
-  local src = source
+--- Client'ın bildirdiği tespit. Güvenli kanal (server/secure_channel.lua, imzalı ve
+--- sıralı) bunu çağırır; eski 'coreac:report' olayı da geriye dönük uyumluluk için
+--- aynı yolu kullanır (oyuncu yalnızca KENDİ hakkında rapor verebilir).
+function CAC.clientReport(src, dtype, severity, details)
+  src = tonumber(src)
+  if not src or src <= 0 then return end
   if Config.DetectionsEnabled == false then return end  -- tespitler geçici kapalı
   if CAC.eventLimited(src, 'report', 30, 10000) then return end
   local ntype = CoreAC.NormalizeDetection(dtype)
@@ -949,6 +951,10 @@ RegisterNetEvent('coreac:report', function(dtype, severity, details)
     if not ok then return end
     applyVerdict(src, dtype, data)
   end)
+end
+
+RegisterNetEvent('coreac:report', function(dtype, severity, details)
+  CAC.clientReport(source, dtype, severity, details)
 end)
 
 -- ---------------------------------------------------------------------------

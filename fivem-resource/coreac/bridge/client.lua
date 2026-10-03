@@ -33,8 +33,8 @@ CoreAC.DetectPlayer = function(reason, details, action, duration)
     -- CAC'in mevcut report sistemi ile gönder
     if CAC and CAC.report then
         CAC.report(detType, severity, det)
-    else
-        TriggerServerEvent('coreac:report', detType, severity, det)
+    elseif CAC and CAC.secureSend then
+        CAC.secureSend('report', { t = detType, s = severity, d = det })
     end
 
     -- Heartbeat fake detection kontrolü (heartbeat/client.lua için)
@@ -333,11 +333,14 @@ local function onCharacterUnloaded()
     CoreAC.playerSpawned = false
 end
 
+-- Yalnızca SUNUCUDAN gelen olay kabul edilir: hileci istemcide
+-- TriggerEvent('QBCore:Client:OnPlayerUnload') ile spawn kapısını kapatıp tüm
+-- client tespitlerini durdurabiliyordu (client/secure_channel.lua CAC.onServerEvent).
 for _, ev in ipairs({ 'QBCore:Client:OnPlayerLoaded', 'esx:playerLoaded', 'ox:playerLoaded', 'ND:characterLoaded' }) do
-    RegisterNetEvent(ev, onCharacterLoaded)
+    CAC.onServerEvent(ev, onCharacterLoaded)
 end
 for _, ev in ipairs({ 'QBCore:Client:OnPlayerUnload', 'esx:onPlayerLogout', 'ox:playerLogout', 'ND:characterUnloaded' }) do
-    RegisterNetEvent(ev, onCharacterUnloaded)
+    CAC.onServerEvent(ev, onCharacterUnloaded)
 end
 
 local function detectFramework()
@@ -494,6 +497,7 @@ CreateThread(function()
 
         -- Heartbeat zaman damgası güncelle
         CoreAC.lastActorLoopTime = GetGameTimer()
+        if CAC.actorBeat then CAC.actorBeat() end
 
         Wait(250)
     end
@@ -589,6 +593,8 @@ RegisterNetEvent('coreac:rules', function(r)
             CoreAC.Config.Main[coreac_key] = (r[ruleKey] == true)
         end
     end
+    -- Sunucunun verdiği anahtarlar mühürlenir; bellekte değişirlerse AC_TAMPER.
+    if CAC.sealConfig then CAC.sealConfig() end
 end)
 
 -- ---------------------------------------------------------------------------
@@ -609,6 +615,7 @@ RegisterNetEvent('coreac:acConfig', function(rawAc)
             end
         end
     end
+    if CAC.sealConfig then CAC.sealConfig() end
 end)
 
 -- Bağlanınca mevcut config'i iste (heartbeat'i beklemeden)

@@ -58,8 +58,9 @@ server_scripts {
   'server/telemetry_guard.lua', -- anti-cheat raporu ↔ sunucunun gördüğü konum (STATE_DESYNC)
   'server/crash_guard.lua',   -- anti-crash: çökerten modeller, oyuncuya yapıştırma, sel kalkanı, çökertme olayları
   'server/session_guard.lua',
-  'server/liveness_guard.lua',
+  'server/secure_channel.lua', -- anti-bypass: rastgele adlı, oturum anahtarlı, sıralı AC hattı (eski liveness_guard)
   'server/event_guard.lua',
+  'server/event_shield.lua',   -- Event Shield: tüm resource olayları (hız, tarama, sunucu-içi tuzak, kaynak dışı tetikleme)
   'server/event_log.lua',
   'server/recorder.lua',
 
@@ -101,6 +102,10 @@ client_scripts {
 
   -- 2. Shared bridge (LPH stubs + CoreAC base)
   'bridge/shared.lua',
+
+  -- 2b. Güvenli kanal + kontrol olayı koruması — diğer tüm modüllerden ÖNCE
+  --     (çekirdek fonksiyonları executor değiştiremeden yakalar)
+  'client/secure_channel.lua',
 
   -- 3. Client bridge (StrikesSystem, RegisterDetection, Native refs, state cache)
   'bridge/client.lua',

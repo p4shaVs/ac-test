@@ -53,6 +53,9 @@ local function help(out)
     out(('  %s announce <message>             ^3banner on every player\'s screen'):format(PREFIX))
     out(('  %s clear <peds|vehicles|objects|all>  ^3delete world entities (never players or occupied vehicles)'):format(PREFIX))
     out(('  %s reload                         ^3pull the configuration from the panel now'):format(PREFIX))
+    out(('  %s shield [status]                ^3Event Shield: which resources and events are protected'):format(PREFIX))
+    out(('  %s shield install <res|all>       ^3protect resources against events fired by executors'):format(PREFIX))
+    out(('  %s shield uninstall <res|all>     ^3remove the Event Shield include again'):format(PREFIX))
 end
 
 local function onlineTarget(arg, out)
@@ -177,6 +180,10 @@ local function consoleCommand(source, args)
         local n = clearEntities(kind)
         CAC.log('INFO', 'console', ('World clean-up (%s): %d entities removed'):format(kind, n))
         out(('Removed %d %s.'):format(n, kind == 'all' and 'entities' or kind), '^2')
+
+    elseif sub == 'shield' then
+        if CAC.shieldCommand then CAC.shieldCommand(args, out)
+        else out('Event Shield is not loaded.', '^1') end
 
     elseif sub == 'reload' then
         if CAC.heartbeat then

@@ -38,6 +38,12 @@ const QUICK: { label: string; cmd: string; confirm?: string }[] = [
   { label: "Delete NPCs", cmd: "ac clear peds", confirm: "Delete every NPC on the server? Players are never touched." },
   { label: "Delete objects", cmd: "ac clear objects", confirm: "Delete every networked object on the server (props spawned by scripts included)?" },
   { label: "Reload config", cmd: "ac reload" },
+  { label: "Event Shield status", cmd: "ac shield status" },
+  {
+    label: "Protect all resources",
+    cmd: "ac shield install all",
+    confirm: "Add the Event Shield include to every resource that can take it (escrow and server-only resources are skipped, each manifest is backed up)? Restart the server afterwards.",
+  },
   { label: "Announcement…", cmd: "ac announce " },
   { label: "Ban info…", cmd: "ac baninfo " },
   { label: "Unban…", cmd: "ac unban " },

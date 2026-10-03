@@ -83,10 +83,10 @@ export function EventsManager({
             <Icons.activity size={16} className="text-brand-400" /> Your protected events
           </h3>
           <p className="mb-4 text-xs text-slate-500">
-            Add an event <b className="text-slate-300">one at a time</b> and test it. A player who fires it — locally or by
-            sending it to the server — is flagged as <i>Cheat Menu Event</i> (kick by default; raise it to ban in Actions once you
-            trust your list). Events named after a resource installed on your server (e.g. <code className="font-mono">qb-core:…</code>)
-            are ignored automatically.
+            Add an event <b className="text-slate-300">one at a time</b> and test it. A player whose game sends it to the
+            server is flagged as <i>Cheat Menu Event</i> (kick by default; raise it to ban in Actions once you trust your list).
+            Events named after a resource installed on your server (e.g. <code className="font-mono">qb-core:…</code>), and events
+            a resource really accepts from players, are ignored automatically.
           </p>
 
           <div className="flex gap-2">
@@ -143,8 +143,10 @@ export function EventsManager({
               use will flag real players. When unsure, add it and watch the Events feed for a day before trusting it.
             </p>
             <p className="mt-2 text-xs leading-relaxed text-amber-200/70">
-              Trapped on the server (cheat menus fire money/job exploits with TriggerServerEvent) and on the client. Never
-              add server→client events like <code className="font-mono">hospital:client:Revive</code>.
+              Trapped on the server only (cheat menus fire money/job exploits with TriggerServerEvent). The list never
+              reaches players, so a cheater dumping your scripts cannot see which events are traps. An event a resource
+              really accepts from players is never trapped. Never add server→client events like{" "}
+              <code className="font-mono">hospital:client:Revive</code>.
             </p>
           </Card>
 

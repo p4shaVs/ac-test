@@ -15,6 +15,9 @@ const LABELS: Record<string, string> = {
   intervalMs: "Shot gap", floorMs: "Fastest real gun", rpm: "Fire rate", bursts: "Bursts", shots: "Shots", weaponClass: "Weapon type",
   reports: "Reports", tolerance: "Allowed", reportedPos: "Reported position", serverPos: "Server sees", reportedHealth: "Reported health",
   serverHealth: "Server health", reportedArmor: "Reported armour", serverArmor: "Server armour",
+  check: "Check", missing: "Blocked messages", silentFor: "Silent for", inSessionFor: "In session for", moved: "Moved",
+  unaccounted: "Unaccounted events", resources: "Protected resources", distinct: "Different events", owner: "Owner resource",
+  command: "Command", resource: "Resource", key: "Setting", failures: "Failures", ticks: "Loop ticks",
 };
 
 const SOURCES: Record<string, string> = {
@@ -39,6 +42,17 @@ const SOURCES: Record<string, string> = {
   peer_damage: "server: hits stronger than every other player's with this weapon",
   fire_rate: "shots faster than any real gun of this type, on the shooter's own clock",
   telemetry_mismatch: "server: the anti-cheat's position reports disagree with where the server sees the player",
+  // server/secure_channel.lua — AC_TAMPER checks
+  never: "server: anti-cheat never started while the player was playing",
+  restart: "server: anti-cheat restarted on the player's game",
+  forged: "server: message not signed with the session key",
+  gap: "server: anti-cheat messages blocked on the way",
+  replay: "server: old messages replayed",
+  silent: "server: anti-cheat went quiet",
+  challenge: "server: challenge answered wrongly",
+  frozen: "server: anti-cheat threads frozen",
+  legacy: "server: pre-made bypass script (old event name)",
+  stray: "server: channel used without a session",
 };
 
 const SKIP = new Set(["replay", "bypass", "hash", "inCombat", "custom", "blocked", "info"]);
@@ -56,7 +70,7 @@ function unit(key: string, v: unknown): string {
     if (key === "immuneForMs") return `${(v / 1000).toFixed(1)} s`;
     return String(Math.round(v * 100) / 100);
   }
-  if ((key === "source" || key === "reason" || key === "detection") && typeof v === "string" && SOURCES[v]) return SOURCES[v];
+  if ((key === "source" || key === "reason" || key === "detection" || key === "check") && typeof v === "string" && SOURCES[v]) return SOURCES[v];
   return String(v);
 }
 

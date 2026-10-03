@@ -22,7 +22,7 @@ function serverScripts() {
   // Real (small) JSON — the preludes' stub returned '{}' for everything.
   await lua.doString(fs.readFileSync(path.join(__dirname, "json.lua"), "utf8"));
 
-  const clientBase = ['config.lua','bridge/shared.lua','bridge/client.lua','bridge/weapon_data.lua','client/core.lua','client/legit_moves.lua'];
+  const clientBase = ['config.lua','bridge/shared.lua','client/secure_channel.lua','bridge/client.lua','bridge/weapon_data.lua','client/core.lua','client/legit_moves.lua'];
   const files = process.env.CLIENT ? clientBase.concat((process.env.CLIENT_FILES || 'client/godMode.lua,client/noclip.lua,client/teleport.lua').split(',')) : serverScripts();
   for (const f of files) {
     const src = fs.readFileSync(path.join(RES, f), "utf8");

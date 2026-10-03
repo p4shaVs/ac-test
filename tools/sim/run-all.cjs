@@ -8,7 +8,8 @@
 //   * Lua 5.4 compile         every resource file loads under the real compiler (luaparse is lenient)
 //   * consistency             panel ↔ Lua keys, defaults, typed reader, secrets never leave the panel
 //   * scenario_*              the real resource scripts running in a Lua 5.4 VM with a FiveM stub:
-//                             connection gates, bans & evidence, Safe Guard, config/logs/framework, HTTP API, anti-crash, silent aim + damage boost, client side
+//                             connection gates, bans & evidence, Safe Guard, config/logs/framework, HTTP API, anti-crash, silent aim + damage boost,
+//                             secure channel (anti-bypass), Event Shield, client side
 //   * panel-checks            input validation (SSRF / injection), what the game server may receive, Discord routing
 const { spawnSync } = require("child_process");
 const path = require("path");
@@ -30,6 +31,8 @@ const suites = [
   { name: "scenario: rapid fire + spoofed position reports", cmd: process.execPath, args: ["run.cjs", "scenario_firerate_desync.lua"], cwd: here },
   { name: "scenario: event log (live feed + JSON details)", cmd: process.execPath, args: ["run.cjs", "scenario_eventlog.lua"], cwd: here },
   { name: "scenario: silent aim (2 tiers) + damage boost", cmd: process.execPath, args: ["run.cjs", "scenario_aim_damage.lua"], cwd: here },
+  { name: "scenario: secure channel (anti-bypass, server)", cmd: process.execPath, args: ["run.cjs", "scenario_channel.lua"], cwd: here },
+  { name: "scenario: Event Shield (floods, traps, executor triggers, install)", cmd: process.execPath, args: ["run.cjs", "scenario_shield.lua"], cwd: here },
   {
     name: "scenario: client side (prefix, NUI video, screenshots)",
     cmd: process.execPath,
@@ -50,6 +53,20 @@ const suites = [
     args: ["run.cjs", "scenario_client_integrity.lua"],
     cwd: here,
     env: { CLIENT: "1", CLIENT_FILES: "client/integrity.lua" },
+  },
+  {
+    name: "scenario: secure channel + spoofed control events (client)",
+    cmd: process.execPath,
+    args: ["run.cjs", "scenario_client_channel.lua"],
+    cwd: here,
+    env: { CLIENT: "1", CLIENT_FILES: "client/integrity.lua,client/pedModel.lua" },
+  },
+  {
+    name: "scenario: Event Shield include (client)",
+    cmd: process.execPath,
+    args: ["run.cjs", "scenario_client_shield.lua"],
+    cwd: here,
+    env: { CLIENT: "1", CLIENT_FILES: "shield/include.lua" },
   },
   { name: "panel checks (validation, secrets, Discord routing)", cmd: isWin ? "npx.cmd" : "npx", args: ["tsx", "tools/sim/panel-checks.ts"], cwd: root, shell: isWin },
 ];

@@ -98,10 +98,21 @@ const CATEGORIES: CatalogCategory[] = [
       ac("Main.AntiResourceInjection", ["RESOURCE_INJECT"]),
       ac("Main.AntiResourceStop", ["AC_TAMPER"], [], {
         label: "Anti-Cheat Stop / Tamper",
-        desc: "Flags a player who stops or suspends a resource that still runs on the server. The server also notices when the anti-cheat on a player's game goes quiet or answers its challenge wrongly, and the anti-cheat checks its own code every 15 seconds for functions an executor swapped out.",
+        desc: "The anti-cheat talks to the server on event names chosen at random every start, signs every message with a per-player key and numbers it. The server flags a player whose anti-cheat never starts, is restarted, goes quiet, answers its challenge wrongly, has its threads frozen, or whose messages are forged or blocked on the way. Control events only the server may send (rules, teleport/revive exemptions, admin tools) are refused when the player's own game fires them, the anti-cheat's settings are sealed in memory, and its own code is checked every 15 seconds for functions an executor swapped out.",
       }),
       rule("anti_state_desync", ["STATE_DESYNC"]),
       ac("Settings.EnableAntiBackdoors", ["BACKDOOR"], ["Settings.StopServerWhenDetected"], { label: "Backdoor Protection" }),
+    ],
+  },
+  {
+    id: "events",
+    label: "Event Shield",
+    icon: "activity",
+    desc: "Your resources' events fired from an executor — floods, dumped-list scans, server-only traps and triggers from outside the resource",
+    items: [
+      rule("anti_event_spam", ["EVENT_EXPLOIT"]),
+      rule("anti_server_only_events", ["CHEAT_EVENT_HONEYPOT"]),
+      rule("anti_unauthorized_events", ["EVENT_UNAUTHORIZED"]),
     ],
   },
   {

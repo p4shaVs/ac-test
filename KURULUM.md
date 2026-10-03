@@ -120,6 +120,7 @@ ZIP ile kurduysan: yeni ZIP'i eski klasörün üstüne çıkar (`.env` ve `prism
 - **Blacklist → "Troll & giant props" paketi → Add all.** Hilecilerin "dağ / ev / kafes" bastığı ~300 dev objeyi engeller. Oyun içi scriptleri etkilemez.
 - **Configuration → Settings → "Never punish server staff"** açık kalsın. Adminler kendi araçlarıyla (noclip, godmode, teleport) atılmaz. **Kendi admin hesabınla hile testi yapacaksan geçici olarak kapat.** Kapatmazsan tespitler "Staff" etiketiyle loglanır ama ceza uygulanmaz.
 - **Ekip:** yetkililerine şifreni verme — sunucu → **Team** → e-posta/kullanıcı adı + rol (Admin / Moderator / Viewer) → **Create invite link**, linki Discord'dan gönder. Herkes kendi hesabıyla girer, yaptığı her şey Admin Logs'ta adıyla görünür; çıkardığın kişi anında erişimi kaybeder.
+- **Event Shield:** sunucu konsolunda (ya da panel → Console → "Protect all resources") bir kez `ac shield install all` yaz, sonra sunucuyu yeniden başlat. Böylece hilecilerin döktüğü olaylarını executor'dan tetiklemesi yakalanır. İlk günlerde **Configuration → Event Shield** satırında Log bırak; yanlış kayıt görmezsen Kick yap. Durum: `ac shield status`. Kaldırma: `ac shield uninstall all`.
 - **Actions** sayfasında her tespitin ne yapacağını (Log / Kick / Ban) görebilirsin. Oyuncunun kendi bilgisayarından gelen tespitler en fazla Kick olabilir. Ban yalnızca sunucunun kendi ölçtüğü kanıtlarla atılır.
 
 ---

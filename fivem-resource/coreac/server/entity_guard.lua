@@ -218,6 +218,9 @@ local BUILTIN_BAIT = {
   'esx_fueldelivery:pay', 'esx_slotmachine:sv:2', 'esx_jobs:caution', 'esx_dmvschool:pay',
   'esx_billing:sendBill', 'esx_jailer:sendToJail', 'esx-qalle-jail:jailPlayer',
   'esx_policejob:handcuff', 'esx_mechanicjob:startHarvest', 'esx_drugs:startHarvestWeed',
+  'esx_vehicleshop:setVehicleOwned', 'esx_mafiajob:confiscatePlayerItem', 'esx_policejob:confiscatePlayerItem',
+  'esx_dmvschool:addLicense', 'esx_society:withdrawMoney', 'esx_blanchisseur:startWhitening',
+  'esx_communityservice:sendToCommunityService',
   -- vRP exploitleri
   'vrp_slotmachine:server:2', 'vRP:setMoney', 'vrp_basic_menu:givemoney',
 }
@@ -259,6 +262,12 @@ local function onBait(ev, custom)
   if CAC.isSafeEvent and CAC.isSafeEvent(ev) then return end
   -- Tetiklendiği anda da kontrol: sonradan kurulan bir resource bu olayı sahiplenmiş olabilir.
   if ownedByInstalledResource(ev) then return end
+  -- Event Shield taraması bu olayı ağdan KABUL EDEN bir resource bulduysa olay meşrudur
+  -- (ör. QB sunucusunda adı değişmiş ama esx_* olay adlarını koruyan dönüştürülmüş script).
+  if CAC.shieldState then
+    local S = CAC.shieldState()
+    if S and S.done and S.net[ev] then return end
+  end
   if CAC.eventLimited(src, 'bait', 5, 10000) then return end
   report(src, 'CHEAT_EVENT_HONEYPOT', { event = ev, side = 'server', custom = custom or nil })
 end

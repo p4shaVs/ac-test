@@ -53,6 +53,16 @@ end)
 -- bağlanarak model değişimini "bildirilmiş" sayıyoruz — aksi halde karakter
 -- seçen HER oyuncu MODEL_CHANGE kaydı üretiyordu.
 AddEventHandler('coreac:pedChanged', function()
+    -- Bu olay yalnızca AC'nin kendi çekirdeğinden gelir (client/core.lua). Bir
+    -- executor TriggerEvent('coreac:pedChanged') ile model hilesini "meşru"
+    -- gösteremesin.
+    local invoker = GetInvokingResource()
+    if invoker ~= nil and invoker ~= GetCurrentResourceName() then
+        if CAC and CAC.tamper then
+            CAC.tamper({ reason = 'anti-cheat internal event triggered from outside the anti-cheat', event = 'coreac:pedChanged' })
+        end
+        return
+    end
     lastPlayerModel = GetEntityModel(PlayerPedId())
     exports[GetCurrentResourceName()]:hasChangedPedModel(lastPlayerModel)
 end)

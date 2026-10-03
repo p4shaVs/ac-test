@@ -68,6 +68,17 @@ export const RULE_GROUPS: RuleGroup[] = [
     ],
   },
   {
+    id: "events",
+    label: "Event Shield",
+    icon: "activity",
+    description: "Cheaters dump your resources' events and fire them from an executor — catch the firing",
+    rules: [
+      { key: "anti_event_spam", label: "Event Rate Guard", description: "The anti-cheat reads every resource on the server and watches each event a player's game is allowed to send. One event fired more than 150 times in 2 seconds, more than 600 events in 2 seconds, or more than 60 different events in 10 seconds while playing (a dumped event list fired one by one) is reported — money and reward exploits work exactly like this. An event that goes over the limit for 3 different players is a resource sending it every frame and stops being counted by itself. Nothing is blocked or changed; Safe Events are never counted.", default: true },
+      { key: "anti_server_only_events", label: "Server-only Event Traps", description: "Events your resources only use inside the server (never accepted from a player) become traps: cheat menus fire known scripts' event lists blindly, and no honest game ever sends these. Only certain cases are trapped — the event appears in no client file at all and its resource registers no events dynamically.", default: true },
+      { key: "anti_unauthorized_events", label: "Event Shield (executor triggers)", description: "Run \"ac shield install all\" in the server console once and restart. Each protected resource then counts the events its own code sends; the server compares that with what arrives, so an event fired from an executor instead of the resource's own code is reported. An event that turns out to be sent by an unprotected resource for several players is excluded automatically (\"ac shield status\" lists them). Starts as Log — switch it to Kick after a few days without false entries.", default: true },
+    ],
+  },
+  {
     id: "session",
     label: "Session",
     icon: "users",

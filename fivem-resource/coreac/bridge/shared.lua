@@ -638,6 +638,55 @@ function CoreAC.SolveChallenge(n)
     return a
 end
 
+-- ---------------------------------------------------------------------------
+-- GÜVENLİ KANAL İMZASI (server/secure_channel.lua ↔ client/secure_channel.lua)
+--
+-- Yukarıdaki SolveChallenge herkese açık bir formüldü: client dosyasını okuyan
+-- hileci AC'yi kapatıp cevabı kendisi üretebiliyordu. Güvenli kanalda sır
+-- FORMÜL DEĞİL, sunucunun her oyuncuya o oturum için rastgele ürettiği ANAHTAR.
+-- Formülü bilmek yetmez; anahtar sunucudan yalnızca o oyuncunun AC'sine gelir
+-- ve her mesaj artan bir sıra numarasıyla imzalanır (araya giren/düşürülen
+-- mesaj sunucuda boşluk olarak görünür).
+--
+-- 32-bit karıştırma (Lua 5.3/5.4 tamsayı bit işlemleri). Kriptografik iddia
+-- yok: amaç anahtarsız taklidi imkânsız, anahtarla taklidi hedefli tersine
+-- mühendislik işi yapmak.
+-- ---------------------------------------------------------------------------
+local M32 = 0xFFFFFFFF
+
+local function mix32(h)
+    h = h & M32
+    h = ((h ~ (h >> 16)) * 0x45d9f3b) & M32
+    h = ((h ~ (h >> 16)) * 0x45d9f3b) & M32
+    return (h ~ (h >> 16)) & M32
+end
+
+local function fnv32(s)
+    local h = 0x811C9DC5
+    for i = 1, #s do h = ((h ~ s:byte(i)) * 0x01000193) & M32 end
+    return h
+end
+
+local function asInt(v)
+    v = math.tointeger(tonumber(v) or 0)
+    return v or 0
+end
+
+--- Bir kanal mesajının imzası. key = { a, b } (sunucunun verdiği 2 × 31-bit).
+function CoreAC.ChannelSig(key, seq, kind)
+    if type(key) ~= 'table' then return -1 end
+    seq = asInt(seq)
+    local h = mix32(asInt(key[1]) ~ (seq & M32))
+    h = mix32(h ~ fnv32(tostring(kind)))
+    return mix32(h ~ asInt(key[2]) ~ ((seq >> 32) & M32))
+end
+
+--- Sunucunun sorduğu rastgele sayının (nonce) cevabı — anahtar olmadan üretilemez.
+function CoreAC.ChannelAnswer(key, nonce)
+    if type(key) ~= 'table' then return -1 end
+    return mix32(mix32(asInt(key[2]) ~ (asInt(nonce) & M32)) ~ asInt(key[1]))
+end
+
 -- Server side'da GlobalState'e yaz
 if isServerSide then
     GlobalState.CFct1C6gobnW4qkaQUx3Xk9Q = CONFIG_BAG_KEY
@@ -649,7 +698,7 @@ if isServerSide then
     -- edilmiş build için güvenilir. Düz build'de client heartbeat'i ağ hıçkırığı/
     -- alt-tab/yükleme yüzünden 90 sn gecikince "CoreAC Stop Detected" ile MASUM
     -- oyuncuyu kickliyordu. Obfuscate değilse watchdog'u kapat.
-    -- (Canlılık işi zaten server/liveness_guard.lua'da FP-güvenli yapılıyor.)
+    -- (Canlılık işi server/secure_channel.lua'da FP-güvenli yapılıyor.)
     GlobalState.IsAntiResourceStopDisabled = (not LPH_OBFUSCATED)
 
     -- AYRI BAYRAK — resource enjeksiyon/durdurma guard'ı.

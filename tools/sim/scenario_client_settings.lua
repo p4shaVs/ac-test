@@ -25,7 +25,7 @@ local before = serverEventCount('coreac:requestPerms')
 SIM.commands.ac(0, {})
 check('"ac" works before any change', serverEventCount('coreac:requestPerms') == before + 1)
 
-TriggerEvent('coreac:prefix', 'sec')
+SIM.fromServer('coreac:prefix', 'sec')
 check('the server can change the prefix', type(SIM.commands.sec) == 'function')
 before = serverEventCount('coreac:requestPerms')
 SIM.commands.sec(0, {})
@@ -37,14 +37,14 @@ check('the OLD prefix is now inert (a registered command cannot be removed, so i
 for _, bad in ipairs({ 'Bad Prefix', 'quit;', '', '1abc', 'UPPER' }) do
   local prev = {}
   for k in pairs(SIM.commands) do prev[k] = true end
-  TriggerEvent('coreac:prefix', bad)
+  SIM.fromServer('coreac:prefix', bad)
   local added = false
   for k in pairs(SIM.commands) do if not prev[k] then added = true end end
   check("invalid prefix '" .. bad .. "' is ignored (no command registered)", not added)
 end
-TriggerEvent('coreac:prefix', 7)
+SIM.fromServer('coreac:prefix', 7)
 check('a non-string prefix is ignored', SIM.commands['7'] == nil)
-TriggerEvent('coreac:prefix', 'ac')
+SIM.fromServer('coreac:prefix', 'ac')
 before = serverEventCount('coreac:requestPerms')
 SIM.commands.ac(0, {})
 check('switching back re-enables "ac" (and disables "sec")', serverEventCount('coreac:requestPerms') == before + 1)
@@ -55,21 +55,21 @@ check('…"sec" is inert again', serverEventCount('coreac:requestPerms') == befo
 -- ---------------------------------------------------------------------------
 title('2. Framework resource names')
 check('defaults', CAC.fwNames.qb == 'qb-core' and CAC.fwNames.qbx == 'qbx_core' and CAC.fwNames.esx == 'es_extended')
-TriggerEvent('coreac:frameworks', { qb = 'my-core', qbx = 'qbx_custom', esx = 'esx_custom' })
+SIM.fromServer('coreac:frameworks', { qb = 'my-core', qbx = 'qbx_custom', esx = 'esx_custom' })
 check('names follow the server setting', CAC.fwNames.qb == 'my-core' and CAC.fwNames.qbx == 'qbx_custom' and CAC.fwNames.esx == 'esx_custom')
-TriggerEvent('coreac:frameworks', { qb = 'bad name; drop', qbx = string.rep('x', 100), esx = 5 })
+SIM.fromServer('coreac:frameworks', { qb = 'bad name; drop', qbx = string.rep('x', 100), esx = 5 })
 check('invalid names are rejected, the last good ones stay', CAC.fwNames.qb == 'my-core' and CAC.fwNames.qbx == 'qbx_custom' and CAC.fwNames.esx == 'esx_custom')
-TriggerEvent('coreac:frameworks', 'not a table')
+SIM.fromServer('coreac:frameworks', 'not a table')
 check('a non-table payload is ignored', CAC.fwNames.qb == 'my-core')
 
 -- ---------------------------------------------------------------------------
 title('3. Ban video: server → NUI → server')
 SIM.nui = {}
-TriggerEvent('coreac:banVideo', 'https://cdn.example.com/ban.mp4', 15000)
+SIM.fromServer('coreac:banVideo', 'https://cdn.example.com/ban.mp4', 15000)
 local msg = SIM.nui[#SIM.nui]
 check('the URL is handed to the NUI as a banVideo message', msg and msg.type == 'banVideo' and msg.url == 'https://cdn.example.com/ban.mp4' and msg.ms == 15000)
 local nuiBefore = #SIM.nui
-TriggerEvent('coreac:banVideo', 12345, 15000)
+SIM.fromServer('coreac:banVideo', 12345, 15000)
 check('a non-string URL is ignored', #SIM.nui == nuiBefore)
 check('the NUI callback exists', type(SIM.nuiCallbacks.banVideoDone) == 'function')
 before = serverEventCount('coreac:banVideoDone')
@@ -92,16 +92,16 @@ exports = setmetatable({}, {
   end,
 })
 captured = nil
-TriggerEvent('coreac:screenshot', 'http://panel/api/v1/screenshot/upload?rid=r1', 'r1', nil, 0.55)
+SIM.fromServer('coreac:screenshot', 'http://panel/api/v1/screenshot/upload?rid=r1', 'r1', nil, 0.55)
 check('provider called with jpg + the requested quality', captured and captured.opts.encoding == 'jpg' and captured.opts.quality == 0.55, captured and captured.opts.quality)
 captured = nil
-TriggerEvent('coreac:screenshot', 'http://panel/x?rid=r2', 'r2')
+SIM.fromServer('coreac:screenshot', 'http://panel/x?rid=r2', 'r2')
 check('no quality requested → provider options carry none', captured and captured.opts.encoding == 'jpg' and captured.opts.quality == nil)
 captured = nil
-TriggerEvent('coreac:screenshot', 'http://panel/x?rid=r3', 'r3', nil, 5)
+SIM.fromServer('coreac:screenshot', 'http://panel/x?rid=r3', 'r3', nil, 5)
 check('out-of-range quality (5) is dropped, not forwarded', captured and captured.opts.quality == nil)
 captured = nil
-TriggerEvent('coreac:screenshot', 'http://panel/x?rid=r4', 'r4', nil, 'high')
+SIM.fromServer('coreac:screenshot', 'http://panel/x?rid=r4', 'r4', nil, 'high')
 check('non-numeric quality is dropped', captured and captured.opts.quality == nil)
 
 SIM.out('')

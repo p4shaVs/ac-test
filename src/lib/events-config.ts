@@ -44,5 +44,7 @@ export const KNOWN_CHEAT_EVENTS: string[] = [
   "antilynxr4:crashuser",
   "esx_truckerjob:pay",
   "esx_billing:sendBill",
+  "esx_vehicleshop:setVehicleOwned",
+  "esx_society:withdrawMoney",
   "vrp_slotmachine:server:2",
 ];

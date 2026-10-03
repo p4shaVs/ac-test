@@ -121,7 +121,14 @@ end
 function GetConvar(k, d) if k == 'coreac_token' then return 'coreac_srv_test' end if k == 'coreac_api' then return 'http://panel/api/v1' end return d end
 function GetConvarInt(_, d) return d end
 function GetCurrentResourceName() return 'coreac' end
-function GetNumResources() return 0 end
+-- Resources on disk (server/event_shield.lua scans them; ac shield install writes).
+SIM.resList, SIM.files, SIM.meta = {}, {}, {}
+function GetNumResources() return #SIM.resList end
+function GetResourceByFindIndex(i) return SIM.resList[i + 1] end
+function GetNumResourceMetadata(res, key) local m = SIM.meta[res]; return m and m[key] and #m[key] or 0 end
+function GetResourceMetadata(res, key, i) local m = SIM.meta[res]; return m and m[key] and m[key][i + 1] or nil end
+function LoadResourceFile(res, path) local f = SIM.files[res]; return f and f[path] or nil end
+function SaveResourceFile(res, path, data) SIM.files[res] = SIM.files[res] or {}; SIM.files[res][path] = data; return true end
 function GetEntityModel(e) local x = SIM.entities[e]; return x and x.model or 0 end
 function GetEntityType(e) local x = SIM.entities[e]; return x and x.type or 0 end
 function DoesEntityExist(e) return SIM.entities[e] ~= nil end

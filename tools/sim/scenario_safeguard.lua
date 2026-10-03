@@ -77,13 +77,11 @@ check('backdoor call by a Safe Script → dropped', serverReport('BACKDOOR', { i
 check('backdoor call by an unknown script → reported', serverReport('BACKDOOR', { invoker = 'evil' }) == true)
 
 -- ---------------------------------------------------------------------------
-title('4. Trap system: Safe Events are never armed, and never broadcast to players')
+title('4. Trap system: Safe Events are never armed; the list never reaches players')
 H.pushConfig({ SafeEvents = { 'a:safe' } }, { protectedEvents = { 'a:safe', 'b:trap' } })
-local pe = H.clientEvents('coreac:protectedEvents')
-local last = pe[#pe] and pe[#pe].args[1] or {}
-local has = {}
-for _, e in ipairs(last) do has[e] = true end
-check('broadcast trap list excludes the Safe Event', not has['a:safe'] and has['b:trap'], table.concat(last, ','))
+-- The trap list is never sent to players any more: a cheater dumping client events
+-- could otherwise read which events are traps and avoid them.
+check('trap list is never broadcast to players', #H.clientEvents('coreac:protectedEvents') == 0)
 local trapSrc = reporter()
 local before = H.requestCount('/detections')
 SIM.net('b:trap', trapSrc)
